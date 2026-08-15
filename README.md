@@ -1,0 +1,1 @@
+# everquest-loot-tracker-v3
