@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-main",
+  "description": "V3 main desktop window",
+  "windows": ["main"],
+  "platforms": ["windows", "macOS", "linux"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,42 @@
+# EverQuest Loot Tracker
+
+A local-first, cross-platform EverQuest loot, split, inventory, recipe, and sale tracker for Windows, macOS, and Linux.
+
+## Architecture
+
+- **Rust** owns log tailing, parsing, SQLite, aliases, imports, market data, compound calculations, WTS links, INI writes, and the read-only local web service.
+- **Tauri 2** provides the small native desktop shell and a typed command/event boundary.
+- **React + TypeScript** provides the shared modern interface and reusable grid, filter, dialog, theme, and form components.
+- **SQLite** remains local and compatible with existing Loot Tracker data through additive migrations.
+- **GitHub Actions** is the only supported release-build environment. Windows, macOS, and Linux packages are produced on native hosted runners.
+
+See [architecture](docs/architecture.md), [feature requirements](docs/feature-parity.md), and [delivery plan](docs/delivery-plan.md).
+
+## Local development
+
+Local development runs only the platform being used by the contributor:
+
+```bash
+npm ci
+npm run tauri dev
+```
+
+Core verification:
+
+```bash
+npm run build
+npm test
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Do not manually produce release packages. Push a version tag after CI passes; the Release workflow creates a draft GitHub release containing the platform artifacts.
+
+## Release process
+
+1. Merge a reviewed pull request to `main`.
+2. Confirm the three-platform CI workflow is green.
+3. Update the application version and changelog.
+4. Push a signed `v*` tag.
+5. Review the draft GitHub release and publish it.
+
+macOS signing/notarization and Tauri updater signing require the repository secrets listed in [release setup](docs/release-setup.md).
