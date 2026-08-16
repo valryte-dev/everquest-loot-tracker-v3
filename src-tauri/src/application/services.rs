@@ -475,14 +475,11 @@ mod tests {
 
     #[test]
     fn exports_are_watched_beside_the_logs_folder() {
-        assert_eq!(
-            output_directory(Path::new(r"C:\EverQuest\Logs")),
-            Path::new(r"C:\EverQuest")
-        );
-        assert_eq!(
-            output_directory(Path::new(r"C:\Exports")),
-            Path::new(r"C:\Exports")
-        );
+        let everquest = Path::new("EverQuest");
+        assert_eq!(output_directory(&everquest.join("Logs")), everquest);
+
+        let exports = Path::new("Exports");
+        assert_eq!(output_directory(exports), exports);
     }
 
     #[test]
