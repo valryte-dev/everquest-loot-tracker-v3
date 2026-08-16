@@ -777,10 +777,15 @@ fn import_export_text(
     } else {
         return Err("Choose an *-Inventory.txt or *-Spellbook.txt file".into());
     };
+    let status = if source.starts_with("Dropped file:") {
+        "manual import"
+    } else {
+        "auto import"
+    };
     connection
         .execute(
-            "INSERT INTO import_uploads(file_name,status,detail) VALUES(?,'imported',?)",
-            params![filename, detail],
+            "INSERT INTO import_uploads(file_name,status,detail) VALUES(?,?,?)",
+            params![filename, status, detail],
         )
         .map_err(err)?;
     Ok(())
