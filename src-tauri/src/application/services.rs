@@ -63,6 +63,7 @@ pub fn upload_exports(database: &Database) -> Result<Value, String> {
             |r| r.get(0),
         )
         .map_err(|_| "Choose the EverQuest Logs folder first".to_string())?;
+    let directory = output_directory(Path::new(&directory));
     let mut files = Vec::new();
     for entry in fs::read_dir(&directory)
         .map_err(err)?
@@ -82,6 +83,47 @@ pub fn upload_exports(database: &Database) -> Result<Value, String> {
     if files.is_empty() {
         return Err("No inventory or spellbook exports found".into());
     }
+    upload_files(database, files)
+}
+
+pub fn upload_file_payloads(database: &Database, payload: &Value) -> Result<Value, String> {
+    let input = payload
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or("files are required")?;
+    if input.is_empty() {
+        return Err("Import at least one file before pushing to Planner".into());
+    }
+    let mut files = Vec::new();
+    let mut total = 0usize;
+    for file in input {
+        let name = file
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let text = file
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or("file text is required")?;
+        let lower = name.to_ascii_lowercase();
+        if !(lower.ends_with("-inventory.txt") || lower.ends_with("-spellbook.txt")) {
+            return Err(format!("Unsupported export filename: {name}"));
+        }
+        if text.len() > 128 * 1024 {
+            return Err(format!("{name} exceeds the 128 KB Planner limit"));
+        }
+        total += text.len();
+        if total > 256 * 1024 {
+            return Err("The selected files exceed the 256 KB Planner limit".into());
+        }
+        files.push(json!({"name":name,"text":text}));
+    }
+    upload_files(database, files)
+}
+
+fn upload_files(database: &Database, files: Vec<Value>) -> Result<Value, String> {
+    let c = database.connect().map_err(|e| e.to_string())?;
     let claim: Option<String> = c
         .query_row(
             "SELECT value FROM app_settings WHERE key='planner_import_claim'",
@@ -131,6 +173,21 @@ pub fn upload_exports(database: &Database) -> Result<Value, String> {
         .map_err(sql)?;
     }
     Ok(json!({"url":url,"files":files.len()}))
+}
+
+pub fn output_directory(logs_directory: &Path) -> PathBuf {
+    if logs_directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("logs"))
+    {
+        logs_directory
+            .parent()
+            .unwrap_or(logs_directory)
+            .to_path_buf()
+    } else {
+        logs_directory.to_path_buf()
+    }
 }
 
 pub fn export_wts(database: &Database, group_id: i64) -> Result<Value, String> {
@@ -410,7 +467,20 @@ fn sql(e: rusqlite::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auction_bytes, write_social};
+    use super::{auction_bytes, output_directory, write_social};
+    use std::path::Path;
+
+    #[test]
+    fn exports_are_watched_beside_the_logs_folder() {
+        assert_eq!(
+            output_directory(Path::new(r"C:\EverQuest\Logs")),
+            Path::new(r"C:\EverQuest")
+        );
+        assert_eq!(
+            output_directory(Path::new(r"C:\Exports")),
+            Path::new(r"C:\Exports")
+        );
+    }
 
     #[test]
     fn auction_uses_clickable_titanium_item_link_without_angle_brackets() {

@@ -155,6 +155,13 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         |row| Ok(json!({"id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,"level":row.get::<_,String>(2)?,
             "area":row.get::<_,String>(3)?,"message":row.get::<_,String>(4)?})),
     )?;
+    let imports = query_values(
+        &connection,
+        "SELECT id,happened_at,file_name,status,review_url,detail FROM import_uploads ORDER BY id DESC LIMIT 500",
+        |row| Ok(json!({"id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+            "fileName":row.get::<_,String>(2)?,"status":row.get::<_,String>(3)?,
+            "reviewUrl":row.get::<_,Option<String>>(4)?,"detail":row.get::<_,Option<String>>(5)?})),
+    )?;
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -166,7 +173,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
-        "logs":logs,"compound":compound}),
+        "logs":logs,"imports":imports,"compound":compound}),
     )
 }
 
@@ -367,6 +374,28 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         }
         "inventory.import" => {
             import_export(&mut connection, Path::new(&required(payload, "path")?))?
+        }
+        "inventory.importFiles" => {
+            let files = payload
+                .get("files")
+                .and_then(Value::as_array)
+                .ok_or("files are required")?;
+            if files.is_empty() {
+                return Err("Choose at least one export file".into());
+            }
+            for file in files {
+                let name = required(file, "name")?;
+                let text = file
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or("file text is required")?;
+                import_export_text(
+                    &mut connection,
+                    &name,
+                    text,
+                    &format!("Dropped file: {name}"),
+                )?;
+            }
         }
         _ => return Err(format!("Unknown action: {action}")),
     }
@@ -658,14 +687,23 @@ fn import_export(connection: &mut rusqlite::Connection, path: &Path) -> Result<(
         .and_then(|v| v.to_str())
         .ok_or("Invalid export path")?;
     let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    import_export_text(connection, filename, &text, &path.display().to_string())
+}
+
+fn import_export_text(
+    connection: &mut rusqlite::Connection,
+    filename: &str,
+    text: &str,
+    source: &str,
+) -> Result<(), String> {
     let character = filename.split('-').next().unwrap_or("").trim();
     if character.is_empty() {
         return Err("Export filename must begin with a character name".into());
     }
     let now = Local::now().to_rfc3339();
-    if filename.to_ascii_lowercase().ends_with("-inventory.txt") {
+    let detail = if filename.to_ascii_lowercase().ends_with("-inventory.txt") {
         let items = parse_inventory(&text);
-        connection.execute("INSERT INTO inventory_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,path.display().to_string(),now]).map_err(err)?;
+        connection.execute("INSERT INTO inventory_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,source,now]).map_err(err)?;
         let id: i64 = connection
             .query_row(
                 "SELECT id FROM inventory_characters WHERE name=? COLLATE NOCASE",
@@ -679,8 +717,9 @@ fn import_export(connection: &mut rusqlite::Connection, path: &Path) -> Result<(
         for (order, item) in items.iter().enumerate() {
             connection.execute("INSERT INTO inventory_items(character_id,location,item_name,item_id,item_count,slots,sort_order) VALUES(?,?,?,?,?,?,?)",params![id,item.location,item.item_name,item.item_id,item.count,item.slots,order as i64]).map_err(err)?;
         }
+        format!("Imported {} inventory rows for {character}", items.len())
     } else if filename.to_ascii_lowercase().ends_with("-spellbook.txt") {
-        connection.execute("INSERT INTO spellbook_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,path.display().to_string(),now]).map_err(err)?;
+        connection.execute("INSERT INTO spellbook_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,source,now]).map_err(err)?;
         let id: i64 = connection
             .query_row(
                 "SELECT id FROM spellbook_characters WHERE name=? COLLATE NOCASE",
@@ -691,6 +730,7 @@ fn import_export(connection: &mut rusqlite::Connection, path: &Path) -> Result<(
         connection
             .execute("DELETE FROM spellbook_spells WHERE character_id=?", [id])
             .map_err(err)?;
+        let mut count = 0;
         for (order, line) in text.lines().enumerate() {
             let mut cells = line.split('\t');
             let first = cells.next().unwrap_or("").trim();
@@ -699,10 +739,18 @@ fn import_export(connection: &mut rusqlite::Connection, path: &Path) -> Result<(
                 continue;
             }
             connection.execute("INSERT INTO spellbook_spells(character_id,slot_number,spell_name,sort_order) VALUES(?,?,?,?)",params![id,first.parse::<i64>().ok(),second.trim_start_matches("Spell: "),order as i64]).map_err(err)?;
+            count += 1;
         }
+        format!("Imported {count} spellbook rows for {character}")
     } else {
         return Err("Choose an *-Inventory.txt or *-Spellbook.txt file".into());
-    }
+    };
+    connection
+        .execute(
+            "INSERT INTO import_uploads(file_name,status,detail) VALUES(?,'imported',?)",
+            params![filename, detail],
+        )
+        .map_err(err)?;
     Ok(())
 }
 

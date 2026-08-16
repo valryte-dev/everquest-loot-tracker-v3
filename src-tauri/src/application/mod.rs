@@ -72,6 +72,7 @@ pub fn mutate_app(
     match request.action.as_str() {
         "market.refresh" => services::refresh_market(&state.database),
         "planner.upload" => services::upload_exports(&state.database),
+        "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
         "wts.export" => services::export_wts(
             &state.database,
             request

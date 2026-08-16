@@ -30,6 +30,7 @@ fn watch(database_path: PathBuf) {
     let mut offsets: HashMap<PathBuf, u64> = HashMap::new();
     let mut last_mob: HashMap<PathBuf, String> = HashMap::new();
     let mut export_signatures: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
+    let mut export_directory: Option<PathBuf> = None;
     loop {
         if let Err(error) = poll(
             &database,
@@ -37,6 +38,7 @@ fn watch(database_path: PathBuf) {
             &mut offsets,
             &mut last_mob,
             &mut export_signatures,
+            &mut export_directory,
         ) {
             log(&database, "error", "watcher", &error);
         }
@@ -50,6 +52,7 @@ fn poll(
     offsets: &mut HashMap<PathBuf, u64>,
     last_mob: &mut HashMap<PathBuf, String>,
     exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
+    watched_export_directory: &mut Option<PathBuf>,
 ) -> Result<(), String> {
     let connection = database.connect().map_err(|error| error.to_string())?;
     let directory: Option<String> = connection
@@ -118,7 +121,22 @@ fn poll(
         }
         process_log(database, &newest, offsets, last_mob)?;
     }
-    process_exports(database, &directory, exports)?;
+    let output = services::output_directory(&directory);
+    if watched_export_directory.as_ref() != Some(&output) {
+        exports.clear();
+        baseline_exports(&output, exports)?;
+        *watched_export_directory = Some(output.clone());
+        let connection = database.connect().map_err(|error| error.to_string())?;
+        connection.execute("INSERT INTO app_settings(key,value) VALUES('export_directory',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[output.display().to_string()]).map_err(|error|error.to_string())?;
+        log_with(
+            &connection,
+            "info",
+            "watcher",
+            &format!("Watching exports in {}", output.display()),
+        );
+    } else {
+        process_exports(database, &output, exports)?;
+    }
     Ok(())
 }
 
@@ -234,10 +252,7 @@ fn process_exports(
             metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
         );
         match seen.get(&path) {
-            None => {
-                seen.insert(path, signature);
-            }
-            Some(old) if *old != signature => {
+            None | Some(_) if seen.get(&path) != Some(&signature) => {
                 seen.insert(path.clone(), signature);
                 match data::mutate(
                     database,
@@ -245,13 +260,18 @@ fn process_exports(
                     &json!({"path":path.display().to_string()}),
                 ) {
                     Ok(_) => {
+                        if let Ok(connection) = database.connect() {
+                            let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_export_file',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[path.display().to_string()]);
+                            let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_export_import_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
+                        }
                         log(
                             database,
                             "info",
                             "inventory",
                             &format!("Imported {}", path.display()),
                         );
-                        match services::upload_exports(database) {
+                        let upload = fs::read_to_string(&path).map(|text| json!({"files":[{"name":path.file_name().and_then(|value|value.to_str()).unwrap_or(""),"text":text}]})).map_err(|error|error.to_string()).and_then(|payload|services::upload_file_payloads(database,&payload));
+                        match upload {
                             Ok(_) => log(
                                 database,
                                 "info",
@@ -271,6 +291,38 @@ fn process_exports(
             }
             _ => {}
         }
+    }
+    Ok(())
+}
+
+fn baseline_exports(
+    directory: &Path,
+    seen: &mut HashMap<PathBuf, (u64, SystemTime)>,
+) -> Result<(), String> {
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(directory)
+        .map_err(|error| error.to_string())?
+        .filter_map(Result::ok)
+    {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !(name.ends_with("-inventory.txt") || name.ends_with("-spellbook.txt")) {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        seen.insert(
+            path,
+            (
+                metadata.len(),
+                metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            ),
+        );
     }
     Ok(())
 }

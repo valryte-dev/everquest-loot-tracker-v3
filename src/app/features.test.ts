@@ -13,6 +13,7 @@ describe("feature catalog", () => {
       "splits",
       "compounds",
       "characters",
+      "imports",
       "wts",
       "items",
       "system",
