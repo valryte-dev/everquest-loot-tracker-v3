@@ -1,16 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { BootstrapStatus } from "./contracts";
+import type { AppSnapshot, BootstrapStatus } from "./contracts";
 
-const browserPreview: BootstrapStatus = {
-  appVersion: "0.1.0",
-  platform: "browser-preview",
-  databasePath: "Available when running inside the V3 desktop shell",
-  databaseReady: false,
-  schemaVersion: 0,
-  legacyDatabase: false,
-};
-
-export async function bootstrapStatus(): Promise<BootstrapStatus> {
-  if (!("__TAURI_INTERNALS__" in window)) return browserPreview;
-  return invoke<BootstrapStatus>("bootstrap_status");
-}
+const previewStatus:BootstrapStatus={appVersion:"3.1.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
+const previewSnapshot:AppSnapshot={settings:{theme:"midnight"},members:[],loot:[],splits:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],compound:{projects:[],templates:[],activeId:null}};
+const desktop=()=>"__TAURI_INTERNALS__" in window;
+export const bootstrapStatus=()=>desktop()?invoke<BootstrapStatus>("bootstrap_status"):Promise.resolve(previewStatus);
+export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promise.resolve(previewSnapshot);
+export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;

@@ -4,5 +4,14 @@
   "description": "V3 main desktop window",
   "windows": ["main"],
   "platforms": ["windows", "macOS", "linux"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://p99planner.com/*" },
+        { "url": "http://127.0.0.1:8765/*" }
+      ]
+    }
+  ]
 }

@@ -1,4 +1,10 @@
+mod data;
+mod runtime;
+mod services;
+
+use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
 use std::path::PathBuf;
 
 use crate::domain::{
@@ -8,6 +14,7 @@ use crate::domain::{
 use crate::infrastructure::{database::Database, paths};
 
 pub struct AppState {
+    database: Database,
     database_path: PathBuf,
     schema_version: i64,
     legacy_database: bool,
@@ -31,10 +38,59 @@ impl AppState {
         let database = Database::open(&database_path).map_err(|error| error.to_string())?;
         let schema_version = database.migrate().map_err(|error| error.to_string())?;
         Ok(Self {
+            database,
             database_path,
             schema_version,
             legacy_database,
         })
+    }
+
+    pub fn start_runtime(&self) {
+        runtime::start(self.database_path.clone());
+        services::start_web(self.database_path.clone());
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MutationRequest {
+    action: String,
+    #[serde(default)]
+    payload: Value,
+}
+
+#[tauri::command]
+pub fn app_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    data::snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn mutate_app(
+    state: tauri::State<'_, AppState>,
+    request: MutationRequest,
+) -> Result<Value, String> {
+    match request.action.as_str() {
+        "market.refresh" => services::refresh_market(&state.database),
+        "planner.upload" => services::upload_exports(&state.database),
+        "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
+        "wts.export" => services::export_wts(
+            &state.database,
+            request
+                .payload
+                .get("id")
+                .and_then(Value::as_i64)
+                .ok_or("id is required")?,
+        ),
+        "database.backup" => services::backup(&state.database),
+        "database.restore" => services::restore(
+            &state.database,
+            request
+                .payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or("path is required")?,
+        ),
+        _ => data::mutate(&state.database, &request.action, &request.payload),
     }
 }
 
