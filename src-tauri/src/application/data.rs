@@ -155,17 +155,88 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         |row| Ok(json!({"id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,"level":row.get::<_,String>(2)?,
             "area":row.get::<_,String>(3)?,"message":row.get::<_,String>(4)?})),
     )?;
-    let compound = settings
-        .get("compound_workspace")
-        .and_then(Value::as_str)
-        .and_then(|raw| serde_json::from_str(raw).ok())
-        .unwrap_or_else(|| json!({"projects":[],"templates":[],"activeId":null}));
+    let compound = normalize_compound(
+        settings
+            .get("compound_workspace")
+            .and_then(Value::as_str)
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .unwrap_or_else(|| json!({"projects":[],"templates":[],"activeId":null})),
+    );
 
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"compound":compound}),
     )
+}
+
+fn normalize_compound(mut workspace: Value) -> Value {
+    if !workspace.is_object() {
+        return json!({"projects":[],"templates":[],"activeId":null});
+    }
+    let root = workspace.as_object_mut().expect("object checked above");
+    root.entry("projects").or_insert_with(|| json!([]));
+    root.entry("templates").or_insert_with(|| json!([]));
+    root.entry("activeId").or_insert(Value::Null);
+
+    if let Some(projects) = root.get_mut("projects").and_then(Value::as_array_mut) {
+        for project in projects {
+            let Some(project) = project.as_object_mut() else {
+                continue;
+            };
+            project.entry("templates").or_insert_with(|| json!([]));
+            project.entry("note").or_insert_with(|| json!(""));
+            if let Some(components) = project.get_mut("components").and_then(Value::as_array_mut) {
+                for component in components {
+                    if component.is_string() {
+                        let name = component.as_str().unwrap_or_default().to_owned();
+                        *component =
+                            json!({"itemName":name,"required":1,"received":0,"contributors":[]});
+                    }
+                    let Some(component) = component.as_object_mut() else {
+                        continue;
+                    };
+                    if !component.contains_key("itemName") {
+                        let name = component.get("name").cloned().unwrap_or_else(|| json!(""));
+                        component.insert("itemName".into(), name);
+                    }
+                    if !component.contains_key("contributors") {
+                        let owners = component
+                            .get("owners")
+                            .cloned()
+                            .unwrap_or_else(|| json!([]));
+                        component.insert("contributors".into(), owners);
+                    }
+                    component.entry("required").or_insert_with(|| json!(1));
+                    component.entry("received").or_insert_with(|| json!(0));
+                }
+            } else {
+                project.insert("components".into(), json!([]));
+            }
+        }
+    } else {
+        root.insert("projects".into(), json!([]));
+    }
+
+    if let Some(templates) = root.get_mut("templates").and_then(Value::as_array_mut) {
+        for template in templates {
+            let Some(template) = template.as_object_mut() else {
+                continue;
+            };
+            if let Some(components) = template.get_mut("components").and_then(Value::as_array_mut) {
+                for component in components {
+                    if let Some(object) = component.as_object() {
+                        *component = object
+                            .get("itemName")
+                            .or_else(|| object.get("name"))
+                            .cloned()
+                            .unwrap_or_else(|| json!(""));
+                    }
+                }
+            }
+        }
+    }
+    workspace
 }
 
 fn query_values<F>(
@@ -678,6 +749,29 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
         .filter(|v| !v.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_compound;
+    use serde_json::json;
+
+    #[test]
+    fn normalizes_v2_compound_components_without_losing_metadata() {
+        let value = normalize_compound(json!({
+            "projects":[{"id":"p1","name":"Cloak of Confusion","itemId":21597,"components":[{
+                "name":"A Blue Throne","itemId":18359,"required":1,"received":0,
+                "value":22915,"owners":["Youngman"]
+            }]}],
+            "templates":[],"activeId":"p1"
+        }));
+        let component = &value["projects"][0]["components"][0];
+        assert_eq!(component["itemName"], "A Blue Throne");
+        assert_eq!(component["contributors"], json!(["Youngman"]));
+        assert_eq!(component["itemId"], 18359);
+        assert_eq!(component["value"], 22915);
+        assert_eq!(value["activeId"], "p1");
+    }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {
     value
