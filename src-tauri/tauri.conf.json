@@ -19,7 +19,8 @@
         "minWidth": 800,
         "minHeight": 620,
         "center": true,
-        "resizable": true
+        "resizable": true,
+        "dragDropEnabled": false
       }
     ],
     "security": { "csp": null }
