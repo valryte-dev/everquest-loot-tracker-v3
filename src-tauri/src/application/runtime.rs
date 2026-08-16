@@ -169,10 +169,22 @@ fn process_log(
         let line = text.trim_end_matches(['\r', '\n']);
         if let Some(event) = parse_log_event(line, &character) {
             apply_event(database, path, line_offset as i64, line, &event, last_mob)?;
+        } else if line.to_ascii_lowercase().contains(" looted ") {
+            log(
+                database,
+                "warning",
+                "parser",
+                &format!("Unrecognized loot line in {}: {line}", path.display()),
+            );
         }
         line_offset += line_bytes.len() as u64;
     }
     *offset = line_offset;
+    if let Ok(connection) = database.connect() {
+        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_path',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[path.display().to_string()]);
+        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[line_offset.to_string()]);
+        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_log_read_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
+    }
     Ok(())
 }
 

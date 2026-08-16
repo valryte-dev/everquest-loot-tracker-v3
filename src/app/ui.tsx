@@ -5,8 +5,9 @@ type Props<T> = {rows:T[]; columns:Column<T>[]; rowKey:(row:T)=>string|number; a
 
 export function DataTable<T>({rows, columns, rowKey, actions, selected, onSelected, empty="No records yet.", dimInsteadOfHide=false}:Props<T>) {
   const [filter,setFilter]=useState("");
-  const [sort,setSort]=useState(columns[0]?.key??"");
-  const [desc,setDesc]=useState(false);
+  const defaultSort=columns.some(column=>column.key==="time")?"time":columns[0]?.key??"";
+  const [sort,setSort]=useState(defaultSort);
+  const [desc,setDesc]=useState(defaultSort==="time");
   const matches=(row:T)=>!filter.trim()||columns.some(column=>String(column.value(row)??"").toLowerCase().includes(filter.trim().toLowerCase()));
   const shown=useMemo(()=>{const column=columns.find(item=>item.key===sort);return rows.filter(row=>dimInsteadOfHide||matches(row)).sort((a,b)=>{const av=column?.value(a)??"",bv=column?.value(b)??"";const comparison=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:"base"});return desc?-comparison:comparison})},[rows,filter,sort,desc,columns,dimInsteadOfHide]);
   const toggleSort=(key:string)=>{if(sort===key)setDesc(value=>!value);else{setSort(key);setDesc(false)}};
