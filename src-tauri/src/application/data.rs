@@ -97,13 +97,16 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
 
     let items = query_values(
         &connection,
-        "SELECT source_item_id,item_name,average_30d_pp,count_30d,last_seen,is_manual
-         FROM item_market_values WHERE server='Green' COLLATE NOCASE AND transaction_type=0
-         ORDER BY item_name COLLATE NOCASE LIMIT 10000",
+        "SELECT m.item_id,m.item_name,
+                COALESCE((SELECT v.average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),0),
+                COALESCE((SELECT v.count_30d FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),0),
+                COALESCE((SELECT v.last_seen FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),m.updated_at),
+                m.source='manual',m.source
+         FROM master_items m ORDER BY m.item_name COLLATE NOCASE LIMIT 10000",
         |row| {
             Ok(
                 json!({"id":row.get::<_,i64>(0)?,"name":row.get::<_,String>(1)?,"valuePp":row.get::<_,i64>(2)?,
-            "count30d":row.get::<_,i64>(3)?,"lastSeen":row.get::<_,String>(4)?,"manual":row.get::<_,bool>(5)?}),
+            "count30d":row.get::<_,i64>(3)?,"lastSeen":row.get::<_,String>(4)?,"manual":row.get::<_,bool>(5)?,"source":row.get::<_,String>(6)?}),
             )
         },
     )?;
@@ -356,6 +359,12 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         "item.save" => save_item(&mut connection, payload)?,
         "item.delete" => {
             connection.execute("DELETE FROM item_market_values WHERE server='Green' AND transaction_type=0 AND source_item_id=? AND is_manual=1",[integer(payload,"id")?]).map_err(err)?;
+            connection
+                .execute(
+                    "DELETE FROM master_items WHERE item_id=? AND source='manual'",
+                    [integer(payload, "id")?],
+                )
+                .map_err(err)?;
         }
         "aliases.save" => save_aliases(&mut connection, payload)?,
         "compound.save" => {
@@ -622,12 +631,25 @@ fn complete_split(connection: &mut rusqlite::Connection, payload: &Value) -> Res
 
 fn save_item(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
     let id = integer(payload, "id")?;
+    let name = required(payload, "name")?;
+    let now = Local::now().to_rfc3339();
     let original = payload.get("originalId").and_then(Value::as_i64);
+    connection.execute("DELETE FROM master_items WHERE (item_id=? OR item_name=? COLLATE NOCASE) AND item_id<>?",params![id,name,id]).map_err(err)?;
     if let Some(old) = original {
-        connection.execute("UPDATE item_market_values SET source_item_id=?,item_name=?,average_30d_pp=?,is_manual=1,fetched_at=? WHERE server='Green' AND transaction_type=0 AND source_item_id=?",params![id,required(payload,"name")?,integer(payload,"valuePp")?,Local::now().to_rfc3339(),old]).map_err(err)?;
-    } else {
-        connection.execute("INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,fetched_at,is_manual) VALUES('Green',?,0,?,'Manual entry',?,?,1)",params![id,required(payload,"name")?,integer(payload,"valuePp")?,Local::now().to_rfc3339()]).map_err(err)?;
+        connection.execute("UPDATE master_items SET item_id=?,item_name=?,source='manual',updated_at=? WHERE item_id=?",params![id,name,now,old]).map_err(err)?;
     }
+    connection.execute("INSERT INTO master_items(item_id,item_name,source,updated_at) VALUES(?,?,'manual',?) ON CONFLICT(item_id) DO UPDATE SET item_name=excluded.item_name,source='manual',updated_at=excluded.updated_at",params![id,name,now]).map_err(err)?;
+    if let Some(old) = original {
+        connection.execute("UPDATE item_market_values SET source_item_id=?,item_name=?,average_30d_pp=?,is_manual=1,fetched_at=? WHERE server='Green' AND transaction_type=0 AND source_item_id=?",params![id,name,integer(payload,"valuePp")?,now,old]).map_err(err)?;
+    } else {
+        connection.execute("INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,fetched_at,is_manual) VALUES('Green',?,0,?,'Manual entry',?,?,1) ON CONFLICT(server,source_item_id,transaction_type) DO UPDATE SET item_name=excluded.item_name,average_30d_pp=excluded.average_30d_pp,fetched_at=excluded.fetched_at,is_manual=1",params![id,name,integer(payload,"valuePp")?,now]).map_err(err)?;
+    }
+    connection
+        .execute(
+            "UPDATE wts_group_items SET item_id=? WHERE item_name=? COLLATE NOCASE",
+            params![id, name],
+        )
+        .map_err(err)?;
     Ok(())
 }
 
@@ -675,7 +697,14 @@ fn save_wts(connection: &mut rusqlite::Connection, payload: &Value) -> Result<()
         connection.last_insert_rowid()
     };
     for (order, item) in strings(payload, "items").into_iter().enumerate() {
-        let item_id=connection.query_row("SELECT source_item_id FROM item_market_values WHERE server='Green' AND transaction_type=0 AND item_name=? COLLATE NOCASE ORDER BY is_manual DESC LIMIT 1",[&item],|r|r.get::<_,i64>(0)).optional().map_err(err)?;
+        let item_id = connection
+            .query_row(
+                "SELECT item_id FROM master_items WHERE item_name=? COLLATE NOCASE LIMIT 1",
+                [&item],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(err)?;
         connection.execute("INSERT INTO wts_group_items(wts_group_id,item_name,item_id,sort_order) VALUES(?,?,?,?)",params![group_id,item,item_id,order as i64]).map_err(err)?;
     }
     Ok(())
@@ -715,6 +744,9 @@ fn import_export_text(
             .execute("DELETE FROM inventory_items WHERE character_id=?", [id])
             .map_err(err)?;
         for (order, item) in items.iter().enumerate() {
+            if let Some(item_id) = item.item_id.filter(|value| *value > 0) {
+                upsert_inventory_master_item(connection, item_id, &item.item_name, &now)?;
+            }
             connection.execute("INSERT INTO inventory_items(character_id,location,item_name,item_id,item_count,slots,sort_order) VALUES(?,?,?,?,?,?,?)",params![id,item.location,item.item_name,item.item_id,item.count,item.slots,order as i64]).map_err(err)?;
         }
         format!("Imported {} inventory rows for {character}", items.len())
@@ -749,6 +781,38 @@ fn import_export_text(
         .execute(
             "INSERT INTO import_uploads(file_name,status,detail) VALUES(?,'imported',?)",
             params![filename, detail],
+        )
+        .map_err(err)?;
+    Ok(())
+}
+
+fn upsert_inventory_master_item(
+    connection: &rusqlite::Connection,
+    item_id: i64,
+    item_name: &str,
+    now: &str,
+) -> Result<(), String> {
+    if item_name.trim().is_empty() {
+        return Ok(());
+    }
+    connection.execute("DELETE FROM master_items WHERE (item_id=? OR item_name=? COLLATE NOCASE) AND NOT (item_id=? AND item_name=? COLLATE NOCASE)",params![item_id,item_name,item_id,item_name]).map_err(err)?;
+    connection.execute("INSERT INTO master_items(item_id,item_name,source,updated_at) VALUES(?,?,'inventory',?) ON CONFLICT(item_id) DO UPDATE SET item_name=excluded.item_name,source='inventory',updated_at=excluded.updated_at",params![item_id,item_name,now]).map_err(err)?;
+    connection
+        .execute(
+            "UPDATE wts_group_items SET item_id=? WHERE item_name=? COLLATE NOCASE",
+            params![item_id, item_name],
+        )
+        .map_err(err)?;
+    connection
+        .execute(
+            "UPDATE recipe_components SET item_id=? WHERE item_name=? COLLATE NOCASE",
+            params![item_id, item_name],
+        )
+        .map_err(err)?;
+    connection
+        .execute(
+            "UPDATE recipe_templates SET output_item_id=? WHERE name=? COLLATE NOCASE",
+            params![item_id, item_name],
         )
         .map_err(err)?;
     Ok(())
@@ -801,7 +865,9 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_compound;
+    use super::{mutate, normalize_compound};
+    use crate::infrastructure::database::Database;
+    use rusqlite::params;
     use serde_json::json;
 
     #[test]
@@ -819,6 +885,37 @@ mod tests {
         assert_eq!(component["itemId"], 18359);
         assert_eq!(component["value"], 22915);
         assert_eq!(value["activeId"], "p1");
+    }
+
+    #[test]
+    fn inventory_ids_become_authoritative_for_master_items_and_wts() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO wts_groups(character_name,name,created_at,updated_at) VALUES('Khards','Tunnel',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",[]).unwrap();
+        let group_id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO wts_group_items(wts_group_id,item_name,item_id,sort_order) VALUES(?,?,999,0)",params![group_id,"A Blue Crown"]).unwrap();
+        drop(connection);
+
+        mutate(&database,"inventory.importFiles",&json!({"files":[{"name":"Khards-Inventory.txt","text":"General1\tA Blue Crown\t12345\t1\n"}]})).unwrap();
+
+        let connection = database.connect().unwrap();
+        let master_id: i64 = connection
+            .query_row(
+                "SELECT item_id FROM master_items WHERE item_name='A Blue Crown' COLLATE NOCASE",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let wts_id: i64 = connection
+            .query_row(
+                "SELECT item_id FROM wts_group_items WHERE wts_group_id=?",
+                [group_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((master_id, wts_id), (12345, 12345));
     }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {

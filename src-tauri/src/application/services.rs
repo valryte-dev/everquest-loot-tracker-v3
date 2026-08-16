@@ -48,6 +48,9 @@ pub fn refresh_market(database: &Database) -> Result<Value, String> {
             continue;
         }
         tx.execute("INSERT OR IGNORE INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,current_count,current_average_pp,count_30d,average_30d_pp,count_60d,average_60d_pp,count_90d,average_90d_pp,count_6m,average_6m_pp,count_all,average_all_pp,fetched_at,is_manual) VALUES('Green',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",params![num(row,"i"),num(row,"t"),name,text(row,"l"),num(row,"tc"),num(row,"ta"),num(row,"t30"),num(row,"a30"),num(row,"t60"),num(row,"a60"),num(row,"t90"),num(row,"a90"),num(row,"t6m"),num(row,"a6m"),num(row,"ty"),num(row,"ay"),now]).map_err(sql)?;
+        if num(row, "t") == 0 && num(row, "i") > 0 {
+            tx.execute("INSERT OR IGNORE INTO master_items(item_id,item_name,source,updated_at) VALUES(?,?,'market',?)",params![num(row,"i"),name,now]).map_err(sql)?;
+        }
         count += 1;
     }
     tx.commit().map_err(sql)?;
@@ -223,7 +226,7 @@ pub fn export_wts(database: &Database, group_id: i64) -> Result<Value, String> {
     }
     for (index, (id, name)) in groups.iter().enumerate() {
         let items = {
-            let mut st=c.prepare("SELECT item_name,item_id FROM wts_group_items WHERE wts_group_id=? ORDER BY sort_order").map_err(sql)?;
+            let mut st=c.prepare("SELECT w.item_name,COALESCE((SELECT m.item_id FROM master_items m WHERE m.item_name=w.item_name COLLATE NOCASE LIMIT 1),w.item_id) FROM wts_group_items w WHERE w.wts_group_id=? ORDER BY w.sort_order").map_err(sql)?;
             let values = st
                 .query_map([id], |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))

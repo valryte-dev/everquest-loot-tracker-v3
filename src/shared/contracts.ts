@@ -3,7 +3,7 @@ export interface Member { id:number; name:string; active:boolean }
 export interface Loot { id:number; happenedAt:string; itemName:string; mobName?:string; looterName?:string; valuePp?:number; splitListed:boolean; attendees:string[] }
 export interface Split { key:string; itemName:string; addedAt:string; mobName?:string; looterName?:string; payoutValuePp?:number; marketValuePp?:number; attendees:string[] }
 export interface History { id:number; itemName:string; mobName?:string; looterName?:string; valuePp:number; disposition:string; note:string; completedAt:string; attendees:string[] }
-export interface MasterItem { id:number; name:string; valuePp:number; count30d:number; lastSeen:string; manual:boolean }
+export interface MasterItem { id:number; name:string; valuePp:number; count30d:number; lastSeen:string; manual:boolean; source:string }
 export interface InventoryItem { character:string; importedAt:string; id:number; location:string; itemName:string; itemId?:number; count:number; slots?:number; valuePp?:number }
 export interface Spell { character:string; importedAt:string; slot?:number; spellName:string }
 export interface WtsGroup { id:number; character:string; name:string; createdAt:string; updatedAt:string; items:string[]; itemIds:(number|null)[] }
