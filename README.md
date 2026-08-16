@@ -8,7 +8,7 @@ A local-first, cross-platform EverQuest loot, split, inventory, recipe, and sale
 - **Tauri 2** provides the small native desktop shell and a typed command/event boundary.
 - **React + TypeScript** provides the shared modern interface and reusable grid, filter, dialog, theme, and form components.
 - **SQLite** remains local and compatible with existing Loot Tracker data through additive migrations.
-- **GitHub Actions** is the only supported release-build environment. Windows, macOS, and Linux packages are produced on native hosted runners.
+- **GitHub Actions** produces official Windows, macOS, and Linux packages on native hosted runners. A local Windows installer is also built after feature changes for immediate testing.
 
 See [architecture](docs/architecture.md), [feature requirements](docs/feature-parity.md), and [delivery plan](docs/delivery-plan.md).
 
@@ -29,7 +29,7 @@ npm test
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Do not manually produce release packages. Push a version tag after CI passes; the Release workflow creates a draft GitHub release containing the platform artifacts.
+For a local Windows test installer, run `npm run tauri build`. Do not build Linux locally; push a version tag after CI passes and the Release workflow will create the cross-platform draft release.
 
 ## Release process
 

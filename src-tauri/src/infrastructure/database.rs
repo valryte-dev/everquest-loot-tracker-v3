@@ -4,6 +4,7 @@ use thiserror::Error;
 
 const COMPATIBILITY_SCHEMA: &str = include_str!("../migrations/000_v2_compatibility.sql");
 const V3_MIGRATION: &str = include_str!("../migrations/001_v3_foundation.sql");
+const FEATURE_PARITY_MIGRATION: &str = include_str!("../migrations/002_feature_parity.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -35,12 +36,20 @@ impl Database {
         )
     }
 
+    pub fn connect(&self) -> Result<Connection, DatabaseError> {
+        let connection = Self::connection_at(&self.path)?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        connection.busy_timeout(std::time::Duration::from_secs(10))?;
+        Ok(connection)
+    }
+
     pub fn migrate(&self) -> Result<i64, DatabaseError> {
         let mut connection = Self::connection_at(&self.path)?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         let transaction = connection.transaction()?;
         transaction.execute_batch(COMPATIBILITY_SCHEMA)?;
         transaction.execute_batch(V3_MIGRATION)?;
+        transaction.execute_batch(FEATURE_PARITY_MIGRATION)?;
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -58,7 +67,7 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 1);
-        assert_eq!(database.migrate().unwrap(), 1);
+        assert_eq!(database.migrate().unwrap(), 2);
+        assert_eq!(database.migrate().unwrap(), 2);
     }
 }

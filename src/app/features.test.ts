@@ -18,6 +18,7 @@ describe("feature catalog", () => {
       "system",
       "logs",
       "help",
+      "changes",
     ]);
   });
 
