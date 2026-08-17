@@ -10,6 +10,8 @@ export interface WtsGroup { id:number; character:string; name:string; createdAt:
 export interface Alias { alias:string; canonical:string }
 export interface AppLog { id:number; happenedAt:string; level:string; area:string; message:string }
 export interface ImportRecord { id:number; happenedAt:string; fileName:string; status:string; reviewUrl?:string; detail?:string }
+export interface MerchantListingItem { id:number; itemName:string; itemId?:number; askingPricePp?:number; marketValuePp?:number; marketCount30d:number }
+export interface MerchantMessage { id:number; happenedAt:string; kind:"wts"|"wtb"|"tell"; speakerName:string; message:string; items:MerchantListingItem[] }
 export interface CompoundWorkspace { projects:any[]; templates:any[]; activeId?:string|null }
-export interface AppSnapshot { settings:Record<string,string>; members:Member[]; loot:Loot[]; splits:Split[]; history:History[]; items:MasterItem[]; inventory:InventoryItem[]; spells:Spell[]; wts:WtsGroup[]; aliases:Alias[]; mobs:string[]; logs:AppLog[]; imports:ImportRecord[]; compound:CompoundWorkspace }
+export interface AppSnapshot { settings:Record<string,string>; members:Member[]; loot:Loot[]; splits:Split[]; history:History[]; items:MasterItem[]; inventory:InventoryItem[]; spells:Spell[]; wts:WtsGroup[]; aliases:Alias[]; mobs:string[]; logs:AppLog[]; imports:ImportRecord[]; merchant:MerchantMessage[]; compound:CompoundWorkspace }
 export type LoadingState<T>={kind:"loading"}|{kind:"ready";value:T}|{kind:"error";message:string};

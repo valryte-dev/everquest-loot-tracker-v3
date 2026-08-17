@@ -1,6 +1,7 @@
 use crate::{
     application::{data, services},
     domain::log_events::{parse_log_event, GroupChangeKind, LogEvent},
+    domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
 };
 use rusqlite::params;
@@ -236,7 +237,99 @@ fn apply_event(
                 log_with(&c, "info", "loot", &format!("{looter} looted {item_name}"));
             }
         }
+        LogEvent::MerchantListing {
+            happened_at,
+            speaker,
+            action,
+            message,
+        } => {
+            if !merchant_mode_enabled(&c) {
+                return Ok(());
+            }
+            let source = path.display().to_string();
+            let inserted = c
+                .execute(
+                    "INSERT OR IGNORE INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(?,?,?,?,?,?,?)",
+                    params![happened_at.to_string(), action.as_str(), speaker, message, raw, source, source_offset],
+                )
+                .map_err(|error| error.to_string())?;
+            if inserted > 0 {
+                let message_id = c.last_insert_rowid();
+                let catalog = merchant_catalog(&c)?;
+                for (order, item) in parse_listing_items(message, &catalog).iter().enumerate() {
+                    c.execute(
+                        "INSERT INTO merchant_message_items(merchant_message_id,item_name,item_id,asking_price_pp,sort_order) VALUES(?,?,?,?,?)",
+                        params![message_id, item.item_name, item.item_id, item.asking_price_pp, order as i64],
+                    )
+                    .map_err(|error| error.to_string())?;
+                }
+                finish_merchant_capture(&c)?;
+            }
+        }
+        LogEvent::DirectTell {
+            happened_at,
+            speaker,
+            message,
+        } => {
+            if !merchant_mode_enabled(&c) {
+                return Ok(());
+            }
+            let source = path.display().to_string();
+            let inserted = c
+                .execute(
+                    "INSERT OR IGNORE INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(?,'tell',?,?,?,?,?)",
+                    params![happened_at.to_string(), speaker, message, raw, source, source_offset],
+                )
+                .map_err(|error| error.to_string())?;
+            if inserted > 0 {
+                finish_merchant_capture(&c)?;
+            }
+        }
     }
+    Ok(())
+}
+
+fn merchant_mode_enabled(connection: &rusqlite::Connection) -> bool {
+    connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='merchant_mode_enabled'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .is_ok_and(|value| value.eq_ignore_ascii_case("true") || value == "1")
+}
+
+fn merchant_catalog(connection: &rusqlite::Connection) -> Result<Vec<CatalogItem>, String> {
+    let mut statement = connection
+        .prepare("SELECT item_id,item_name FROM master_items ORDER BY LENGTH(item_name) DESC")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(CatalogItem {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    let catalog = rows
+        .map(|row| row.map_err(|error| error.to_string()))
+        .collect();
+    catalog
+}
+
+fn finish_merchant_capture(connection: &rusqlite::Connection) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('merchant_last_capture_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM merchant_messages WHERE id NOT IN (SELECT id FROM merchant_messages ORDER BY id DESC LIMIT 2000)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -392,5 +485,62 @@ mod tests {
             )
             .unwrap();
         assert_eq!((count, distinct), (2, 2));
+    }
+
+    #[test]
+    fn captures_merchant_activity_only_while_enabled() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO master_items(item_id,item_name,source) VALUES(1,'This Item','test'),(2,'That Item','test')",[]).unwrap();
+        drop(connection);
+
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Mon Aug 03 07:09:18 2026] Trader auctions, 'WTS This Item 1300, That Item'\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        let connection = database.connect().unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM merchant_messages", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        connection
+            .execute(
+                "UPDATE app_settings SET value='true' WHERE key='merchant_mode_enabled'",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        fs::write(&log, b"[Mon Aug 03 07:09:19 2026] Buyer auctions, 'WTB This Item 1.5k / That Item'\r\n[Mon Aug 03 07:09:20 2026] Buyer tells you, 'Still available?'\r\n").unwrap();
+        offsets.insert(log.clone(), 0);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        let connection = database.connect().unwrap();
+        let messages = connection
+            .query_row("SELECT COUNT(*) FROM merchant_messages", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        let items = connection
+            .query_row("SELECT COUNT(*) FROM merchant_message_items", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        let price = connection
+            .query_row(
+                "SELECT asking_price_pp FROM merchant_message_items ORDER BY id LIMIT 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!((messages, items, price), (2, 2, 1500));
     }
 }
