@@ -1,7 +1,7 @@
 use chrono::Local;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Map, Value};
-use std::{fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 use crate::{domain::inventory::parse_inventory, infrastructure::database::Database};
 
@@ -165,6 +165,51 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             "fileName":row.get::<_,String>(2)?,"status":row.get::<_,String>(3)?,
             "reviewUrl":row.get::<_,Option<String>>(4)?,"detail":row.get::<_,Option<String>>(5)?})),
     )?;
+    let merchant_item_values = query_values(
+        &connection,
+        "SELECT i.merchant_message_id,i.id,i.item_name,i.item_id,i.asking_price_pp,
+                COALESCE(
+                    (SELECT v.average_30d_pp FROM item_market_values v
+                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
+                       AND v.source_item_id=i.item_id
+                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
+                    (SELECT v.average_30d_pp FROM item_market_values v
+                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
+                       AND v.item_name=i.item_name COLLATE NOCASE
+                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1)),
+                COALESCE(
+                    (SELECT v.count_30d FROM item_market_values v
+                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
+                       AND v.source_item_id=i.item_id
+                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
+                    (SELECT v.count_30d FROM item_market_values v
+                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
+                       AND v.item_name=i.item_name COLLATE NOCASE
+                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),0)
+         FROM merchant_message_items i
+         WHERE i.merchant_message_id IN (SELECT id FROM merchant_messages ORDER BY id DESC LIMIT 2000)
+         ORDER BY i.merchant_message_id DESC,i.sort_order",
+        |row| Ok(json!({"messageId":row.get::<_,i64>(0)?,"id":row.get::<_,i64>(1)?,
+            "itemName":row.get::<_,String>(2)?,"itemId":row.get::<_,Option<i64>>(3)?,
+            "askingPricePp":row.get::<_,Option<i64>>(4)?,"marketValuePp":row.get::<_,Option<i64>>(5)?,
+            "marketCount30d":row.get::<_,i64>(6)?})),
+    )?;
+    let mut merchant_items: HashMap<i64, Vec<Value>> = HashMap::new();
+    for item in merchant_item_values {
+        if let Some(message_id) = item.get("messageId").and_then(Value::as_i64) {
+            merchant_items.entry(message_id).or_default().push(item);
+        }
+    }
+    let merchant = query_values(
+        &connection,
+        "SELECT id,happened_at,kind,speaker_name,message FROM merchant_messages ORDER BY happened_at DESC,id DESC LIMIT 2000",
+        |row| {
+            let id = row.get::<_, i64>(0)?;
+            Ok(json!({"id":id,"happenedAt":row.get::<_,String>(1)?,"kind":row.get::<_,String>(2)?,
+                "speakerName":row.get::<_,String>(3)?,"message":row.get::<_,String>(4)?,
+                "items":merchant_items.get(&id).cloned().unwrap_or_default()}))
+        },
+    )?;
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -176,7 +221,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
-        "logs":logs,"imports":imports,"compound":compound}),
+        "logs":logs,"imports":imports,"merchant":merchant,"compound":compound}),
     )
 }
 
@@ -380,6 +425,51 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
                     [integer(payload, "id")?],
                 )
                 .map_err(err)?;
+        }
+        "merchant.clear" => {
+            connection
+                .execute("DELETE FROM merchant_messages", [])
+                .map_err(err)?;
+            connection
+                .execute(
+                    "DELETE FROM app_settings WHERE key='merchant_last_capture_at'",
+                    [],
+                )
+                .map_err(err)?;
+        }
+        "merchant.delete" => {
+            let kind = optional(payload, "kind");
+            let speaker = optional(payload, "speakerName");
+            if kind
+                .as_deref()
+                .is_some_and(|value| !matches!(value, "wts" | "wtb" | "tell"))
+            {
+                return Err("kind must be wts, wtb, or tell".into());
+            }
+            match (kind, speaker) {
+                (Some(kind), Some(speaker)) => {
+                    connection
+                        .execute(
+                            "DELETE FROM merchant_messages WHERE kind=? AND speaker_name=? COLLATE NOCASE",
+                            params![kind, speaker],
+                        )
+                        .map_err(err)?;
+                }
+                (Some(kind), None) => {
+                    connection
+                        .execute("DELETE FROM merchant_messages WHERE kind=?", [kind])
+                        .map_err(err)?;
+                }
+                (None, Some(speaker)) => {
+                    connection
+                        .execute(
+                            "DELETE FROM merchant_messages WHERE speaker_name=? COLLATE NOCASE",
+                            [speaker],
+                        )
+                        .map_err(err)?;
+                }
+                (None, None) => return Err("kind or speakerName is required".into()),
+            }
         }
         "inventory.import" => {
             import_export(&mut connection, Path::new(&required(payload, "path")?))?
@@ -870,7 +960,7 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{mutate, normalize_compound};
+    use super::{mutate, normalize_compound, snapshot};
     use crate::infrastructure::database::Database;
     use rusqlite::params;
     use serde_json::json;
@@ -921,6 +1011,79 @@ mod tests {
             )
             .unwrap();
         assert_eq!((master_id, wts_id), (12345, 12345));
+    }
+
+    #[test]
+    fn merchant_snapshot_compares_asking_and_pigparse_prices() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO master_items(item_id,item_name,source) VALUES(42,'This Item','market')",[]).unwrap();
+        connection.execute("INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,fetched_at) VALUES('Green',42,0,'This Item','Today',1750,CURRENT_TIMESTAMP)",[]).unwrap();
+        connection.execute("INSERT INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(CURRENT_TIMESTAMP,'wts','Trader','WTS This Item 1300','raw','eqlog_Test_P1999Green.txt',1)",[]).unwrap();
+        let message_id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO merchant_message_items(merchant_message_id,item_name,item_id,asking_price_pp,sort_order) VALUES(?,'This Item',42,1300,0)",[message_id]).unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        assert_eq!(value["merchant"][0]["items"][0]["askingPricePp"], 1300);
+        assert_eq!(value["merchant"][0]["items"][0]["marketValuePp"], 1750);
+        assert_eq!(value["merchant"][0]["items"][0]["marketCount30d"], 0);
+    }
+
+    #[test]
+    fn merchant_deletes_can_be_scoped_by_panel_and_person() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        for (offset, kind, speaker) in [
+            (1, "wts", "Trader"),
+            (2, "wts", "Other"),
+            (3, "wtb", "Trader"),
+            (4, "tell", "Trader"),
+        ] {
+            connection.execute("INSERT INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(CURRENT_TIMESTAMP,?,?,?,?,'eqlog_Test_P1999Green.txt',?)",params![kind,speaker,format!("{kind} message"),format!("raw {offset}"),offset]).unwrap();
+        }
+        drop(connection);
+
+        mutate(
+            &database,
+            "merchant.delete",
+            &json!({"kind":"wts","speakerName":"Trader"}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let remaining_wts: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM merchant_messages WHERE kind='wts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let trader_other_panels: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM merchant_messages WHERE speaker_name='Trader'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((remaining_wts, trader_other_panels), (1, 2));
+        drop(connection);
+
+        mutate(&database, "merchant.delete", &json!({"kind":"wts"})).unwrap();
+        let connection = database.connect().unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM merchant_messages WHERE kind='wts'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
     }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {
