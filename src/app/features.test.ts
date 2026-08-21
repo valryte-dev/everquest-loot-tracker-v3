@@ -10,12 +10,15 @@ describe("feature catalog", () => {
   it("contains every required product workspace", () => {
     expect(FEATURES.map((feature) => feature.key)).toEqual([
       "live",
-      "merchant",
+      "tracked",
       "splits",
       "compounds",
-      "characters",
-      "imports",
+      "merchant",
       "wts",
+      "characters",
+      "spells",
+      "gems",
+      "imports",
       "items",
       "system",
       "logs",

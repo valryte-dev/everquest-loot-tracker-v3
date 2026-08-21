@@ -37,6 +37,7 @@ impl AppState {
         let legacy_database = database_path.exists();
         let database = Database::open(&database_path).map_err(|error| error.to_string())?;
         let schema_version = database.migrate().map_err(|error| error.to_string())?;
+        clear_current_group(&database)?;
         Ok(Self {
             database,
             database_path,
@@ -49,6 +50,15 @@ impl AppState {
         runtime::start(self.database_path.clone());
         services::start_web(self.database_path.clone());
     }
+}
+
+fn clear_current_group(database: &Database) -> Result<(), String> {
+    database
+        .connect()
+        .map_err(|error| error.to_string())?
+        .execute("DELETE FROM current_group", [])
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,4 +124,42 @@ pub fn parse_log_preview(line: String, active_character: String) -> Option<LogEv
 #[tauri::command]
 pub fn parse_inventory_preview(text: String) -> Vec<InventoryItem> {
     parse_inventory(&text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clear_current_group;
+    use crate::infrastructure::database::Database;
+
+    #[test]
+    fn startup_clear_preserves_remembered_characters() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO known_members(name) VALUES('Youngman'),('Posed')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO current_group(member_id) SELECT id FROM known_members",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        clear_current_group(&database).unwrap();
+
+        let connection = database.connect().unwrap();
+        let active: i64 = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| row.get(0))
+            .unwrap();
+        let remembered: i64 = connection
+            .query_row("SELECT COUNT(*) FROM known_members", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!((active, remembered), (0, 2));
+    }
 }

@@ -31,6 +31,9 @@ pub enum LogEvent {
         character: String,
         change: GroupChangeKind,
     },
+    GroupCleared {
+        happened_at: NaiveDateTime,
+    },
     MerchantListing {
         happened_at: NaiveDateTime,
         speaker: String,
@@ -97,6 +100,13 @@ fn group_tell() -> &'static Regex {
     VALUE.get_or_init(|| {
         Regex::new(r"^(?<name>[A-Za-z][A-Za-z'_-]*) tells the group, .+$")
             .expect("valid group tell regex")
+    })
+}
+
+fn removed_from_group() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have been removed from the group\.$").expect("valid group removal regex")
     })
 }
 
@@ -181,6 +191,9 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             killer: Some(value["killer"].to_owned()),
         });
     }
+    if removed_from_group().is_match(body) {
+        return Some(LogEvent::GroupCleared { happened_at });
+    }
     for (pattern, change) in [
         (joined(), GroupChangeKind::Joined),
         (left(), GroupChangeKind::Left),
@@ -244,6 +257,15 @@ mod tests {
         assert!(
             matches!(event, Some(LogEvent::GroupChange { character, change: GroupChangeKind::Spoke, .. }) if character == "Posed")
         );
+    }
+
+    #[test]
+    fn parses_player_removal_as_a_full_group_clear() {
+        let event = parse_log_event(
+            "[Mon Aug 03 07:35:16 2026] You have been removed from the group.",
+            "Youngman",
+        );
+        assert!(matches!(event, Some(LogEvent::GroupCleared { .. })));
     }
 
     #[test]

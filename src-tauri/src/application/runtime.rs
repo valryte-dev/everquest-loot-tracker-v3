@@ -108,7 +108,6 @@ fn poll(
                     [&character],
                 )
                 .map_err(|e| e.to_string())?;
-            connection.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[&character]).map_err(|e|e.to_string())?;
             connection.execute("INSERT INTO app_settings(key,value) VALUES('active_character',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[&character]).map_err(|e|e.to_string())?;
             log_with(
                 &connection,
@@ -221,8 +220,26 @@ fn apply_event(
                 }
                 _ => {
                     c.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[character]).map_err(|e|e.to_string())?;
+                    if let Some(local_character) = character_from_log(path) {
+                        c.execute(
+                            "INSERT INTO known_members(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                            [&local_character],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        c.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[&local_character]).map_err(|e|e.to_string())?;
+                    }
                 }
             }
+        }
+        LogEvent::GroupCleared { .. } => {
+            c.execute("DELETE FROM current_group", [])
+                .map_err(|e| e.to_string())?;
+            log_with(
+                &c,
+                "info",
+                "group",
+                "Local player was removed; current group cleared",
+            );
         }
         LogEvent::Loot {
             happened_at,
@@ -485,6 +502,46 @@ mod tests {
             )
             .unwrap();
         assert_eq!((count, distinct), (2, 2));
+    }
+
+    #[test]
+    fn clears_the_entire_group_when_the_local_player_is_removed() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO known_members(name) VALUES('Youngman'),('Posed'),('Nukeman')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO current_group(member_id) SELECT id FROM known_members",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Mon Aug 03 07:35:16 2026] You have been removed from the group.\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+
+        let connection = database.connect().unwrap();
+        let active_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| row.get(0))
+            .unwrap();
+        let remembered_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM known_members", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(active_count, 0);
+        assert_eq!(remembered_count, 3);
     }
 
     #[test]
