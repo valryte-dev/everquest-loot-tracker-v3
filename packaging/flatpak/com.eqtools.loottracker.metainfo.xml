@@ -27,6 +27,7 @@
   <url type="bugtracker">https://github.com/valryte-dev/everquest-loot-tracker-v3/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="3.4.0" date="2026-08-27"/>
     <release version="3.3.0" date="2026-08-27"/>
   </releases>
 </component>

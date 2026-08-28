@@ -1,6 +1,7 @@
 node_modules/
 dist/
 src-tauri/target/
+src-tauri/target-*/
 src-tauri/gen/
 .idea/
 .vscode/
@@ -14,6 +15,7 @@ Thumbs.db
 .env.*
 !.env.example
 EverQuest-Loot-Tracker-*.flatpak
+EverQuest-Loot-Tracker-*.exe
 flatpak-build/
 flatpak-repo/
 packaging/flatpak/everquest-loot-tracker.deb
