@@ -14,7 +14,7 @@ cp "$deb_path" "$package_dir/everquest-loot-tracker.deb"
 
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-flatpak-builder --user --force-clean --install-deps-from=flathub --default-branch=stable --repo="$project_root/flatpak-repo" "$project_root/flatpak-build" "$package_dir/com.eqtools.loottracker.yml"
+flatpak-builder --user --force-clean --disable-appstream-compose --install-deps-from=flathub --default-branch=stable --repo="$project_root/flatpak-repo" "$project_root/flatpak-build" "$package_dir/com.eqtools.loottracker.yml"
 
 version="$(node -p "require('$project_root/package.json').version")"
 bundle="$project_root/EverQuest-Loot-Tracker-${version}-x86_64.flatpak"
