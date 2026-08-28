@@ -11,13 +11,18 @@ use crate::domain::{
     inventory::{parse_inventory, InventoryItem},
     log_events::{parse_log_event, LogEvent},
 };
-use crate::infrastructure::{database::Database, paths};
+use crate::infrastructure::{
+    database::Database,
+    paths,
+    spell_catalog::{SpellCatalog, SpellCatalogStatus, SpellInfo},
+};
 
 pub struct AppState {
     database: Database,
     database_path: PathBuf,
     schema_version: i64,
     legacy_database: bool,
+    spell_catalog: SpellCatalog,
 }
 
 #[derive(Debug, Serialize)]
@@ -37,16 +42,20 @@ impl AppState {
         let legacy_database = database_path.exists();
         let database = Database::open(&database_path).map_err(|error| error.to_string())?;
         let schema_version = database.migrate().map_err(|error| error.to_string())?;
+        let spell_catalog =
+            SpellCatalog::open(paths::spell_database_path().map_err(|error| error.to_string())?)?;
         clear_current_group(&database)?;
         Ok(Self {
             database,
             database_path,
             schema_version,
             legacy_database,
+            spell_catalog,
         })
     }
 
     pub fn start_runtime(&self) {
+        self.spell_catalog.start_if_needed();
         runtime::start(self.database_path.clone());
         services::start_web(self.database_path.clone());
     }
@@ -124,6 +133,26 @@ pub fn parse_log_preview(line: String, active_character: String) -> Option<LogEv
 #[tauri::command]
 pub fn parse_inventory_preview(text: String) -> Vec<InventoryItem> {
     parse_inventory(&text)
+}
+
+#[tauri::command]
+pub fn spell_info(
+    state: tauri::State<'_, AppState>,
+    spell_name: String,
+) -> Result<SpellInfo, String> {
+    state.spell_catalog.get(&spell_name)
+}
+
+#[tauri::command]
+pub fn spell_catalog_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<SpellCatalogStatus, String> {
+    state.spell_catalog.status()
+}
+
+#[tauri::command]
+pub fn reload_spell_catalog(state: tauri::State<'_, AppState>) -> SpellCatalogStatus {
+    state.spell_catalog.start_refresh()
 }
 
 #[cfg(test)]

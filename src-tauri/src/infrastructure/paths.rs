@@ -30,3 +30,7 @@ fn dirs_home() -> Option<PathBuf> {
 pub fn database_path() -> io::Result<PathBuf> {
     Ok(data_directory()?.join("loot-tracker.db"))
 }
+
+pub fn spell_database_path() -> io::Result<PathBuf> {
+    Ok(data_directory()?.join("spell-info.db"))
+}

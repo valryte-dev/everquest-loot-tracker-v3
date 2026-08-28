@@ -4,7 +4,7 @@ use crate::{
     domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
 };
-use rusqlite::{params, OptionalExtension};
+use rusqlite::params;
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -334,24 +334,7 @@ fn apply_event(
                 }
             }
             let source = path.display().to_string();
-            let mut resolved_items = item_names.clone();
-            if resolved_items.is_empty() {
-                let candidate = unquote_chat_message(message);
-                let matched_item = c
-                    .query_row(
-                        "SELECT item_name FROM master_items WHERE item_name=? COLLATE NOCASE
-                         UNION ALL
-                         SELECT item_name FROM item_market_values WHERE item_name=? COLLATE NOCASE
-                         LIMIT 1",
-                        params![candidate, candidate],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .optional()
-                    .map_err(|error| error.to_string())?;
-                if let Some(item_name) = matched_item {
-                    resolved_items.push(item_name);
-                }
-            }
+            let resolved_items = resolve_linked_items(&c, message, item_names)?;
             let mut inserted = 0;
             for (link_index, item_name) in resolved_items.iter().enumerate() {
                 inserted += c
@@ -389,7 +372,7 @@ fn apply_event(
     Ok(())
 }
 
-fn unquote_chat_message(message: &str) -> &str {
+pub(crate) fn unquote_chat_message(message: &str) -> &str {
     let message = message.trim();
     let bytes = message.as_bytes();
     if bytes.len() >= 2 && (bytes[0] == 39 || bytes[0] == 34) && bytes[bytes.len() - 1] == bytes[0]
@@ -398,6 +381,108 @@ fn unquote_chat_message(message: &str) -> &str {
     } else {
         message
     }
+}
+
+pub(crate) fn resolve_linked_items(
+    connection: &rusqlite::Connection,
+    message: &str,
+    encoded_items: &[String],
+) -> Result<Vec<String>, String> {
+    if !encoded_items.is_empty() {
+        return Ok(encoded_items.to_vec());
+    }
+    let message = unquote_chat_message(message);
+    let mut statement = connection
+        .prepare(
+            "SELECT item_name FROM master_items
+             WHERE item_name<>'' AND instr(?,item_name)>0
+             UNION
+             SELECT item_name FROM item_market_values
+             WHERE item_name<>'' AND instr(?,item_name)>0",
+        )
+        .map_err(|error| error.to_string())?;
+    let names = statement
+        .query_map(params![message, message], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .map(|row| row.map_err(|error| error.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut raw_matches = Vec::new();
+    for name in names {
+        for (start, _) in message.match_indices(&name) {
+            let end = start + name.len();
+            raw_matches.push((start, end, name.clone()));
+        }
+    }
+    let mut matches = raw_matches
+        .iter()
+        .filter(|candidate| {
+            let before = message[..candidate.0].chars().next_back();
+            let after = message[candidate.1..].chars().next();
+            let joins_previous = raw_matches.iter().any(|other| other.1 == candidate.0);
+            let joins_next = raw_matches.iter().any(|other| other.0 == candidate.1);
+            let follows_known_item = raw_matches.iter().any(|other| {
+                other.1 <= candidate.0
+                    && message[other.1..candidate.0]
+                        .chars()
+                        .all(|value| value.is_whitespace() || ",;/|:-".contains(value))
+            });
+            let suspicious_title_prefix = message[..candidate.0]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
+                && message[..candidate.0]
+                    .split_whitespace()
+                    .next_back()
+                    .map(|word| word.trim_matches(|value: char| !value.is_ascii_alphanumeric()))
+                    .is_some_and(|word| {
+                        let lower = word.to_ascii_lowercase();
+                        word.chars()
+                            .next()
+                            .is_some_and(|value| value.is_ascii_uppercase())
+                            && word.chars().skip(1).any(|value| value.is_ascii_lowercase())
+                            && !matches!(
+                                lower.as_str(),
+                                "anyone"
+                                    | "buying"
+                                    | "check"
+                                    | "found"
+                                    | "getting"
+                                    | "got"
+                                    | "have"
+                                    | "here"
+                                    | "link"
+                                    | "look"
+                                    | "need"
+                                    | "price"
+                                    | "selling"
+                                    | "someone"
+                                    | "that"
+                                    | "this"
+                                    | "want"
+                            )
+                    });
+            (before.is_none_or(|value| !value.is_ascii_alphanumeric()) || joins_previous)
+                && (after.is_none_or(|value| !value.is_ascii_alphanumeric()) || joins_next)
+                && (!suspicious_title_prefix || follows_known_item)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| (right.1 - right.0).cmp(&(left.1 - left.0)))
+    });
+    let mut selected: Vec<(usize, usize, String)> = Vec::new();
+    for candidate in matches {
+        if selected
+            .iter()
+            .all(|existing| candidate.1 <= existing.0 || candidate.0 >= existing.1)
+        {
+            selected.push(candidate);
+        }
+    }
+    selected.sort_by_key(|value| value.0);
+    Ok(selected.into_iter().map(|value| value.2).collect())
 }
 
 fn merchant_mode_enabled(connection: &rusqlite::Connection) -> bool {
@@ -571,9 +656,34 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::process_log;
+    use super::{process_log, resolve_linked_items};
     use crate::infrastructure::database::Database;
     use std::{collections::HashMap, fs};
+
+    #[test]
+    fn unknown_longer_item_phrase_does_not_collapse_to_known_suffix() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute("DELETE FROM master_items WHERE item_id=4294", [])
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source) VALUES(17789,'Shackles','test')",
+                [],
+            )
+            .unwrap();
+
+        assert!(resolve_linked_items(
+            &connection,
+            "'Dusty Rusted Shackles where did that other lizard go'",
+            &[],
+        )
+        .unwrap()
+        .is_empty());
+    }
 
     #[test]
     fn processes_multiple_new_loot_lines_with_distinct_offsets() {
@@ -710,7 +820,7 @@ mod tests {
             .unwrap();
         drop(connection);
         let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
-        let group_link = format!("\u{12}{}      A Blue Crown \u{12}", "0".repeat(45));
+        let group_link = format!("\u{12}{}A Blue Crown\u{12}", "0".repeat(45));
         let guild_link = format!("\u{12}{}      White Dragon Scale \u{12}", "A".repeat(45));
         fs::write(
             &log,

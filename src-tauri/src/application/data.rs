@@ -1,9 +1,20 @@
 use chrono::Local;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Map, Value};
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{BufRead, BufReader},
+    path::Path,
+};
 
-use crate::{domain::inventory::parse_inventory, infrastructure::database::Database};
+use crate::{
+    domain::{
+        inventory::parse_inventory,
+        log_events::{parse_log_event, LogEvent},
+    },
+    infrastructure::database::Database,
+};
 
 fn names(value: Option<String>) -> Vec<String> {
     value
@@ -439,6 +450,7 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
                 .execute("DELETE FROM linked_loot_items", [])
                 .map_err(err)?;
         }
+        "linked.rescan" => return rescan_linked_loot(&connection),
         "split.add" => add_split(&mut connection, payload)?,
         "split.save" => save_split(&mut connection, payload)?,
         "split.delete" => delete_split(&mut connection, required(payload, "key")?)?,
@@ -567,6 +579,91 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         )
         .map_err(err)?;
     Ok(json!({"ok":true}))
+}
+
+fn rescan_linked_loot(connection: &rusqlite::Connection) -> Result<Value, String> {
+    let path = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='active_log_path'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "No active log file is available to rescan".to_owned())?;
+    let character = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='active_character'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "Unknown".to_owned());
+    let file =
+        fs::File::open(&path).map_err(|error| format!("Could not open active log: {error}"))?;
+    let mut reader = BufReader::new(file);
+    let mut line_bytes = Vec::new();
+    let mut source_offset = 0_i64;
+    let mut found = 0_i64;
+    let mut inserted = 0_i64;
+
+    loop {
+        line_bytes.clear();
+        let read = reader
+            .read_until(b'\n', &mut line_bytes)
+            .map_err(|error| format!("Could not read active log: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        if !line_bytes.ends_with(b"\n") {
+            break;
+        }
+        let text = String::from_utf8_lossy(&line_bytes);
+        let line = text.trim_end_matches(['\r', '\n']);
+        if let Some(LogEvent::LinkedItems {
+            happened_at,
+            speaker,
+            channel,
+            message,
+            mut item_names,
+        }) = parse_log_event(line, &character)
+        {
+            item_names = super::runtime::resolve_linked_items(connection, &message, &item_names)?;
+            found += item_names.len() as i64;
+            for (link_index, item_name) in item_names.iter().enumerate() {
+                inserted += connection
+                    .execute(
+                        "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+                         VALUES(?,?,?,?,?,?,?,?)
+                         ON CONFLICT(source_file,source_offset,link_index) DO UPDATE SET
+                           happened_at=excluded.happened_at,
+                           channel=excluded.channel,
+                           speaker_name=excluded.speaker_name,
+                           item_name=excluded.item_name,
+                           raw_line=excluded.raw_line
+                         WHERE linked_loot_items.item_name<>excluded.item_name COLLATE NOCASE",
+                        params![
+                            happened_at.to_string(),
+                            channel.as_str(),
+                            speaker,
+                            item_name,
+                            line,
+                            path,
+                            source_offset,
+                            link_index as i64
+                        ],
+                    )
+                    .map_err(err)? as i64;
+            }
+        }
+        source_offset += read as i64;
+    }
+    connection
+        .execute(
+            "INSERT INTO application_logs(level,area,message) VALUES('info','linked-loot',?)",
+            [format!(
+                "Rescanned active log: found {found} linked items, recovered {inserted} missing records"
+            )],
+        )
+        .map_err(err)?;
+    Ok(json!({"ok":true,"found":found,"inserted":inserted}))
 }
 
 fn save_loot(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
@@ -1057,6 +1154,7 @@ mod tests {
     use crate::infrastructure::database::Database;
     use rusqlite::params;
     use serde_json::json;
+    use std::io::Write;
 
     #[test]
     fn normalizes_v2_compound_components_without_losing_metadata() {
@@ -1215,6 +1313,113 @@ mod tests {
         assert_eq!(linked["itemId"], 42);
         assert_eq!(linked["valuePp"], 1750);
         assert_eq!(linked["count30d"], 9);
+    }
+
+    #[test]
+    fn linked_loot_rescan_recovers_real_clickable_links_without_replaying_group_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let first = format!("\u{12}{}A Blue Crown\u{12}", "0".repeat(45));
+        let second = format!("\u{12}{}White Dragon Scale\u{12}", "F".repeat(45));
+        std::fs::write(
+            &log,
+            format!(
+                "[Thu Aug 27 12:41:43 2026] Dubbyl tells the group, 'Look: {first} / {second}'\r\n"
+            ),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source) VALUES
+                 (1,'A Blue Crown','test'),
+                 (2,'White Dragon Scale','test'),
+                 (3,'Crown','test'),
+                 (4,'Dark Ember','test'),
+                 (5,'Gauntlets of the Black','test')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('active_log_path',?),('active_character','Youngman')",
+                [log.display().to_string()],
+            )
+            .unwrap();
+        drop(connection);
+
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .unwrap()
+            .write_all(
+                b"[Thu Aug 27 12:41:44 2026] Dubbyl tells the guild, 'Anyone need A Blue Crown or White Dragon Scale tonight?'\r\n",
+            )
+            .unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .unwrap()
+            .write_all(
+                b"[Thu Aug 27 12:41:45 2026] You tell your party, 'Dark Ember, Gauntlets of the BlackDark Ember'\r\n",
+            )
+            .unwrap();
+
+        let first_result = mutate(&database, "linked.rescan", &json!({})).unwrap();
+        let second_result = mutate(&database, "linked.rescan", &json!({})).unwrap();
+        assert_eq!(first_result["found"], 7);
+        assert_eq!(first_result["inserted"], 7);
+        assert_eq!(second_result["inserted"], 0);
+
+        let connection = database.connect().unwrap();
+        let linked = connection
+            .query_row("SELECT COUNT(*) FROM linked_loot_items", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        let group = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        assert_eq!((linked, group), (7, 0));
+    }
+
+    #[test]
+    fn linked_loot_rescan_corrects_a_previous_short_suffix_match() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let raw = "[Fri Aug 28 12:47:23 2026] Balbazak tells the group, 'Dusty Rusted Shackles where did that other lizard go'";
+        std::fs::write(&log, format!("{raw}\r\n")).unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('active_log_path',?),('active_character','Youngman')",
+                [log.display().to_string()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+                 VALUES('2026-08-28 12:47:23','group','Balbazak','Shackles',?,?,0,0)",
+                params![raw, log.display().to_string()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let result = mutate(&database, "linked.rescan", &json!({})).unwrap();
+        assert_eq!(result["inserted"], 1);
+        let connection = database.connect().unwrap();
+        let corrected = connection
+            .query_row("SELECT item_name FROM linked_loot_items", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap();
+        assert_eq!(corrected, "Dusty Rusted Shackles");
     }
 
     #[test]

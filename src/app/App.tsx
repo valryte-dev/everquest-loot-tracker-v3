@@ -9,6 +9,9 @@ import {BUILTIN_COMPOUND_RECIPES} from "./compounds/recipes";
 import {VeliousGemsPage} from "./gems/GemPage";
 import {isVeliousArmorGem} from "./gems/catalog";
 import {openUrl} from "@tauri-apps/plugin-opener";
+import {SpellHover} from "./SpellHover";
+import {SpellCatalogPanel} from "./SpellCatalogPanel";
+import {Release35} from "./Release35";
 
 const pageFromHash=():FeatureKey=>{const key=location.hash.replace(/^#\/?/,"") as FeatureKey;return FEATURES.some(f=>f.key===key)?key:"live"};
 const openExternal=(url?:string)=>url?openUrl(url):Promise.resolve();
@@ -29,7 +32,7 @@ export function App(){
  </div>
 }
 
-function Page({page,data,run}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"system":return <SystemV5 data={data} run={run}/>;case"logs":return <LogsV3 data={data}/>;case"changes":return <ChangeLog/>;default:return <Help/>}}
+function Page({page,data,run}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"system":return <><SpellCatalogPanel/><SystemV5 data={data} run={run}/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
 const Loading=()=> <section className="loading"><div className="spinner"/><h2>Opening your workspace</h2><p>Loading the local database—no sample data is shown.</p></section>;
 const Card=({title,sub,actions,children,className=""}:{title:string;sub?:string;actions?:ReactNode;children:ReactNode;className?:string})=><section className={`card ${className}`}><header><div><h2>{title}</h2>{sub&&<p>{sub}</p>}</div>{actions&&<div className="card-actions">{actions}</div>}</header>{children}</section>;
 const Stats=({items}:{items:[string,string,string?][]})=><section className="stats">{items.map(([l,v,s])=><article key={l}><span>{l}</span><strong>{v}</strong>{s&&<small>{s}</small>}</article>)}</section>;
@@ -109,7 +112,7 @@ function LiveV4({data,run}:{data:AppSnapshot;run:any}){
  const trackedSources=new Set(data.tracked.map(item=>item.sourceLootId).filter((id):id is number=>id!=null));
  const path=data.settings.active_log_path||"",file=path.split(/[\\/]/).pop();
  const lootColumns:Column<Loot>[]=[
-  {key:"item",label:"Item",value:row=>row.itemName},
+  {key:"item",label:"Item",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>},
   {key:"value",label:"30-day WTS",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
   {key:"mob",label:"Dropped By",value:row=>row.mobName||""},
   {key:"looter",label:"Looted By",value:row=>row.looterName||""},
@@ -131,18 +134,24 @@ function LiveV4({data,run}:{data:AppSnapshot;run:any}){
 
 function LinkedLootPage({data,run}:{data:AppSnapshot;run:any}){
  const[selected,setSelected]=useState<Set<string|number>>(new Set());
+ const[rescanLabel,setRescanLabel]=useState("Rescan active log");
  const columns:Column<LinkedLoot>[]=[
   {key:"speaker",label:"Said By",value:row=>row.speakerName},
   {key:"channel",label:"Channel",value:row=>row.channel,render:row=><span className={"pill "+(row.channel==="group"?"success":"info")}>{row.channel}</span>},
-  {key:"item",label:"Linked Item",value:row=>row.itemName},
+  {key:"item",label:"Linked Item",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>},
   {key:"value",label:"30-day WTS",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
   {key:"samples",label:"30-day Samples",value:row=>row.count30d},
   {key:"time",label:"When",value:row=>row.happenedAt,render:row=>when(row.happenedAt)},
  ];
  const totalValue=data.linkedLoot.reduce((sum,row)=>sum+(row.valuePp||0),0);
+ const rescan=async()=>{
+  setRescanLabel("Rescanning…");
+  const result=await run("linked.rescan") as {inserted?:number}|null;
+  setRescanLabel(result?`Recovered ${result.inserted||0}`:"Rescan failed");
+ };
  return <>
   <Stats items={[["Linked items",String(data.linkedLoot.length)],["Current value",money(totalValue)],["Speakers",String(new Set(data.linkedLoot.map(row=>row.speakerName.toLowerCase())).size)]]}/>
-  <Card title="Group and guild item links" sub="Item links are captured from the active log and valued with the current PigParse 30-day WTS cache." actions={<><button className="danger" disabled={!selected.size} onClick={()=>{void run("linked.delete",{ids:[...selected]});setSelected(new Set())}}>Delete selected{selected.size?(" ("+selected.size+")"):""}</button><button className="danger" disabled={!data.linkedLoot.length} onClick={()=>confirm("Clear all linked loot history?")&&run("linked.clear")}>Clear all</button></>}><DataTable rows={data.linkedLoot} columns={columns} rowKey={row=>row.id} selected={selected} onSelected={setSelected} empty="No item links captured yet. Links posted in group or guild chat will appear here."/></Card>
+  <Card title="Group and guild item links" sub="Clickable item links are decoded from the active log and valued with the current PigParse 30-day WTS cache." actions={<><button onClick={rescan}>{rescanLabel}</button><button className="danger" disabled={!selected.size} onClick={()=>{void run("linked.delete",{ids:[...selected]});setSelected(new Set())}}>Delete selected{selected.size?(" ("+selected.size+")"):""}</button><button className="danger" disabled={!data.linkedLoot.length} onClick={()=>confirm("Clear all linked loot history?")&&run("linked.clear")}>Clear all</button></>}><DataTable rows={data.linkedLoot} columns={columns} rowKey={row=>row.id} selected={selected} onSelected={setSelected} empty="No item links captured yet. Links posted in group or guild chat will appear here."/></Card>
  </>;
 }
 
@@ -169,14 +178,14 @@ function RosterSpellsPage({data}:{data:AppSnapshot}){
  const scrollValue=scrolls.reduce((sum,item)=>sum+(item.valuePp||0)*item.count,0);
  const scribedNames=new Set(data.spells.map(spell=>spell.spellName.toLowerCase()));
  const scrollColumns:Column<InventoryItem>[]=[
-  {key:"spell",label:"Spell",value:row=>row.itemName.replace(/^spell:\s*/i,"")},
+  {key:"spell",label:"Spell",value:row=>row.itemName.replace(/^spell:\s*/i,""),render:row=><SpellHover value={row.itemName.replace(/^spell:\s*/i,"")} force/>},
   {key:"character",label:"Character",value:row=>row.character},
   {key:"location",label:"Location",value:row=>row.location},
   {key:"count",label:"Count",value:row=>row.count},
   {key:"value",label:"Estimated Total",value:row=>(row.valuePp||0)*row.count,render:row=>money((row.valuePp||0)*row.count)},
  ];
  const spellColumns:Column<AppSnapshot["spells"][number]>[]=[
-  {key:"spell",label:"Spell",value:row=>row.spellName},
+  {key:"spell",label:"Spell",value:row=>row.spellName,render:row=><SpellHover value={row.spellName} force/>},
   {key:"character",label:"Character",value:row=>row.character},
   {key:"slot",label:"Book Slot",value:row=>row.slot||0},
   {key:"imported",label:"Imported",value:row=>row.importedAt,render:row=>when(row.importedAt)},

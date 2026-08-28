@@ -136,6 +136,21 @@ fn linked_chat() -> &'static Regex {
     })
 }
 
+fn outgoing_party_chat() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You tell your party,\s*(?<message>.+)$").expect("valid outgoing party regex")
+    })
+}
+
+fn outgoing_guild_chat() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You say to your guild,\s*(?<message>.+)$")
+            .expect("valid outgoing guild regex")
+    })
+}
+
 fn removed_from_group() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -210,6 +225,21 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             message: unquote(value.name("message")?.as_str()),
         });
     }
+    for (pattern, channel) in [
+        (outgoing_party_chat(), ChatChannel::Group),
+        (outgoing_guild_chat(), ChatChannel::Guild),
+    ] {
+        if let Some(value) = pattern.captures(body) {
+            let message = value.name("message")?.as_str().to_owned();
+            return Some(LogEvent::LinkedItems {
+                happened_at,
+                speaker: active_character.to_owned(),
+                channel,
+                item_names: extract_item_links(&message),
+                message,
+            });
+        }
+    }
     if let Some(value) = linked_chat().captures(body) {
         let message = value.name("message")?.as_str().to_owned();
         let item_names = extract_item_links(&message);
@@ -269,6 +299,7 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
 }
 
 pub fn extract_item_links(message: &str) -> Vec<String> {
+    const TITANIUM_LINK_METADATA_LEN: usize = 45;
     let mut items = Vec::new();
     let mut remaining = message;
     while let Some(start) = remaining.find('\u{12}') {
@@ -279,13 +310,16 @@ pub fn extract_item_links(message: &str) -> Vec<String> {
         let payload = &remaining[..end];
         remaining = &remaining[end + 1..];
         let bytes = payload.as_bytes();
-        if bytes.len() < 52
-            || !bytes[..45].iter().all(u8::is_ascii_hexdigit)
-            || bytes[45..51] != *b"      "
+        if bytes.len() <= TITANIUM_LINK_METADATA_LEN
+            || !bytes[..TITANIUM_LINK_METADATA_LEN]
+                .iter()
+                .all(u8::is_ascii_hexdigit)
         {
             continue;
         }
-        let name = payload[51..].trim();
+        // Live Titanium links put the display name immediately after the
+        // 45-character metadata block. Generated social links may add spaces.
+        let name = payload[TITANIUM_LINK_METADATA_LEN..].trim();
         if !name.is_empty() {
             items.push(name.to_owned());
         }
@@ -390,10 +424,10 @@ mod tests {
 
     #[test]
     fn parses_multiple_group_item_links_and_resolves_you() {
-        let first = format!("\u{12}{}      A Blue Crown \u{12}", "0".repeat(45));
+        let first = format!("\u{12}{}A Blue Crown\u{12}", "0".repeat(45));
         let second = format!("\u{12}{}      Tears of Prexus \u{12}", "A".repeat(45));
         let line =
-            format!("[Mon Aug 03 07:16:30 2026] You tell the group, 'Look: {first} / {second}'");
+            format!("[Mon Aug 03 07:16:30 2026] You tell your party, 'Look: {first} / {second}'");
         let event = parse_log_event(&line, "Youngman");
         assert!(matches!(
             event,
@@ -409,7 +443,7 @@ mod tests {
 
     #[test]
     fn parses_named_guild_item_link() {
-        let link = format!("\u{12}{}      White Dragon Scale \u{12}", "1".repeat(45));
+        let link = format!("\u{12}{}White Dragon Scale\u{12}", "1".repeat(45));
         let line = format!("[Mon Aug 03 07:16:31 2026] Posed tells the guild, '{link}'");
         let event = parse_log_event(&line, "Youngman");
         assert!(matches!(
@@ -421,5 +455,36 @@ mod tests {
                 ..
             }) if speaker == "Posed" && item_names == vec!["White Dragon Scale"]
         ));
+    }
+
+    #[test]
+    fn parses_outgoing_guild_item_link() {
+        let link = format!("\u{12}{}White Dragon Scale\u{12}", "1".repeat(45));
+        let line =
+            format!("[Mon Aug 03 07:16:31 2026] You say to your guild, 'Check this: {link}'");
+        let event = parse_log_event(&line, "Youngman");
+        assert!(matches!(
+            event,
+            Some(LogEvent::LinkedItems {
+                speaker,
+                channel: ChatChannel::Guild,
+                item_names,
+                ..
+            }) if speaker == "Youngman" && item_names == vec!["White Dragon Scale"]
+        ));
+    }
+
+    #[test]
+    fn extracts_live_and_social_button_link_layouts() {
+        let live = format!("\u{12}{}A Black Crown\u{12}", "0".repeat(45));
+        let padded = format!(
+            "\u{12}{}      Water Sprinkler of Nem Ankh \u{12}",
+            "F".repeat(45)
+        );
+
+        assert_eq!(
+            extract_item_links(&format!("'{live} / {padded}'")),
+            vec!["A Black Crown", "Water Sprinkler of Nem Ankh"]
+        );
     }
 }

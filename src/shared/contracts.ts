@@ -8,6 +8,10 @@ export interface History { id:number; itemName:string; mobName?:string; looterNa
 export interface MasterItem { id:number; name:string; valuePp:number; count30d:number; lastSeen:string; manual:boolean; source:string }
 export interface InventoryItem { character:string; importedAt:string; id:number; location:string; itemName:string; itemId?:number; count:number; slots?:number; valuePp?:number }
 export interface Spell { character:string; importedAt:string; slot?:number; spellName:string }
+export interface SpellClassInfo { name:string; level:number }
+export interface SpellEffectInfo { slot:number; description:string }
+export interface SpellInfo { spellName:string; wikiUrl:string; description:string; classes:SpellClassInfo[]; effects:SpellEffectInfo[]; mana:string; skill:string; castingTime:string; recastTime:string; fizzleTime:string; resist:string; range:string; targetType:string; spellType:string; duration:string; reagent:string; focus:string; whereToObtain:string; fetchedAt:string; stale:boolean }
+export interface SpellCatalogStatus { cachedCount:number; processed:number; saved:number; failed:number; refreshing:boolean; startedAt?:string; lastRefreshAt?:string; lastError?:string }
 export interface WtsGroup { id:number; character:string; name:string; createdAt:string; updatedAt:string; items:string[]; itemIds:(number|null)[] }
 export interface Alias { alias:string; canonical:string }
 export interface AppLog { id:number; happenedAt:string; level:string; area:string; message:string }

@@ -4,7 +4,7 @@ mod infrastructure;
 
 use application::{
     app_snapshot, bootstrap_status, mutate_app, parse_inventory_preview, parse_log_preview,
-    AppState,
+    reload_spell_catalog, spell_catalog_status, spell_info, AppState,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,7 +19,10 @@ pub fn run() {
             app_snapshot,
             mutate_app,
             parse_log_preview,
-            parse_inventory_preview
+            parse_inventory_preview,
+            spell_info,
+            spell_catalog_status,
+            reload_spell_catalog
         ])
         .run(tauri::generate_context!())
         .expect("error while running EverQuest Loot Tracker V3");
