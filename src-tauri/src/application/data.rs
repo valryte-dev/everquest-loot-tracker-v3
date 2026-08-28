@@ -83,6 +83,18 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         })),
     )?;
 
+    let tracked = query_values(
+        &connection,
+        "SELECT t.id,t.source_loot_id,t.happened_at,t.item_name,t.mob_name,t.looter_name,t.value_pp,t.tracked_at,
+                (SELECT GROUP_CONCAT(member_name,char(31)) FROM tracked_loot_members x WHERE x.tracked_loot_item_id=t.id)
+         FROM tracked_loot_items t ORDER BY t.happened_at DESC,t.id DESC LIMIT 2000",
+        |row| Ok(json!({
+            "id":row.get::<_,i64>(0)?,"sourceLootId":row.get::<_,Option<i64>>(1)?,"happenedAt":row.get::<_,String>(2)?,
+            "itemName":row.get::<_,String>(3)?,"mobName":row.get::<_,Option<String>>(4)?,"looterName":row.get::<_,Option<String>>(5)?,
+            "valuePp":row.get::<_,Option<i64>>(6)?,"trackedAt":row.get::<_,String>(7)?,"attendees":names(row.get::<_,Option<String>>(8)?)
+        })),
+    )?;
+
     let history = query_values(
         &connection,
         "SELECT h.id,h.item_name,h.mob_name,h.looter_name,h.value_pp,h.disposition,h.note,h.completed_at,
@@ -210,6 +222,27 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
                 "items":merchant_items.get(&id).cloned().unwrap_or_default()}))
         },
     )?;
+    let linked_loot = query_values(
+        &connection,
+        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,
+                (SELECT m.item_id FROM master_items m WHERE m.item_name=l.item_name COLLATE NOCASE LIMIT 1),
+                (SELECT v.average_30d_pp FROM item_market_values v
+                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
+                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
+                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
+                COALESCE((SELECT v.count_30d FROM item_market_values v
+                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
+                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
+                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),0)
+         FROM linked_loot_items l
+         ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
+        |row| Ok(json!({
+            "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+            "channel":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
+            "itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
+            "valuePp":row.get::<_,Option<i64>>(6)?,"count30d":row.get::<_,i64>(7)?
+        })),
+    )?;
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -219,9 +252,9 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     );
 
     Ok(
-        json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"history":history,
+        json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
-        "logs":logs,"imports":imports,"merchant":merchant,"compound":compound}),
+        "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,"compound":compound}),
     )
 }
 
@@ -280,13 +313,22 @@ fn normalize_compound(mut workspace: Value) -> Value {
             };
             if let Some(components) = template.get_mut("components").and_then(Value::as_array_mut) {
                 for component in components {
-                    if let Some(object) = component.as_object() {
-                        *component = object
-                            .get("itemName")
-                            .or_else(|| object.get("name"))
-                            .cloned()
-                            .unwrap_or_else(|| json!(""));
+                    if component.is_string() {
+                        let name = component.as_str().unwrap_or_default().to_owned();
+                        *component = json!({"itemName":name,"required":1,"valuePp":0});
                     }
+                    let Some(component) = component.as_object_mut() else {
+                        continue;
+                    };
+                    if !component.contains_key("itemName") {
+                        let name = component.get("name").cloned().unwrap_or_else(|| json!(""));
+                        component.insert("itemName".into(), name);
+                    }
+                    if !component.contains_key("valuePp") {
+                        let value = component.get("value").cloned().unwrap_or_else(|| json!(0));
+                        component.insert("valuePp".into(), value);
+                    }
+                    component.entry("required").or_insert_with(|| json!(1));
                 }
             }
         }
@@ -377,6 +419,26 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
         )?,
+        "loot.track" => track_loot(&mut connection, integer(payload, "id")?)?,
+        "tracked.delete" => {
+            for id in integers(payload, "ids") {
+                connection
+                    .execute("DELETE FROM tracked_loot_items WHERE id=?", [id])
+                    .map_err(err)?;
+            }
+        }
+        "linked.delete" => {
+            for id in integers(payload, "ids") {
+                connection
+                    .execute("DELETE FROM linked_loot_items WHERE id=?", [id])
+                    .map_err(err)?;
+            }
+        }
+        "linked.clear" => {
+            connection
+                .execute("DELETE FROM linked_loot_items", [])
+                .map_err(err)?;
+        }
         "split.add" => add_split(&mut connection, payload)?,
         "split.save" => save_split(&mut connection, payload)?,
         "split.delete" => delete_split(&mut connection, required(payload, "key")?)?,
@@ -546,6 +608,37 @@ fn set_loot_split(
             .execute("DELETE FROM split_loot_items WHERE loot_drop_id=?", [id])
             .map_err(err)?;
     }
+    Ok(())
+}
+
+fn track_loot(connection: &mut rusqlite::Connection, loot_id: i64) -> Result<(), String> {
+    connection.execute(
+        "INSERT OR IGNORE INTO tracked_loot_items(source_loot_id,happened_at,item_name,mob_name,looter_name,value_pp)
+         SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
+                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE
+                 AND v.transaction_type=0 AND v.item_name=d.item_name COLLATE NOCASE AND v.average_30d_pp>0
+                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1)
+         FROM loot_drops d LEFT JOIN mobs m ON m.id=d.mob_id WHERE d.id=?",
+        [loot_id],
+    ).map_err(err)?;
+    let tracked_id: Option<i64> = connection
+        .query_row(
+            "SELECT id FROM tracked_loot_items WHERE source_loot_id=?",
+            [loot_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(err)?;
+    let Some(tracked_id) = tracked_id else {
+        return Err("Loot drop was not found".into());
+    };
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO tracked_loot_members(tracked_loot_item_id,member_name)
+         SELECT ?,member_name FROM loot_drop_members WHERE loot_drop_id=?",
+            params![tracked_id, loot_id],
+        )
+        .map_err(err)?;
     Ok(())
 }
 
@@ -972,7 +1065,9 @@ mod tests {
                 "name":"A Blue Throne","itemId":18359,"required":1,"received":0,
                 "value":22915,"owners":["Youngman"]
             }]}],
-            "templates":[],"activeId":"p1"
+            "templates":[{"id":"t1","name":"Saved cloak","components":[{
+                "name":"A Blue Throne","itemId":18359,"required":2,"value":22915
+            }]}],"activeId":"p1"
         }));
         let component = &value["projects"][0]["components"][0];
         assert_eq!(component["itemName"], "A Blue Throne");
@@ -980,6 +1075,11 @@ mod tests {
         assert_eq!(component["itemId"], 18359);
         assert_eq!(component["value"], 22915);
         assert_eq!(value["activeId"], "p1");
+        let template_component = &value["templates"][0]["components"][0];
+        assert_eq!(template_component["itemName"], "A Blue Throne");
+        assert_eq!(template_component["itemId"], 18359);
+        assert_eq!(template_component["required"], 2);
+        assert_eq!(template_component["valuePp"], 22915);
     }
 
     #[test]
@@ -1084,6 +1184,69 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn linked_loot_snapshot_associates_primary_value_by_item_name() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO master_items(item_id,item_name,source) VALUES(42,'A Blue Crown','market')",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,count_30d,fetched_at)
+             VALUES('Green',42,0,'A Blue Crown','Today',1750,9,CURRENT_TIMESTAMP)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+             VALUES('2026-08-19 12:00:00','guild','Posed','a blue crown','raw','eqlog_Youngman_P1999Green.txt',42,0)",
+            [],
+        ).unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        let linked = &value["linkedLoot"][0];
+        assert_eq!(linked["speakerName"], "Posed");
+        assert_eq!(linked["channel"], "guild");
+        assert_eq!(linked["itemId"], 42);
+        assert_eq!(linked["valuePp"], 1750);
+        assert_eq!(linked["count30d"], 9);
+    }
+
+    #[test]
+    fn tracked_loot_survives_deleting_the_source_loot() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO loot_drops(happened_at,item_name,mob_name,looter_name,raw_line,source_file,source_offset)
+             VALUES('2026-08-19 12:00:00','A Blue Crown','a mortiferous golem','Youngman','raw','eqlog_Youngman_P1999Green.txt',42)",
+            [],
+        ).unwrap();
+        let loot_id = connection.last_insert_rowid();
+        connection.execute(
+            "INSERT INTO loot_drop_members(loot_drop_id,member_name) VALUES(?,'Youngman'),(?,'Posed')",
+            params![loot_id, loot_id],
+        ).unwrap();
+        drop(connection);
+
+        mutate(&database, "loot.track", &json!({"id":loot_id})).unwrap();
+        mutate(&database, "loot.track", &json!({"id":loot_id})).unwrap();
+        mutate(&database, "loot.delete", &json!({"ids":[loot_id]})).unwrap();
+
+        let value = snapshot(&database).unwrap();
+        assert_eq!(value["loot"].as_array().unwrap().len(), 0);
+        assert_eq!(value["tracked"].as_array().unwrap().len(), 1);
+        let tracked = &value["tracked"][0];
+        assert_eq!(tracked["itemName"], "A Blue Crown");
+        assert_eq!(tracked["mobName"], "a mortiferous golem");
+        assert_eq!(tracked["looterName"], "Youngman");
+        assert_eq!(tracked["attendees"], json!(["Posed", "Youngman"]));
     }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {

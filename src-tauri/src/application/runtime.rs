@@ -1,10 +1,10 @@
 use crate::{
     application::{data, services},
-    domain::log_events::{parse_log_event, GroupChangeKind, LogEvent},
+    domain::log_events::{parse_log_event, ChatChannel, GroupChangeKind, LogEvent},
     domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
 };
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -108,7 +108,6 @@ fn poll(
                     [&character],
                 )
                 .map_err(|e| e.to_string())?;
-            connection.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[&character]).map_err(|e|e.to_string())?;
             connection.execute("INSERT INTO app_settings(key,value) VALUES('active_character',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[&character]).map_err(|e|e.to_string())?;
             log_with(
                 &connection,
@@ -221,8 +220,26 @@ fn apply_event(
                 }
                 _ => {
                     c.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[character]).map_err(|e|e.to_string())?;
+                    if let Some(local_character) = character_from_log(path) {
+                        c.execute(
+                            "INSERT INTO known_members(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                            [&local_character],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        c.execute("INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",[&local_character]).map_err(|e|e.to_string())?;
+                    }
                 }
             }
+        }
+        LogEvent::GroupCleared { .. } => {
+            c.execute("DELETE FROM current_group", [])
+                .map_err(|e| e.to_string())?;
+            log_with(
+                &c,
+                "info",
+                "group",
+                "Local player was removed; current group cleared",
+            );
         }
         LogEvent::Loot {
             happened_at,
@@ -285,8 +302,102 @@ fn apply_event(
                 finish_merchant_capture(&c)?;
             }
         }
+        LogEvent::LinkedItems {
+            happened_at,
+            speaker,
+            channel,
+            message,
+            item_names,
+        } => {
+            if *channel == ChatChannel::Group {
+                c.execute(
+                    "INSERT INTO known_members(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                    [speaker],
+                )
+                .map_err(|error| error.to_string())?;
+                c.execute(
+                    "INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",
+                    [speaker],
+                )
+                .map_err(|error| error.to_string())?;
+                if let Some(local_character) = character_from_log(path) {
+                    c.execute(
+                        "INSERT INTO known_members(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                        [&local_character],
+                    )
+                    .map_err(|error| error.to_string())?;
+                    c.execute(
+                        "INSERT OR IGNORE INTO current_group(member_id) SELECT id FROM known_members WHERE name=? COLLATE NOCASE",
+                        [&local_character],
+                    )
+                    .map_err(|error| error.to_string())?;
+                }
+            }
+            let source = path.display().to_string();
+            let mut resolved_items = item_names.clone();
+            if resolved_items.is_empty() {
+                let candidate = unquote_chat_message(message);
+                let matched_item = c
+                    .query_row(
+                        "SELECT item_name FROM master_items WHERE item_name=? COLLATE NOCASE
+                         UNION ALL
+                         SELECT item_name FROM item_market_values WHERE item_name=? COLLATE NOCASE
+                         LIMIT 1",
+                        params![candidate, candidate],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(|error| error.to_string())?;
+                if let Some(item_name) = matched_item {
+                    resolved_items.push(item_name);
+                }
+            }
+            let mut inserted = 0;
+            for (link_index, item_name) in resolved_items.iter().enumerate() {
+                inserted += c
+                    .execute(
+                        "INSERT OR IGNORE INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+                         VALUES(?,?,?,?,?,?,?,?)",
+                        params![
+                            happened_at.to_string(),
+                            channel.as_str(),
+                            speaker,
+                            item_name,
+                            raw,
+                            source,
+                            source_offset,
+                            link_index as i64
+                        ],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+            if inserted > 0 {
+                log_with(
+                    &c,
+                    "info",
+                    "linked-loot",
+                    &format!(
+                        "{speaker} linked {} item{} in {} chat",
+                        inserted,
+                        if inserted == 1 { "" } else { "s" },
+                        channel.as_str()
+                    ),
+                );
+            }
+        }
     }
     Ok(())
+}
+
+fn unquote_chat_message(message: &str) -> &str {
+    let message = message.trim();
+    let bytes = message.as_bytes();
+    if bytes.len() >= 2 && (bytes[0] == 39 || bytes[0] == 34) && bytes[bytes.len() - 1] == bytes[0]
+    {
+        message[1..message.len() - 1].trim()
+    } else {
+        message
+    }
 }
 
 fn merchant_mode_enabled(connection: &rusqlite::Connection) -> bool {
@@ -488,6 +599,46 @@ mod tests {
     }
 
     #[test]
+    fn clears_the_entire_group_when_the_local_player_is_removed() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO known_members(name) VALUES('Youngman'),('Posed'),('Nukeman')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO current_group(member_id) SELECT id FROM known_members",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Mon Aug 03 07:35:16 2026] You have been removed from the group.\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+
+        let connection = database.connect().unwrap();
+        let active_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| row.get(0))
+            .unwrap();
+        let remembered_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM known_members", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(active_count, 0);
+        assert_eq!(remembered_count, 3);
+    }
+
+    #[test]
     fn captures_merchant_activity_only_while_enabled() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -542,5 +693,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!((messages, items, price), (2, 2, 1500));
+    }
+
+    #[test]
+    fn captures_group_and_guild_item_links_with_group_presence() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source)
+                 VALUES(1,'Water Sprinkler of Nem Ankh','test')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let group_link = format!("\u{12}{}      A Blue Crown \u{12}", "0".repeat(45));
+        let guild_link = format!("\u{12}{}      White Dragon Scale \u{12}", "A".repeat(45));
+        fs::write(
+            &log,
+            format!(
+                "[Mon Aug 03 07:16:30 2026] Posed tells the group, '{group_link}'\r\n[Mon Aug 03 07:16:31 2026] Skriz tells the guild, '{guild_link}'\r\n[Thu Aug 27 12:41:43 2026] Dubbyl tells the group, 'Water Sprinkler of Nem Ankh'\r\n[Thu Aug 27 12:41:44 2026] Dubbyl tells the group, 'ordinary conversation'\r\n"
+            ),
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+
+        let connection = database.connect().unwrap();
+        let linked: i64 = connection
+            .query_row("SELECT COUNT(*) FROM linked_loot_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let grouped: i64 = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| row.get(0))
+            .unwrap();
+        let guild_member_active: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM current_group g JOIN known_members m ON m.id=g.member_id WHERE m.name='Skriz'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let plain_item: String = connection
+            .query_row(
+                "SELECT item_name FROM linked_loot_items WHERE speaker_name='Dubbyl'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((linked, grouped, guild_member_active), (3, 3, 0));
+        assert_eq!(plain_item, "Water Sprinkler of Nem Ankh");
     }
 }

@@ -8,7 +8,7 @@ A local-first, cross-platform EverQuest loot, split, inventory, recipe, and sale
 - **Tauri 2** provides the small native desktop shell and a typed command/event boundary.
 - **React + TypeScript** provides the shared modern interface and reusable grid, filter, dialog, theme, and form components.
 - **SQLite** remains local and compatible with existing Loot Tracker data through additive migrations.
-- **GitHub Actions** produces official Windows, macOS, and Linux packages on native hosted runners. A local Windows installer is also built after feature changes for immediate testing.
+- **GitHub Actions** produces official Windows, macOS, and Linux packages on native hosted runners, including a downloadable Flatpak bundle. A local Windows installer is also built after feature changes for immediate testing.
 
 See [architecture](docs/architecture.md), [feature requirements](docs/feature-parity.md), and [delivery plan](docs/delivery-plan.md).
 
@@ -40,3 +40,19 @@ For a local Windows test installer, run `npm run tauri build`. Do not build Linu
 5. Review the draft GitHub release and publish it.
 
 macOS signing/notarization and Tauri updater signing require the repository secrets listed in [release setup](docs/release-setup.md).
+
+## Flatpak
+
+Pull requests, pushes to `main`, and manual Flatpak workflow runs produce an
+`everquest-loot-tracker-flatpak-x86_64` workflow artifact. Version tags also
+attach `EverQuest-Loot-Tracker-<version>-x86_64.flatpak` to the draft GitHub
+release.
+
+Linux users can install the downloaded bundle with:
+
+```bash
+flatpak install --user ./EverQuest-Loot-Tracker-<version>-x86_64.flatpak
+```
+
+The Flatpak has home-directory access so it can watch EverQuest logs and update
+character INI files. Review those permissions before installation.

@@ -13,3 +13,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+EverQuest-Loot-Tracker-*.flatpak
+flatpak-build/
+flatpak-repo/
+packaging/flatpak/everquest-loot-tracker.deb

@@ -7,6 +7,8 @@ const V3_MIGRATION: &str = include_str!("../migrations/001_v3_foundation.sql");
 const FEATURE_PARITY_MIGRATION: &str = include_str!("../migrations/002_feature_parity.sql");
 const MASTER_ITEMS_MIGRATION: &str = include_str!("../migrations/003_master_items.sql");
 const MERCHANT_MODE_MIGRATION: &str = include_str!("../migrations/004_merchant_mode.sql");
+const TRACKED_LOOT_MIGRATION: &str = include_str!("../migrations/005_tracked_loot.sql");
+const LINKED_LOOT_MIGRATION: &str = include_str!("../migrations/006_linked_loot.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -54,6 +56,8 @@ impl Database {
         transaction.execute_batch(FEATURE_PARITY_MIGRATION)?;
         transaction.execute_batch(MASTER_ITEMS_MIGRATION)?;
         transaction.execute_batch(MERCHANT_MODE_MIGRATION)?;
+        transaction.execute_batch(TRACKED_LOOT_MIGRATION)?;
+        transaction.execute_batch(LINKED_LOOT_MIGRATION)?;
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -71,7 +75,7 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 4);
-        assert_eq!(database.migrate().unwrap(), 4);
+        assert_eq!(database.migrate().unwrap(), 6);
+        assert_eq!(database.migrate().unwrap(), 6);
     }
 }
