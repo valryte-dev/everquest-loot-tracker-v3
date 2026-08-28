@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=EverQuest Loot Tracker
+Comment=Track EverQuest loot, splits, inventories, recipes, and sales
+Exec=everquest-loot-tracker
+Icon=com.eqtools.loottracker
+Terminal=false
+Categories=Game;Utility;
+Keywords=EverQuest;loot;inventory;splits;
+StartupNotify=true

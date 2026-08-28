@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.eqtools.loottracker</id>
+  <name>EverQuest Loot Tracker</name>
+  <summary>Track EverQuest loot, splits, inventories, recipes, and sales</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.valryte-dev">
+    <name>EverQuest Loot Tracker contributors</name>
+  </developer>
+  <description>
+    <p>
+      EverQuest Loot Tracker is a local-first desktop companion for tracking live
+      loot, group shares, item values, character inventories, spells, recipes,
+      merchant activity, and sale payouts.
+    </p>
+    <p>
+      It watches EverQuest log and export files, stores data locally in SQLite,
+      and provides tools for coordinating loot splits across a roster.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.eqtools.loottracker.desktop</launchable>
+  <provides>
+    <binary>everquest-loot-tracker</binary>
+  </provides>
+  <url type="homepage">https://github.com/valryte-dev/everquest-loot-tracker-v3</url>
+  <url type="bugtracker">https://github.com/valryte-dev/everquest-loot-tracker-v3/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="3.3.0" date="2026-08-27"/>
+  </releases>
+</component>

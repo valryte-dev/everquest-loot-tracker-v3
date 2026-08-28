@@ -13,6 +13,22 @@ pub enum GroupChangeKind {
     Spoke,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatChannel {
+    Group,
+    Guild,
+}
+
+impl ChatChannel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Group => "group",
+            Self::Guild => "guild",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LogEvent {
@@ -44,6 +60,13 @@ pub enum LogEvent {
         happened_at: NaiveDateTime,
         speaker: String,
         message: String,
+    },
+    LinkedItems {
+        happened_at: NaiveDateTime,
+        speaker: String,
+        channel: ChatChannel,
+        message: String,
+        item_names: Vec<String>,
     },
 }
 
@@ -98,8 +121,18 @@ fn left() -> &'static Regex {
 fn group_tell() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
-        Regex::new(r"^(?<name>[A-Za-z][A-Za-z'_-]*) tells the group, .+$")
+        Regex::new(r"^(?<name>You|[A-Za-z][A-Za-z'_-]*) tell(?:s)? the group, .+$")
             .expect("valid group tell regex")
+    })
+}
+
+fn linked_chat() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(
+            r"^(?<name>You|[A-Za-z][A-Za-z'_-]*) tell(?:s)? the (?<channel>group|guild),\s*(?<message>.+)$",
+        )
+        .expect("valid linked chat regex")
     })
 }
 
@@ -177,6 +210,26 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             message: unquote(value.name("message")?.as_str()),
         });
     }
+    if let Some(value) = linked_chat().captures(body) {
+        let message = value.name("message")?.as_str().to_owned();
+        let item_names = extract_item_links(&message);
+        let who = value.name("name")?.as_str();
+        return Some(LogEvent::LinkedItems {
+            happened_at,
+            speaker: if who.eq_ignore_ascii_case("You") {
+                active_character.to_owned()
+            } else {
+                who.to_owned()
+            },
+            channel: if &value["channel"] == "group" {
+                ChatChannel::Group
+            } else {
+                ChatChannel::Guild
+            },
+            message,
+            item_names,
+        });
+    }
     if let Some(value) = local_kill().captures(body) {
         return Some(LogEvent::MobSlain {
             happened_at,
@@ -200,14 +253,44 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
         (group_tell(), GroupChangeKind::Spoke),
     ] {
         if let Some(value) = pattern.captures(body) {
+            let name = &value["name"];
             return Some(LogEvent::GroupChange {
                 happened_at,
-                character: value["name"].to_owned(),
+                character: if change == GroupChangeKind::Spoke && name.eq_ignore_ascii_case("You") {
+                    active_character.to_owned()
+                } else {
+                    name.to_owned()
+                },
                 change,
             });
         }
     }
     None
+}
+
+pub fn extract_item_links(message: &str) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut remaining = message;
+    while let Some(start) = remaining.find('\u{12}') {
+        remaining = &remaining[start + 1..];
+        let Some(end) = remaining.find('\u{12}') else {
+            break;
+        };
+        let payload = &remaining[..end];
+        remaining = &remaining[end + 1..];
+        let bytes = payload.as_bytes();
+        if bytes.len() < 52
+            || !bytes[..45].iter().all(u8::is_ascii_hexdigit)
+            || bytes[45..51] != *b"      "
+        {
+            continue;
+        }
+        let name = payload[51..].trim();
+        if !name.is_empty() {
+            items.push(name.to_owned());
+        }
+    }
+    items
 }
 
 fn unquote(value: &str) -> String {
@@ -249,14 +332,21 @@ mod tests {
     }
 
     #[test]
-    fn parses_group_tell_as_presence_evidence() {
+    fn parses_plain_group_chat_as_an_item_candidate_and_presence_evidence() {
         let event = parse_log_event(
             "[Mon Aug 03 07:16:27 2026] Posed tells the group, 'hello'",
             "Youngman",
         );
-        assert!(
-            matches!(event, Some(LogEvent::GroupChange { character, change: GroupChangeKind::Spoke, .. }) if character == "Posed")
-        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::LinkedItems {
+                speaker,
+                channel: ChatChannel::Group,
+                message,
+                item_names,
+                ..
+            }) if speaker == "Posed" && message == "'hello'" && item_names.is_empty()
+        ));
     }
 
     #[test]
@@ -296,5 +386,40 @@ mod tests {
         assert!(
             matches!(event, Some(LogEvent::DirectTell { speaker, message, .. }) if speaker == "Posed" && message == "I will buy that")
         );
+    }
+
+    #[test]
+    fn parses_multiple_group_item_links_and_resolves_you() {
+        let first = format!("\u{12}{}      A Blue Crown \u{12}", "0".repeat(45));
+        let second = format!("\u{12}{}      Tears of Prexus \u{12}", "A".repeat(45));
+        let line =
+            format!("[Mon Aug 03 07:16:30 2026] You tell the group, 'Look: {first} / {second}'");
+        let event = parse_log_event(&line, "Youngman");
+        assert!(matches!(
+            event,
+            Some(LogEvent::LinkedItems {
+                speaker,
+                channel: ChatChannel::Group,
+                item_names,
+                ..
+            }) if speaker == "Youngman"
+                && item_names == vec!["A Blue Crown", "Tears of Prexus"]
+        ));
+    }
+
+    #[test]
+    fn parses_named_guild_item_link() {
+        let link = format!("\u{12}{}      White Dragon Scale \u{12}", "1".repeat(45));
+        let line = format!("[Mon Aug 03 07:16:31 2026] Posed tells the guild, '{link}'");
+        let event = parse_log_event(&line, "Youngman");
+        assert!(matches!(
+            event,
+            Some(LogEvent::LinkedItems {
+                speaker,
+                channel: ChatChannel::Guild,
+                item_names,
+                ..
+            }) if speaker == "Posed" && item_names == vec!["White Dragon Scale"]
+        ));
     }
 }

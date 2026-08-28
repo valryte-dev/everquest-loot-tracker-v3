@@ -222,6 +222,27 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
                 "items":merchant_items.get(&id).cloned().unwrap_or_default()}))
         },
     )?;
+    let linked_loot = query_values(
+        &connection,
+        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,
+                (SELECT m.item_id FROM master_items m WHERE m.item_name=l.item_name COLLATE NOCASE LIMIT 1),
+                (SELECT v.average_30d_pp FROM item_market_values v
+                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
+                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
+                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
+                COALESCE((SELECT v.count_30d FROM item_market_values v
+                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
+                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
+                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),0)
+         FROM linked_loot_items l
+         ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
+        |row| Ok(json!({
+            "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+            "channel":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
+            "itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
+            "valuePp":row.get::<_,Option<i64>>(6)?,"count30d":row.get::<_,i64>(7)?
+        })),
+    )?;
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -233,7 +254,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
-        "logs":logs,"imports":imports,"merchant":merchant,"compound":compound}),
+        "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,"compound":compound}),
     )
 }
 
@@ -405,6 +426,18 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
                     .execute("DELETE FROM tracked_loot_items WHERE id=?", [id])
                     .map_err(err)?;
             }
+        }
+        "linked.delete" => {
+            for id in integers(payload, "ids") {
+                connection
+                    .execute("DELETE FROM linked_loot_items WHERE id=?", [id])
+                    .map_err(err)?;
+            }
+        }
+        "linked.clear" => {
+            connection
+                .execute("DELETE FROM linked_loot_items", [])
+                .map_err(err)?;
         }
         "split.add" => add_split(&mut connection, payload)?,
         "split.save" => save_split(&mut connection, payload)?,
@@ -1151,6 +1184,37 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn linked_loot_snapshot_associates_primary_value_by_item_name() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO master_items(item_id,item_name,source) VALUES(42,'A Blue Crown','market')",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,count_30d,fetched_at)
+             VALUES('Green',42,0,'A Blue Crown','Today',1750,9,CURRENT_TIMESTAMP)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+             VALUES('2026-08-19 12:00:00','guild','Posed','a blue crown','raw','eqlog_Youngman_P1999Green.txt',42,0)",
+            [],
+        ).unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        let linked = &value["linkedLoot"][0];
+        assert_eq!(linked["speakerName"], "Posed");
+        assert_eq!(linked["channel"], "guild");
+        assert_eq!(linked["itemId"], 42);
+        assert_eq!(linked["valuePp"], 1750);
+        assert_eq!(linked["count30d"], 9);
     }
 
     #[test]
