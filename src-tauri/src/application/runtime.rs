@@ -383,6 +383,20 @@ pub(crate) fn unquote_chat_message(message: &str) -> &str {
     }
 }
 
+fn strip_linked_item_apostrophes(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !matches!(*character as u32, 0x27 | 0x60 | 0x2018 | 0x2019 | 0x00b4))
+        .collect()
+}
+
+fn normalize_linked_item_text(value: &str) -> String {
+    strip_linked_item_apostrophes(value)
+        .chars()
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
 pub(crate) fn resolve_linked_items(
     connection: &rusqlite::Connection,
     message: &str,
@@ -392,13 +406,21 @@ pub(crate) fn resolve_linked_items(
         return Ok(encoded_items.to_vec());
     }
     let message = unquote_chat_message(message);
+    let display_message = strip_linked_item_apostrophes(message);
+    let normalized_message = normalize_linked_item_text(message);
     let mut statement = connection
         .prepare(
             "SELECT item_name FROM master_items
-             WHERE item_name<>'' AND instr(?,item_name)>0
+             WHERE item_name<>'' AND instr(
+               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'’',''),'‘',''),'´',''),
+               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'’',''),'‘',''),'´','')
+             )>0
              UNION
              SELECT item_name FROM item_market_values
-             WHERE item_name<>'' AND instr(?,item_name)>0",
+             WHERE item_name<>'' AND instr(
+               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'’',''),'‘',''),'´',''),
+               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'’',''),'‘',''),'´','')
+             )>0",
         )
         .map_err(|error| error.to_string())?;
     let names = statement
@@ -408,29 +430,33 @@ pub(crate) fn resolve_linked_items(
         .collect::<Result<Vec<_>, _>>()?;
     let mut raw_matches = Vec::new();
     for name in names {
-        for (start, _) in message.match_indices(&name) {
-            let end = start + name.len();
+        let normalized_name = normalize_linked_item_text(&name);
+        if normalized_name.is_empty() {
+            continue;
+        }
+        for (start, _) in normalized_message.match_indices(&normalized_name) {
+            let end = start + normalized_name.len();
             raw_matches.push((start, end, name.clone()));
         }
     }
     let mut matches = raw_matches
         .iter()
         .filter(|candidate| {
-            let before = message[..candidate.0].chars().next_back();
-            let after = message[candidate.1..].chars().next();
+            let before = normalized_message[..candidate.0].chars().next_back();
+            let after = normalized_message[candidate.1..].chars().next();
             let joins_previous = raw_matches.iter().any(|other| other.1 == candidate.0);
             let joins_next = raw_matches.iter().any(|other| other.0 == candidate.1);
             let follows_known_item = raw_matches.iter().any(|other| {
                 other.1 <= candidate.0
-                    && message[other.1..candidate.0]
+                    && normalized_message[other.1..candidate.0]
                         .chars()
                         .all(|value| value.is_whitespace() || ",;/|:-".contains(value))
             });
-            let suspicious_title_prefix = message[..candidate.0]
+            let suspicious_title_prefix = display_message[..candidate.0]
                 .chars()
                 .next_back()
                 .is_some_and(char::is_whitespace)
-                && message[..candidate.0]
+                && display_message[..candidate.0]
                     .split_whitespace()
                     .next_back()
                     .map(|word| word.trim_matches(|value: char| !value.is_ascii_alphanumeric()))
@@ -683,6 +709,31 @@ mod tests {
         )
         .unwrap()
         .is_empty());
+    }
+
+    #[test]
+    fn resolves_case_and_apostrophe_variants_to_the_master_item() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source)
+                 VALUES(20819,'Elders Earring','test')
+                 ON CONFLICT(item_id) DO UPDATE SET item_name=excluded.item_name",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(
+            resolve_linked_items(&connection, "'Elder's Earring'", &[]).unwrap(),
+            vec!["Elders Earring"]
+        );
+        assert_eq!(
+            resolve_linked_items(&connection, "'still 7500 for elders earring'", &[]).unwrap(),
+            vec!["Elders Earring"]
+        );
     }
 
     #[test]

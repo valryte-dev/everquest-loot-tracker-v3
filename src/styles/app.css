@@ -39,3 +39,16 @@
 /* Grouped application navigation */
 .rail nav{gap:0}.nav-group{display:grid;gap:3px;margin-bottom:13px}.nav-group h2{margin:0;padding:3px 10px 5px;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.72}.nav-group:last-child{margin-bottom:0}.nav-group+.nav-group{padding-top:10px;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent)}
 @media(max-width:950px){.nav-group h2{height:1px;padding:0;margin:5px 8px;background:var(--line);font-size:0}.nav-group{margin-bottom:5px}.nav-group+.nav-group{padding-top:4px;border-top:0}}
+
+/* Compact, accessible actions used by every data grid. */
+.icon-button{display:inline-grid;place-items:center;width:31px;height:31px;min-width:31px;padding:0;border-radius:8px;color:var(--muted)}
+.icon-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icon-button:hover:not(:disabled),.icon-button:focus-visible{color:var(--text);background:color-mix(in srgb,var(--accent) 10%,var(--panel2))}
+.icon-button.success{color:var(--good)}.icon-button.danger{color:var(--bad)}.row-actions{flex-wrap:nowrap}.row-actions:has(.icon-button){min-width:max-content}.data-grid th:has(+.select-col),.data-grid th:last-child{white-space:nowrap}
+
+
+.merchant-grid-cell{display:flex;flex-direction:column;gap:.4rem;min-width:0}.merchant-grid-cell>span{min-height:1.5rem;display:flex;align-items:center;white-space:nowrap}.merchant-grid-cell strong{overflow:hidden;text-overflow:ellipsis;max-width:16rem}
+
+.merchant-seller-groups{display:grid;gap:10px}.merchant-seller-groups>section{min-width:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:color-mix(in srgb,var(--panel2) 45%,transparent)}.merchant-seller-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 9px;border-bottom:1px solid var(--line);background:var(--panel2)}.merchant-seller-header>span{font-size:10px;color:var(--muted);white-space:nowrap}.merchant-seller-header .merchant-person{display:grid;grid-template-columns:24px minmax(0,1fr) 20px;max-width:none;flex:1}.merchant-seller-header .merchant-person>span{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:color-mix(in srgb,var(--accent) 16%,var(--panel));color:var(--accent);font-size:10px;font-weight:800}.merchant-seller-header .merchant-person>b{font-size:12px}.merchant-seller-groups .grid-tools{border-bottom:1px solid var(--line)}
+
+.merchant-listing-filter{display:flex;align-items:center;gap:8px;padding:8px}.merchant-listing-filter .search{flex:1;width:auto}.merchant-listing-filter>span{font-size:10px;color:var(--muted);white-space:nowrap}

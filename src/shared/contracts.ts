@@ -3,7 +3,7 @@ export interface Member { id:number; name:string; active:boolean }
 export interface Loot { id:number; happenedAt:string; itemName:string; mobName?:string; looterName?:string; valuePp?:number; splitListed:boolean; attendees:string[] }
 export interface Split { key:string; itemName:string; addedAt:string; mobName?:string; looterName?:string; payoutValuePp?:number; marketValuePp?:number; attendees:string[] }
 export interface TrackedLoot { id:number; sourceLootId?:number; happenedAt:string; trackedAt:string; itemName:string; mobName?:string; looterName?:string; valuePp?:number; attendees:string[] }
-export interface LinkedLoot { id:number; happenedAt:string; channel:"group"|"guild"; speakerName:string; itemName:string; itemId?:number; valuePp?:number; count30d:number }
+export interface LinkedLoot { id:number; happenedAt:string; channel:"group"|"guild"; speakerName:string; itemName:string; itemId?:number; valuePp?:number; valueBasis?:string; count30d:number }
 export interface History { id:number; itemName:string; mobName?:string; looterName?:string; valuePp:number; disposition:string; note:string; completedAt:string; attendees:string[] }
 export interface MasterItem { id:number; name:string; valuePp:number; count30d:number; lastSeen:string; manual:boolean; source:string }
 export interface InventoryItem { character:string; importedAt:string; id:number; location:string; itemName:string; itemId?:number; count:number; slots?:number; valuePp?:number }

@@ -1,6 +1,6 @@
 [package]
 name = "everquest-loot-tracker"
-version = "3.5.0"
+version = "3.6.0"
 description = "Cross-platform EverQuest loot and split tracker"
 authors = ["Loot Tracker Team"]
 edition = "2021"

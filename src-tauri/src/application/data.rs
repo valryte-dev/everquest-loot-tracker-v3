@@ -235,24 +235,81 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     )?;
     let linked_loot = query_values(
         &connection,
-        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,
-                (SELECT m.item_id FROM master_items m WHERE m.item_name=l.item_name COLLATE NOCASE LIMIT 1),
-                (SELECT v.average_30d_pp FROM item_market_values v
-                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
-                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
-                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
-                COALESCE((SELECT v.count_30d FROM item_market_values v
-                 WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
-                   AND v.item_name=l.item_name COLLATE NOCASE AND v.average_30d_pp>0
-                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),0)
-         FROM linked_loot_items l
-         ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
-        |row| Ok(json!({
-            "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
-            "channel":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
-            "itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
-            "valuePp":row.get::<_,Option<i64>>(6)?,"count30d":row.get::<_,i64>(7)?
-        })),
+        "WITH linked_base AS (
+             SELECT l.*,
+                    (SELECT m.item_id FROM master_items m
+                     WHERE m.item_name=l.item_name COLLATE NOCASE LIMIT 1) AS resolved_item_id
+             FROM linked_loot_items l
+         ),
+         market_candidates AS (
+             SELECT b.id AS linked_id,v.*,
+                    CASE
+                        WHEN v.transaction_type=0 AND v.average_30d_pp>0 THEN 1
+                        WHEN v.transaction_type=0 AND v.average_60d_pp>0 THEN 2
+                        WHEN v.transaction_type=0 AND v.average_90d_pp>0 THEN 3
+                        WHEN v.transaction_type=0 AND v.average_6m_pp>0 THEN 4
+                        WHEN v.transaction_type=0 AND v.average_all_pp>0 THEN 5
+                        WHEN v.transaction_type=1 AND v.average_30d_pp>0 THEN 6
+                        WHEN v.transaction_type=1 AND v.average_60d_pp>0 THEN 7
+                        WHEN v.transaction_type=1 AND v.average_90d_pp>0 THEN 8
+                        WHEN v.transaction_type=1 AND v.average_6m_pp>0 THEN 9
+                        WHEN v.transaction_type=1 AND v.average_all_pp>0 THEN 10
+                        ELSE 99
+                    END AS price_priority
+             FROM linked_base b
+             JOIN item_market_values v
+               ON v.server='Green' COLLATE NOCASE
+              AND (v.source_item_id=b.resolved_item_id
+                   OR (b.resolved_item_id IS NULL AND v.item_name=b.item_name COLLATE NOCASE))
+         ),
+         ranked_market AS (
+             SELECT c.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY c.linked_id
+                        ORDER BY c.price_priority,c.count_30d DESC,c.last_seen DESC
+                    ) AS price_rank
+             FROM market_candidates c
+             WHERE c.price_priority<99
+         )
+         SELECT b.id,b.happened_at,b.channel,b.speaker_name,b.item_name,b.resolved_item_id,
+                CASE
+                    WHEN p.price_priority IN (1,6) THEN p.average_30d_pp
+                    WHEN p.price_priority IN (2,7) THEN p.average_60d_pp
+                    WHEN p.price_priority IN (3,8) THEN p.average_90d_pp
+                    WHEN p.price_priority IN (4,9) THEN p.average_6m_pp
+                    WHEN p.price_priority IN (5,10) THEN p.average_all_pp
+                END,
+                COALESCE(CASE
+                    WHEN p.price_priority IN (1,6) THEN p.count_30d
+                    WHEN p.price_priority IN (2,7) THEN p.count_60d
+                    WHEN p.price_priority IN (3,8) THEN p.count_90d
+                    WHEN p.price_priority IN (4,9) THEN p.count_6m
+                    WHEN p.price_priority IN (5,10) THEN p.count_all
+                END,0),
+                CASE p.price_priority
+                    WHEN 1 THEN '30-day WTS'
+                    WHEN 2 THEN '60-day WTS'
+                    WHEN 3 THEN '90-day WTS'
+                    WHEN 4 THEN '6-month WTS'
+                    WHEN 5 THEN 'all-time WTS'
+                    WHEN 6 THEN '30-day WTB'
+                    WHEN 7 THEN '60-day WTB'
+                    WHEN 8 THEN '90-day WTB'
+                    WHEN 9 THEN '6-month WTB'
+                    WHEN 10 THEN 'all-time WTB'
+                END
+         FROM linked_base b
+         LEFT JOIN ranked_market p ON p.linked_id=b.id AND p.price_rank=1
+         ORDER BY b.happened_at DESC,b.id DESC LIMIT 5000",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "channel":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
+                "itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
+                "valuePp":row.get::<_,Option<i64>>(6)?,"count30d":row.get::<_,i64>(7)?,
+                "valueBasis":row.get::<_,Option<String>>(8)?
+            }))
+        },
     )?;
     let compound = normalize_compound(
         settings
@@ -1313,6 +1370,42 @@ mod tests {
         assert_eq!(linked["itemId"], 42);
         assert_eq!(linked["valuePp"], 1750);
         assert_eq!(linked["count30d"], 9);
+    }
+
+    #[test]
+    fn linked_loot_snapshot_associates_price_by_master_id_across_name_variants() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source) VALUES(20819,'Elders Earring','inventory')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,count_30d,average_60d_pp,count_60d,fetched_at)
+                 VALUES('Green',20819,1,'Elder''s Earring','Today',0,0,7400,11,CURRENT_TIMESTAMP)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+                 VALUES('2026-08-28 23:33:12','group','Lith','Elders Earring','raw','eqlog_Gnorby_P1999Green.txt',3571,0)",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        let linked = &value["linkedLoot"][0];
+        assert_eq!(linked["itemId"], 20819);
+        assert_eq!(linked["valuePp"], 7400);
+        assert_eq!(linked["count30d"], 11);
+        assert_eq!(linked["valueBasis"], "60-day WTB");
     }
 
     #[test]
