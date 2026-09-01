@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
 import {listen} from "@tauri-apps/api/event";
+import {getCurrentWindow} from "@tauri-apps/api/window";
 import {FEATURE_GROUPS,FEATURES,type FeatureKey} from "./features";
 import {bootstrapStatus,getPageSnapshot,getRevision,mutate} from "../shared/backend";
 import type {AppSnapshot,BootstrapStatus,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup} from "../shared/contracts";
@@ -25,9 +26,11 @@ export function App(){
  const refreshTimer=useRef<number|undefined>(undefined);
  const revision=useRef(0);
  const pageRef=useRef(page);pageRef.current=page;
+ const windowBusy=useRef(false),refreshPending=useRef(false),windowSettle=useRef<number|undefined>(undefined);
  const refresh=useCallback(async(silent=false)=>{try{const value=await getPageSnapshot(pageRef.current);setData(value);setError("")}catch(e){setError(String(e))}finally{if(!silent)setLoading(false)}},[]);
- useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));getRevision().then(value=>revision.current=value);let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>{if(!document.querySelector(".modal"))refresh(true)},100)}).then(value=>unlisten=value);const guard=window.setInterval(async()=>{const value=await getRevision();if(value!==revision.current&&!document.querySelector(".modal")){revision.current=value;await refresh(true)}},10000);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);window.clearInterval(guard);unlisten?.()}},[refresh]);
+ useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));getRevision().then(value=>revision.current=value);let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>{if(windowBusy.current||document.querySelector(".modal")){refreshPending.current=true;return}refresh(true)},100)}).then(value=>unlisten=value);const guard=window.setInterval(async()=>{const value=await getRevision();if(value!==revision.current&&!windowBusy.current&&!document.querySelector(".modal")){revision.current=value;await refresh(true)}},10000);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);window.clearInterval(guard);unlisten?.()}},[refresh]);
  useEffect(()=>{refresh(true)},[page,refresh]);
+ useEffect(()=>{if(!("__TAURI_INTERNALS__" in window))return;let moved:(()=>void)|undefined,resized:(()=>void)|undefined;const interacting=()=>{windowBusy.current=true;window.clearTimeout(windowSettle.current);windowSettle.current=window.setTimeout(()=>{windowBusy.current=false;if(refreshPending.current&&!document.querySelector(".modal")){refreshPending.current=false;refresh(true)}},250)};getCurrentWindow().onMoved(interacting).then(value=>moved=value);getCurrentWindow().onResized(interacting).then(value=>resized=value);return()=>{window.clearTimeout(windowSettle.current);moved?.();resized?.()}},[refresh]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings.theme||"midnight"},[data.settings.theme]);
  useEffect(()=>{window.scrollTo({top:0,left:0,behavior:"auto"})},[page]);
  const run=async(action:string,payload:Record<string,unknown>={})=>{setBusy(true);try{const result=await mutate(action,payload);return result}catch(e){setError(String(e));return null}finally{setBusy(false)}};
