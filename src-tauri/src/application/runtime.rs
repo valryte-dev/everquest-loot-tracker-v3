@@ -83,11 +83,15 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
             }
             force_poll = true;
         }
+        let mut changed_log: Option<PathBuf> = None;
         let event_received = if force_poll {
             false
         } else {
             match event_rx.recv_timeout(Duration::from_secs(2)) {
-                Ok(Ok(_)) => true,
+                Ok(Ok(event)) => {
+                    changed_log = event.paths.into_iter().find(|path| is_log(path));
+                    true
+                }
                 Ok(Err(error)) => {
                     log(&database, "error", "watcher", &error.to_string());
                     false
@@ -104,8 +108,15 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
         }
         if event_received {
             thread::sleep(Duration::from_millis(60));
-            while event_rx.try_recv().is_ok() {}
+            while let Ok(event) = event_rx.try_recv() {
+                if let Ok(event) = event {
+                    if let Some(path) = event.paths.into_iter().find(|path| is_log(path)) {
+                        changed_log = Some(path);
+                    }
+                }
+            }
         }
+        let previous_active_log = active_log.clone();
         if let Err(error) = poll(
             &database,
             &mut active_log,
@@ -113,12 +124,14 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
             &mut last_mob,
             &mut export_signatures,
             &mut export_directory,
+            changed_log.as_deref(),
         ) {
             log(&database, "error", "watcher", &error);
         }
         last_safety_poll = SystemTime::now();
+        let active_log_changed = active_log != previous_active_log;
         let next_signature = file_signature(&signature_path);
-        if next_signature != database_signature {
+        if active_log_changed || next_signature != database_signature {
             database_signature = next_signature;
             revision.fetch_add(1, Ordering::Relaxed);
             let _ = app_handle.emit("data-changed", "watcher");
@@ -155,6 +168,7 @@ fn poll(
     last_mob: &mut HashMap<PathBuf, String>,
     exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
     watched_export_directory: &mut Option<PathBuf>,
+    preferred_log: Option<&Path>,
 ) -> Result<(), String> {
     let connection = database.connect().map_err(|error| error.to_string())?;
     let directory: Option<String> = connection
@@ -173,18 +187,26 @@ fn poll(
         return Ok(());
     }
 
-    let mut logs = fs::read_dir(&directory)
-        .map_err(|error| error.to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_log(path))
-        .collect::<Vec<_>>();
-    logs.sort_by_key(|path| {
-        fs::metadata(path)
-            .and_then(|m| m.modified())
-            .unwrap_or(SystemTime::UNIX_EPOCH)
-    });
-    if let Some(newest) = logs.pop() {
+    let preferred = preferred_log
+        .filter(|path| path.parent() == Some(directory.as_path()) && is_log(path))
+        .map(Path::to_path_buf);
+    let newest = if preferred.is_some() {
+        preferred
+    } else {
+        let mut logs = fs::read_dir(&directory)
+            .map_err(|error| error.to_string())?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| is_log(path))
+            .collect::<Vec<_>>();
+        logs.sort_by_key(|path| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH)
+        });
+        logs.pop()
+    };
+    if let Some(newest) = newest {
         if active_log.as_ref() != Some(&newest) {
             let character = character_from_log(&newest).unwrap_or_else(|| "Unknown".into());
             let connection = database.connect().map_err(|error| error.to_string())?;
@@ -783,10 +805,46 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{process_log, resolve_linked_items};
+    use super::{poll, process_log, resolve_linked_items};
     use crate::infrastructure::database::Database;
     use std::{collections::HashMap, fs};
 
+    #[test]
+    fn notified_log_path_wins_over_directory_timestamp_order() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let first = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let second = directory.path().join("eqlog_Other_P1999Green.txt");
+        fs::write(&first, b"").unwrap();
+        fs::write(&second, b"").unwrap();
+        database.connect().unwrap().execute(
+            "INSERT INTO app_settings(key,value) VALUES('logs_directory',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [directory.path().display().to_string()],
+        ).unwrap();
+        let mut active = None;
+        poll(
+            &database,
+            &mut active,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&first),
+        )
+        .unwrap();
+        let character: String = database
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='active_character'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active.as_deref(), Some(first.as_path()));
+        assert_eq!(character, "Youngman");
+    }
     #[test]
     fn unknown_longer_item_phrase_does_not_collapse_to_known_suffix() {
         let directory = tempfile::tempdir().unwrap();
