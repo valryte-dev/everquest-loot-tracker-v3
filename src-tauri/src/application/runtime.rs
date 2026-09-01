@@ -29,7 +29,6 @@ pub fn start(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc
 }
 
 fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<AtomicU64>) {
-    let signature_path = database_path.with_extension("db-wal");
     let database = match Database::open(database_path) {
         Ok(database) => database,
         Err(_) => return,
@@ -52,7 +51,6 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
     let mut configured_root: Option<PathBuf> = None;
     let mut watched_logs: Option<PathBuf> = None;
     let mut watched_exports: Option<PathBuf> = None;
-    let mut database_signature = file_signature(&signature_path);
     let mut last_safety_poll = SystemTime::UNIX_EPOCH;
     loop {
         let configured = configured_log_directory(&database);
@@ -116,8 +114,7 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
                 }
             }
         }
-        let previous_active_log = active_log.clone();
-        if let Err(error) = poll(
+        let poll_changed = match poll(
             &database,
             &mut active_log,
             &mut offsets,
@@ -126,13 +123,14 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
             &mut export_directory,
             changed_log.as_deref(),
         ) {
-            log(&database, "error", "watcher", &error);
-        }
+            Ok(changed) => changed,
+            Err(error) => {
+                log(&database, "error", "watcher", &error);
+                false
+            }
+        };
         last_safety_poll = SystemTime::now();
-        let active_log_changed = active_log != previous_active_log;
-        let next_signature = file_signature(&signature_path);
-        if active_log_changed || next_signature != database_signature {
-            database_signature = next_signature;
+        if poll_changed {
             revision.fetch_add(1, Ordering::Relaxed);
             let _ = app_handle.emit("data-changed", "watcher");
         }
@@ -152,15 +150,6 @@ fn configured_log_directory(database: &Database) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn file_signature(path: &Path) -> Option<(u64, SystemTime)> {
-    fs::metadata(path).ok().map(|metadata| {
-        (
-            metadata.len(),
-            metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-        )
-    })
-}
-
 fn poll(
     database: &Database,
     active_log: &mut Option<PathBuf>,
@@ -169,7 +158,8 @@ fn poll(
     exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
     watched_export_directory: &mut Option<PathBuf>,
     preferred_log: Option<&Path>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let mut changed = false;
     let connection = database.connect().map_err(|error| error.to_string())?;
     let directory: Option<String> = connection
         .query_row(
@@ -180,11 +170,11 @@ fn poll(
         .ok();
     drop(connection);
     let Some(directory) = directory else {
-        return Ok(());
+        return Ok(false);
     };
     let directory = PathBuf::from(directory);
     if !directory.is_dir() {
-        return Ok(());
+        return Ok(false);
     }
 
     let preferred = preferred_log
@@ -241,8 +231,9 @@ fn poll(
             let size = fs::metadata(&newest).map(|m| m.len()).unwrap_or(0);
             offsets.entry(newest.clone()).or_insert(size);
             *active_log = Some(newest.clone());
+            changed = true;
         }
-        process_log(database, &newest, offsets, last_mob)?;
+        changed |= process_log(database, &newest, offsets, last_mob)?;
     }
     let output = services::output_directory(&directory);
     if watched_export_directory.as_ref() != Some(&output) {
@@ -257,10 +248,11 @@ fn poll(
             "watcher",
             &format!("Watching exports in {}", output.display()),
         );
+        changed = true;
     } else {
-        process_exports(database, &output, exports)?;
+        changed |= process_exports(database, &output, exports)?;
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn process_log(
@@ -268,7 +260,8 @@ fn process_log(
     path: &Path,
     offsets: &mut HashMap<PathBuf, u64>,
     last_mob: &mut HashMap<PathBuf, String>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let before = log_data_signature(database)?;
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let size = file.metadata().map_err(|e| e.to_string())?.len();
     let offset = offsets.entry(path.to_owned()).or_insert(size);
@@ -276,7 +269,7 @@ fn process_log(
         *offset = 0;
     }
     if size == *offset {
-        return Ok(());
+        return Ok(false);
     }
     let mut line_offset = *offset;
     file.seek(SeekFrom::Start(line_offset))
@@ -308,7 +301,21 @@ fn process_log(
         let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[line_offset.to_string()]);
         let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_log_read_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
     }
-    Ok(())
+    Ok(before != log_data_signature(database)?)
+}
+
+fn log_data_signature(database: &Database) -> Result<(i64, i64, i64, i64, i64, String), String> {
+    database.connect().map_err(|error| error.to_string())?.query_row(
+        "SELECT
+            COALESCE((SELECT MAX(id) FROM loot_drops),0),
+            COALESCE((SELECT MAX(id) FROM linked_loot_items),0),
+            COALESCE((SELECT MAX(id) FROM merchant_messages),0),
+            COALESCE((SELECT MAX(id) FROM mobs),0),
+            COALESCE((SELECT MAX(id) FROM application_logs),0),
+            COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),'')",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+    ).map_err(|error| error.to_string())
 }
 
 fn apply_event(
@@ -682,7 +689,8 @@ fn process_exports(
     database: &Database,
     directory: &Path,
     seen: &mut HashMap<PathBuf, (u64, SystemTime)>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let mut changed = false;
     for entry in fs::read_dir(directory)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
@@ -704,6 +712,7 @@ fn process_exports(
         match seen.get(&path) {
             None | Some(_) if seen.get(&path) != Some(&signature) => {
                 seen.insert(path.clone(), signature);
+                changed = true;
                 match data::mutate(
                     database,
                     "inventory.import",
@@ -742,7 +751,7 @@ fn process_exports(
             _ => {}
         }
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn baseline_exports(
@@ -903,7 +912,8 @@ mod tests {
         let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
         fs::write(&log, b"[Mon Aug 03 07:09:18 2026] --You have looted a Tears of Prexus.--\r\n[Mon Aug 03 07:09:19 2026] --Vinkledoo has looted Blue Throne.--\r\n").unwrap();
         let mut offsets = HashMap::from([(log.clone(), 0)]);
-        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        let changed = process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        assert!(changed, "inserted loot must request a UI refresh");
         let connection = database.connect().unwrap();
         let count: i64 = connection
             .query_row("SELECT COUNT(*) FROM loot_drops", [], |row| row.get(0))
