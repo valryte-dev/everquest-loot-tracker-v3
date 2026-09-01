@@ -1,7 +1,8 @@
-use chrono::Local;
+use chrono::{DateTime, Local, Utc};
 use encoding_rs::WINDOWS_1252;
 use reqwest::blocking::Client;
 use rusqlite::{params, OptionalExtension};
+use semver::Version;
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -14,6 +15,138 @@ use tiny_http::{Header, Response, Server};
 use super::data;
 use crate::infrastructure::database::Database;
 
+const LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/valryte-dev/everquest-loot-tracker-v3/releases/latest";
+const RELEASES_URL: &str =
+    "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/latest";
+
+pub fn start_update_check(database_path: PathBuf) {
+    thread::spawn(move || {
+        let Ok(database) = Database::open(database_path) else {
+            return;
+        };
+        if update_check_is_recent(&database) {
+            return;
+        }
+        let _ = check_for_update(&database);
+    });
+}
+
+pub fn check_for_update(database: &Database) -> Result<Value, String> {
+    let checked_at = Utc::now().to_rfc3339();
+    let response = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(err)
+        .and_then(|client| {
+            client
+                .get(LATEST_RELEASE_API)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "EverQuestLootTracker/3")
+                .send()
+                .map_err(err)?
+                .error_for_status()
+                .map_err(err)?
+                .json::<Value>()
+                .map_err(err)
+        });
+
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    match response {
+        Ok(release) => {
+            let tag = release
+                .get("tag_name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
+            let latest = tag.trim_start_matches(['v', 'V']);
+            let available = version_is_newer(latest, env!("CARGO_PKG_VERSION"))?;
+            let release_url = release
+                .get("html_url")
+                .and_then(Value::as_str)
+                .filter(|value| value.starts_with("https://github.com/valryte-dev/"))
+                .unwrap_or(RELEASES_URL);
+            let release_name = release.get("name").and_then(Value::as_str).unwrap_or(tag);
+            for (key, value) in [
+                ("update_latest_version", latest.to_owned()),
+                ("update_release_url", release_url.to_owned()),
+                ("update_release_name", release_name.to_owned()),
+                ("update_checked_at", checked_at),
+                ("update_available", available.to_string()),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        params![key, value],
+                    )
+                    .map_err(sql)?;
+            }
+            connection
+                .execute(
+                    "DELETE FROM app_settings WHERE key='update_check_error'",
+                    [],
+                )
+                .map_err(sql)?;
+            Ok(json!({
+                "available": available,
+                "currentVersion": env!("CARGO_PKG_VERSION"),
+                "latestVersion": latest,
+                "releaseUrl": release_url
+            }))
+        }
+        Err(message) => {
+            for (key, value) in [
+                ("update_checked_at", checked_at),
+                ("update_check_error", message.clone()),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        params![key, value],
+                    )
+                    .map_err(sql)?;
+            }
+            connection
+                .execute(
+                    "INSERT INTO application_logs(level,area,message) VALUES('WARN','updates',?)",
+                    [&message],
+                )
+                .map_err(sql)?;
+            Ok(json!({"available": false, "error": message}))
+        }
+    }
+}
+
+fn update_check_is_recent(database: &Database) -> bool {
+    let Ok(connection) = database.connect() else {
+        return false;
+    };
+    let checked: Option<String> = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='update_checked_at'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    checked
+        .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+        .is_some_and(|value| {
+            Utc::now()
+                .signed_duration_since(value.with_timezone(&Utc))
+                .num_hours()
+                < 12
+        })
+}
+
+fn version_is_newer(candidate: &str, current: &str) -> Result<bool, String> {
+    let candidate = Version::parse(candidate)
+        .map_err(|error| format!("GitHub returned an invalid release version: {error}"))?;
+    let current = Version::parse(current)
+        .map_err(|error| format!("The installed application version is invalid: {error}"))?;
+    Ok(candidate > current)
+}
 pub fn refresh_market(database: &Database) -> Result<Value, String> {
     let payload: Value = Client::builder()
         .timeout(Duration::from_secs(45))
@@ -470,8 +603,16 @@ fn sql(e: rusqlite::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auction_bytes, output_directory, write_social};
+    use super::{auction_bytes, output_directory, version_is_newer, write_social};
     use std::path::Path;
+
+    #[test]
+    fn release_versions_are_compared_semantically() {
+        assert!(version_is_newer("3.8.0", "3.7.0").unwrap());
+        assert!(version_is_newer("4.0.0-beta.1", "3.7.0").unwrap());
+        assert!(!version_is_newer("3.7.0", "3.7.0").unwrap());
+        assert!(!version_is_newer("3.6.9", "3.7.0").unwrap());
+    }
 
     #[test]
     fn exports_are_watched_beside_the_logs_folder() {

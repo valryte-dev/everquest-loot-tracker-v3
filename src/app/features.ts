@@ -15,7 +15,7 @@ export const FEATURES:FeatureDefinition[] = [
  {key:"gems",label:"Velious Armor Gems",shortLabel:"Armor Gems",icon:"◆",phase:2,group:"Roster",description:"Special Velious armor gems held across the entire character roster."},
  {key:"imports",label:"Import Center",shortLabel:"Import Center",icon:"⇩",phase:2,group:"Data",description:"Drop character exports, review import results, and publish selected files to P99 Planner."},
  {key:"items",label:"Master Items",shortLabel:"Master Items",icon:"▦",phase:2,group:"Data",description:"Item IDs, PigParse 30-day WTS values and protected manual corrections."},
- {key:"system",label:"System",shortLabel:"System",icon:"⚙",phase:1,group:"Application",description:"Paths, watchers, planner imports, aliases, themes, migration and backups."},
+ {key:"system",label:"System",shortLabel:"System",icon:"⚙",phase:1,group:"Application",description:"Application updates, paths, watchers, aliases, themes, migration and database backups."},
  {key:"logs",label:"Application Logs",shortLabel:"Logs",icon:"≡",phase:1,group:"Application",description:"Rolling structured diagnostics with levels, search, pause, copy and export."},
  {key:"help",label:"Help",shortLabel:"Help",icon:"?",phase:4,group:"Application",description:"Brief guides for every workflow in the application."},
  {key:"changes",label:"Change Log",shortLabel:"Change Log",icon:"↻",phase:4,group:"Application",description:"Release history and noteworthy behavior changes."},

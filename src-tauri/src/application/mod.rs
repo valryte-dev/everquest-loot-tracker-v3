@@ -57,6 +57,7 @@ impl AppState {
     pub fn start_runtime(&self) {
         self.spell_catalog.start_if_needed();
         runtime::start(self.database_path.clone());
+        services::start_update_check(self.database_path.clone());
         services::start_web(self.database_path.clone());
     }
 }
@@ -89,6 +90,7 @@ pub fn mutate_app(
     request: MutationRequest,
 ) -> Result<Value, String> {
     match request.action.as_str() {
+        "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
         "planner.upload" => services::upload_exports(&state.database),
         "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
