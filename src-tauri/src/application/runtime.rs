@@ -4,6 +4,7 @@ use crate::{
     domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
 };
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rusqlite::params;
 use serde_json::json;
 use std::{
@@ -13,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        mpsc, Arc,
     },
     thread,
     time::{Duration, SystemTime},
@@ -33,13 +34,78 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
         Ok(database) => database,
         Err(_) => return,
     };
+    let (event_tx, event_rx) = mpsc::channel();
+    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |event| {
+        let _ = event_tx.send(event);
+    }) {
+        Ok(watcher) => watcher,
+        Err(error) => {
+            log(&database, "error", "watcher", &error.to_string());
+            return;
+        }
+    };
     let mut active_log: Option<PathBuf> = None;
     let mut offsets: HashMap<PathBuf, u64> = HashMap::new();
     let mut last_mob: HashMap<PathBuf, String> = HashMap::new();
     let mut export_signatures: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
     let mut export_directory: Option<PathBuf> = None;
+    let mut configured_root: Option<PathBuf> = None;
+    let mut watched_logs: Option<PathBuf> = None;
+    let mut watched_exports: Option<PathBuf> = None;
     let mut database_signature = file_signature(&signature_path);
+    let mut last_safety_poll = SystemTime::UNIX_EPOCH;
     loop {
+        let configured = configured_log_directory(&database);
+        let mut force_poll = false;
+        let needs_reconfigure = configured != configured_root
+            || configured
+                .as_ref()
+                .is_some_and(|path| path.is_dir() && watched_logs.is_none())
+            || configured.as_ref().is_some_and(|path| {
+                services::output_directory(path).is_dir() && watched_exports.is_none()
+            });
+        if needs_reconfigure {
+            configured_root = configured.clone();
+            if let Some(path) = watched_logs.take() {
+                let _ = watcher.unwatch(&path);
+            }
+            if let Some(path) = watched_exports.take() {
+                let _ = watcher.unwatch(&path);
+            }
+            if let Some(path) = configured.filter(|path| path.is_dir()) {
+                if watcher.watch(&path, RecursiveMode::NonRecursive).is_ok() {
+                    watched_logs = Some(path.clone());
+                }
+                let output = services::output_directory(&path);
+                if output.is_dir() && watcher.watch(&output, RecursiveMode::NonRecursive).is_ok() {
+                    watched_exports = Some(output);
+                }
+            }
+            force_poll = true;
+        }
+        let event_received = if force_poll {
+            false
+        } else {
+            match event_rx.recv_timeout(Duration::from_secs(2)) {
+                Ok(Ok(_)) => true,
+                Ok(Err(error)) => {
+                    log(&database, "error", "watcher", &error.to_string());
+                    false
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => false,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        };
+        let safety_due = last_safety_poll
+            .elapsed()
+            .map_or(true, |elapsed| elapsed >= Duration::from_secs(30));
+        if !(force_poll || event_received || safety_due) {
+            continue;
+        }
+        if event_received {
+            thread::sleep(Duration::from_millis(60));
+            while event_rx.try_recv().is_ok() {}
+        }
         if let Err(error) = poll(
             &database,
             &mut active_log,
@@ -50,14 +116,27 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
         ) {
             log(&database, "error", "watcher", &error);
         }
+        last_safety_poll = SystemTime::now();
         let next_signature = file_signature(&signature_path);
         if next_signature != database_signature {
             database_signature = next_signature;
             revision.fetch_add(1, Ordering::Relaxed);
             let _ = app_handle.emit("data-changed", "watcher");
         }
-        thread::sleep(Duration::from_millis(750));
     }
+}
+
+fn configured_log_directory(database: &Database) -> Option<PathBuf> {
+    database
+        .connect()
+        .ok()?
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='logs_directory'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .map(PathBuf::from)
 }
 
 fn file_signature(path: &Path) -> Option<(u64, SystemTime)> {
