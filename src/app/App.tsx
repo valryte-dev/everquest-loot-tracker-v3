@@ -1,4 +1,5 @@
-import {useCallback,useEffect,useState,type ReactNode} from "react";
+import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
+import {listen} from "@tauri-apps/api/event";
 import {FEATURE_GROUPS,FEATURES,type FeatureKey} from "./features";
 import {bootstrapStatus,getSnapshot,mutate} from "../shared/backend";
 import type {AppSnapshot,BootstrapStatus,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup} from "../shared/contracts";
@@ -21,11 +22,12 @@ const empty:AppSnapshot={settings:{},members:[],loot:[],splits:[],tracked:[],lin
 
 export function App(){
  const[page,setPage]=useState(pageFromHash);const[data,setData]=useState<AppSnapshot>(empty);const[status,setStatus]=useState<BootstrapStatus|null>(null);const[loading,setLoading]=useState(true);const[error,setError]=useState("");const[busy,setBusy]=useState(false);
+ const refreshTimer=useRef<number|undefined>(undefined);
  const refresh=useCallback(async(silent=false)=>{try{const value=await getSnapshot();setData(value);setError("")}catch(e){setError(String(e))}finally{if(!silent)setLoading(false)}},[]);
- useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));refresh();const timer=setInterval(()=>{if(!document.querySelector(".modal"))refresh(true)},2500);return()=>{removeEventListener("hashchange",hash);clearInterval(timer)}},[refresh]);
+ useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));refresh();let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>{if(!document.querySelector(".modal"))refresh(true)},100)}).then(value=>unlisten=value);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);unlisten?.()}},[refresh]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings.theme||"midnight"},[data.settings.theme]);
  useEffect(()=>{window.scrollTo({top:0,left:0,behavior:"auto"})},[page]);
- const run=async(action:string,payload:Record<string,unknown>={})=>{setBusy(true);try{const result=await mutate(action,payload);await refresh(true);return result}catch(e){setError(String(e));return null}finally{setBusy(false)}};
+ const run=async(action:string,payload:Record<string,unknown>={})=>{setBusy(true);try{const result=await mutate(action,payload);return result}catch(e){setError(String(e));return null}finally{setBusy(false)}};
  const feature=FEATURES.find(f=>f.key===page)!;
  return <div className="app-shell">
   <aside className="rail"><div className="brand"><span className="brand-mark">EQ</span><span><strong>Loot Tracker</strong><small>Cross-platform V3</small></span></div><nav>{FEATURE_GROUPS.map(group=><section className="nav-group" key={group}><h2>{group}</h2>{FEATURES.filter(feature=>feature.group===group).map(feature=><a key={feature.key} href={`#/${feature.key}`} className={page===feature.key?"active":""}><i>{feature.icon}</i><span>{feature.shortLabel}</span></a>)}</section>)}</nav></aside>

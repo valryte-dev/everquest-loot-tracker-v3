@@ -10,6 +10,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tauri::Emitter;
 use tiny_http::{Header, Response, Server};
 
 use super::data;
@@ -20,7 +21,7 @@ const LATEST_RELEASE_API: &str =
 const RELEASES_URL: &str =
     "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/latest";
 
-pub fn start_update_check(database_path: PathBuf) {
+pub fn start_update_check(database_path: PathBuf, app_handle: tauri::AppHandle) {
     thread::spawn(move || {
         let Ok(database) = Database::open(database_path) else {
             return;
@@ -28,7 +29,9 @@ pub fn start_update_check(database_path: PathBuf) {
         if update_check_is_recent(&database) {
             return;
         }
-        let _ = check_for_update(&database);
+        if check_for_update(&database).is_ok() {
+            let _ = app_handle.emit("data-changed", "update.check");
+        }
     });
 }
 

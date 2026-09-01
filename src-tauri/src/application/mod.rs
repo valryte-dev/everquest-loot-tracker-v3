@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
+use tauri::Emitter;
 
 use crate::domain::{
     inventory::{parse_inventory, InventoryItem},
@@ -54,10 +55,10 @@ impl AppState {
         })
     }
 
-    pub fn start_runtime(&self) {
+    pub fn start_runtime(&self, app_handle: tauri::AppHandle) {
         self.spell_catalog.start_if_needed();
-        runtime::start(self.database_path.clone());
-        services::start_update_check(self.database_path.clone());
+        runtime::start(self.database_path.clone(), app_handle.clone());
+        services::start_update_check(self.database_path.clone(), app_handle);
         services::start_web(self.database_path.clone());
     }
 }
@@ -87,9 +88,10 @@ pub fn app_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> 
 #[tauri::command]
 pub fn mutate_app(
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     request: MutationRequest,
 ) -> Result<Value, String> {
-    match request.action.as_str() {
+    let result = match request.action.as_str() {
         "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
         "planner.upload" => services::upload_exports(&state.database),
@@ -112,7 +114,11 @@ pub fn mutate_app(
                 .ok_or("path is required")?,
         ),
         _ => data::mutate(&state.database, &request.action, &request.payload),
+    };
+    if result.is_ok() {
+        let _ = app_handle.emit("data-changed", request.action);
     }
+    result
 }
 
 #[tauri::command]

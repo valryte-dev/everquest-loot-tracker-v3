@@ -14,15 +14,17 @@ use std::{
     thread,
     time::{Duration, SystemTime},
 };
+use tauri::Emitter;
 
-pub fn start(database_path: PathBuf) {
+pub fn start(database_path: PathBuf, app_handle: tauri::AppHandle) {
     thread::Builder::new()
         .name("eq-runtime-watcher".into())
-        .spawn(move || watch(database_path))
+        .spawn(move || watch(database_path, app_handle))
         .expect("runtime watcher thread must start");
 }
 
-fn watch(database_path: PathBuf) {
+fn watch(database_path: PathBuf, app_handle: tauri::AppHandle) {
+    let signature_path = database_path.with_extension("db-wal");
     let database = match Database::open(database_path) {
         Ok(database) => database,
         Err(_) => return,
@@ -32,6 +34,7 @@ fn watch(database_path: PathBuf) {
     let mut last_mob: HashMap<PathBuf, String> = HashMap::new();
     let mut export_signatures: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
     let mut export_directory: Option<PathBuf> = None;
+    let mut database_signature = file_signature(&signature_path);
     loop {
         if let Err(error) = poll(
             &database,
@@ -43,8 +46,22 @@ fn watch(database_path: PathBuf) {
         ) {
             log(&database, "error", "watcher", &error);
         }
+        let next_signature = file_signature(&signature_path);
+        if next_signature != database_signature {
+            database_signature = next_signature;
+            let _ = app_handle.emit("data-changed", "watcher");
+        }
         thread::sleep(Duration::from_millis(750));
     }
+}
+
+fn file_signature(path: &Path) -> Option<(u64, SystemTime)> {
+    fs::metadata(path).ok().map(|metadata| {
+        (
+            metadata.len(),
+            metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+        )
+    })
 }
 
 fn poll(
