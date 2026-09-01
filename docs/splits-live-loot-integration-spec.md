@@ -470,3 +470,68 @@ This specification reflects these V3 files at release `v3.3.0`:
 - `src/shared/contracts.ts` — frontend record contracts.
 
 If deployed code and this document disagree, the deployed version's code is authoritative. Preserve the deletion invariant even if the target system uses different table names or storage technology.
+
+
+## 17. Current three-phase and individual-payout lifecycle
+
+This section supersedes the item-wide completion language in sections 12 through 14.
+
+Split tracking now has three explicit phases:
+
+1. **Item looted and held**  the durable active split owns custody, participants, and an estimated value.
+2. **Item sold, payouts pending**  the sale has an actual value, but one or more canonical participants have not been paid.
+3. **Payouts completed**  every canonical participant has an individual payment record.
+
+Selling an item creates the completed sale snapshot but initializes payout status to pending. Payment state is stored per original participant:
+
+~~~sql
+CREATE TABLE completed_split_payouts (
+    completed_split_item_id INTEGER NOT NULL
+        REFERENCES completed_split_items(id) ON DELETE CASCADE,
+    member_name TEXT NOT NULL COLLATE NOCASE,
+    paid_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(completed_split_item_id, member_name)
+);
+~~~
+
+The effective per-person share remains:
+
+~~~text
+canonicalParticipants = unique(participants.map(resolveAlias))
+sharePp = floor(saleValuePp / max(1, canonicalParticipants.length))
+~~~
+
+Paying a canonical person must insert payment rows for every stored participant name that resolves to that person. It must not insert payment rows for any other person. This handles a snapshot that contains multiple toons belonging to one person without counting or paying that person twice.
+
+Recommended commands:
+
+~~~json
+{
+  "action": "history.payout.member.complete",
+  "payload": {
+    "id": 123,
+    "memberName": "CanonicalPlayer"
+  }
+}
+~~~
+
+~~~json
+{
+  "action": "history.payout.member.reopen",
+  "payload": {
+    "id": 123,
+    "memberName": "CanonicalPlayer"
+  }
+}
+~~~
+
+After every individual complete or reopen operation, recompute the parent sale state:
+
+- If any stored participant lacks a payment row, keep payout status pending and the sale in Phase 2.
+- When every participant has a payment row, set payout status completed, record the overall paid time, and move the sale to Phase 3.
+- Reopening one participant deletes only that canonical person's matching payment rows, clears the overall paid time, and moves the sale back to Phase 2.
+- Consumed items are terminal and bypass individual cash payouts.
+
+The Phase 2 UI must not expose an item-wide "mark all payouts complete" action. It should show each canonical participant with an independent Paid/Pending state and an icon action for that participant. Player cards should total only currently unpaid shares. A sale may therefore contribute to one player's paid history and another player's outstanding balance at the same time.
+
+Existing item-wide completed sales are migrated by creating an individual payment record for every stored participant, using the prior overall payment/completion timestamp. Existing sold records that were not completed remain pending.

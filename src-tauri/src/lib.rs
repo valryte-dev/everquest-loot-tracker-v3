@@ -12,6 +12,7 @@ pub fn run() {
     let state = AppState::initialize().expect("V3 application state must initialize");
     state.start_runtime();
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![

@@ -1,4 +1,5 @@
 import {useMemo, useState, type ButtonHTMLAttributes, type ReactNode} from "react";
+import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {isVeliousArmorGem} from "./gems/catalog";
 
 export type Column<T> = {key:string; label:string; value:(row:T)=>unknown; render?:(row:T)=>ReactNode; className?:string};
@@ -42,5 +43,10 @@ export function DataTable<T>({rows, columns, rowKey, actions, selected, onSelect
 
 export function Modal({title,children,onClose,footer}:{title:string;children:ReactNode;onClose:()=>void;footer?:ReactNode}){return <div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><section className="modal" role="dialog" aria-modal="true"><header><h2>{title}</h2><button onClick={onClose} aria-label="Close">×</button></header><div className="modal-body">{children}</div>{footer&&<footer>{footer}</footer>}</section></div>}
 export const Field=({label,children}:{label:string;children:ReactNode})=><label className="field"><span>{label}</span>{children}</label>;
+export function PathPicker({value,onChange,kind="file",placeholder="",filters}:{value:string;onChange:(value:string)=>void;kind?:"file"|"folder";placeholder?:string;filters?:{name:string;extensions:string[]}[]}){
+ const[browsing,setBrowsing]=useState(false);
+ const browse=async()=>{setBrowsing(true);try{const selected=await openDialog({directory:kind==="folder",multiple:false,filters:kind==="file"?filters:undefined});if(typeof selected==="string")onChange(selected)}catch(error){console.error("Could not open native path browser",error)}finally{setBrowsing(false)}};
+ return <div className="path-picker"><input value={value} onChange={event=>onChange(event.target.value)} placeholder={placeholder}/><button type="button" onClick={browse} disabled={browsing}>{browsing?"Opening...":"Browse..."}</button></div>;
+}
 export const money=(value?:number|null)=>value==null?"—":`${value.toLocaleString()} pp`;
 export const when=(value:string)=>{const date=new Date(value);return Number.isNaN(date.valueOf())?value:date.toLocaleString()};

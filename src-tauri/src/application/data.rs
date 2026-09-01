@@ -25,6 +25,17 @@ fn names(value: Option<String>) -> Vec<String> {
         .collect()
 }
 
+fn payouts(value: Option<String>) -> Vec<Value> {
+    value
+        .unwrap_or_default()
+        .split('\u{1f}')
+        .filter_map(|entry| {
+            let (name, paid_at) = entry.split_once('\u{1e}')?;
+            Some(json!({"name":name,"paidAt":paid_at}))
+        })
+        .collect()
+}
+
 pub fn snapshot(database: &Database) -> Result<Value, String> {
     let connection = database.connect().map_err(|error| error.to_string())?;
     let mut settings = Map::new();
@@ -108,13 +119,16 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
 
     let history = query_values(
         &connection,
-        "SELECT h.id,h.item_name,h.mob_name,h.looter_name,h.value_pp,h.disposition,h.note,h.completed_at,
-                (SELECT GROUP_CONCAT(member_name,char(31)) FROM completed_split_members x WHERE x.completed_split_item_id=h.id)
+        "SELECT h.id,h.item_name,h.mob_name,h.looter_name,h.value_pp,h.disposition,h.note,h.completed_at,h.payout_status,h.paid_at,
+                (SELECT GROUP_CONCAT(member_name,char(31)) FROM completed_split_members x WHERE x.completed_split_item_id=h.id),
+                (SELECT GROUP_CONCAT(member_name||char(30)||paid_at,char(31)) FROM completed_split_payouts p WHERE p.completed_split_item_id=h.id)
          FROM completed_split_items h ORDER BY h.completed_at DESC,h.id DESC LIMIT 2000",
         |row| Ok(json!({
             "id":row.get::<_,i64>(0)?,"itemName":row.get::<_,String>(1)?,"mobName":row.get::<_,Option<String>>(2)?,
             "looterName":row.get::<_,Option<String>>(3)?,"valuePp":row.get::<_,i64>(4)?,"disposition":row.get::<_,String>(5)?,
-            "note":row.get::<_,String>(6)?,"completedAt":row.get::<_,String>(7)?,"attendees":names(row.get::<_,Option<String>>(8)?)
+            "note":row.get::<_,String>(6)?,"completedAt":row.get::<_,String>(7)?,"payoutStatus":row.get::<_,String>(8)?,
+            "paidAt":row.get::<_,Option<String>>(9)?,"attendees":names(row.get::<_,Option<String>>(10)?),
+            "payouts":payouts(row.get::<_,Option<String>>(11)?)
         })),
     )?;
 
@@ -244,6 +258,10 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
          market_candidates AS (
              SELECT b.id AS linked_id,v.*,
                     CASE
+                        WHEN v.item_name=b.item_name COLLATE NOCASE THEN 0
+                        ELSE 1
+                    END AS match_priority,
+                    CASE
                         WHEN v.transaction_type=0 AND v.average_30d_pp>0 THEN 1
                         WHEN v.transaction_type=0 AND v.average_60d_pp>0 THEN 2
                         WHEN v.transaction_type=0 AND v.average_90d_pp>0 THEN 3
@@ -259,14 +277,14 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
              FROM linked_base b
              JOIN item_market_values v
                ON v.server='Green' COLLATE NOCASE
-              AND (v.source_item_id=b.resolved_item_id
-                   OR (b.resolved_item_id IS NULL AND v.item_name=b.item_name COLLATE NOCASE))
+              AND (v.item_name=b.item_name COLLATE NOCASE
+                   OR v.source_item_id=b.resolved_item_id)
          ),
          ranked_market AS (
              SELECT c.*,
                     ROW_NUMBER() OVER (
                         PARTITION BY c.linked_id
-                        ORDER BY c.price_priority,c.count_30d DESC,c.last_seen DESC
+                        ORDER BY c.match_priority,c.price_priority,c.count_30d DESC,c.last_seen DESC
                     ) AS price_rank
              FROM market_candidates c
              WHERE c.price_priority<99
@@ -513,17 +531,36 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         "split.delete" => delete_split(&mut connection, required(payload, "key")?)?,
         "split.complete" => complete_split(&mut connection, payload)?,
         "history.save" => {
+            let disposition = required(payload, "disposition")?;
             connection
                 .execute(
-                    "UPDATE completed_split_items SET disposition=?,value_pp=?,note=? WHERE id=?",
+                    "UPDATE completed_split_items SET disposition=?,value_pp=?,note=?,payout_status=CASE WHEN ?='consumed' THEN 'completed' WHEN disposition='consumed' AND ?='sold' THEN 'pending' ELSE payout_status END,paid_at=CASE WHEN ?='consumed' THEN COALESCE(paid_at,CURRENT_TIMESTAMP) WHEN disposition='consumed' AND ?='sold' THEN NULL ELSE paid_at END WHERE id=?",
                     params![
-                        required(payload, "disposition")?,
+                        disposition,
                         integer(payload, "valuePp")?,
                         payload.get("note").and_then(Value::as_str).unwrap_or(""),
+                        disposition,
+                        disposition,
+                        disposition,
+                        disposition,
                         integer(payload, "id")?
                     ],
                 )
                 .map_err(err)?;
+            if disposition == "consumed" {
+                connection
+                    .execute(
+                        "DELETE FROM completed_split_payouts WHERE completed_split_item_id=?",
+                        [integer(payload, "id")?],
+                    )
+                    .map_err(err)?;
+            }
+        }
+        "history.payout.member.complete" => {
+            set_split_member_payout(&mut connection, payload, true)?;
+        }
+        "history.payout.member.reopen" => {
+            set_split_member_payout(&mut connection, payload, false)?;
         }
         "history.delete" => {
             for id in integers(payload, "ids") {
@@ -906,6 +943,60 @@ fn delete_split(connection: &mut rusqlite::Connection, key: String) -> Result<()
     Ok(())
 }
 
+fn set_split_member_payout(
+    connection: &mut rusqlite::Connection,
+    payload: &Value,
+    paid: bool,
+) -> Result<(), String> {
+    let id = integer(payload, "id")?;
+    let canonical = required(payload, "memberName")?;
+    if paid {
+        connection
+            .execute(
+                "INSERT OR REPLACE INTO completed_split_payouts(completed_split_item_id,member_name,paid_at)
+                 SELECT m.completed_split_item_id,m.member_name,CURRENT_TIMESTAMP
+                 FROM completed_split_members m
+                 JOIN completed_split_items h ON h.id=m.completed_split_item_id
+                 WHERE m.completed_split_item_id=? AND h.disposition='sold'
+                   AND COALESCE((SELECT canonical_name FROM character_aliases a WHERE a.alias_name=m.member_name COLLATE NOCASE),m.member_name)=? COLLATE NOCASE",
+                params![id, canonical],
+            )
+            .map_err(err)?;
+    } else {
+        connection
+            .execute(
+                "DELETE FROM completed_split_payouts
+                 WHERE completed_split_item_id=? AND member_name IN (
+                   SELECT m.member_name FROM completed_split_members m
+                   WHERE m.completed_split_item_id=?
+                     AND COALESCE((SELECT canonical_name FROM character_aliases a WHERE a.alias_name=m.member_name COLLATE NOCASE),m.member_name)=? COLLATE NOCASE
+                 )",
+                params![id, id, canonical],
+            )
+            .map_err(err)?;
+    }
+    let unpaid: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM completed_split_members m
+             LEFT JOIN completed_split_payouts p ON p.completed_split_item_id=m.completed_split_item_id AND p.member_name=m.member_name COLLATE NOCASE
+             WHERE m.completed_split_item_id=? AND p.member_name IS NULL",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(err)?;
+    let all_paid = unpaid == 0;
+    connection
+        .execute(
+            "UPDATE completed_split_items
+             SET payout_status=CASE WHEN ? THEN 'completed' ELSE 'pending' END,
+                 paid_at=CASE WHEN ? THEN COALESCE(paid_at,CURRENT_TIMESTAMP) ELSE NULL END
+             WHERE id=? AND disposition='sold'",
+            params![all_paid, all_paid, id],
+        )
+        .map_err(err)?;
+    Ok(())
+}
+
 fn complete_split(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
     let key = required(payload, "key")?;
     let (table, id_col, members_table, fk, id) = if let Some(v) = key.strip_prefix("manual:") {
@@ -938,7 +1029,7 @@ fn complete_split(connection: &mut rusqlite::Connection, payload: &Value) -> Res
     let row: (String, Option<String>, Option<String>) = connection
         .query_row(&sql, [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .map_err(err)?;
-    connection.execute("INSERT INTO completed_split_items(item_name,mob_name,looter_name,value_pp,disposition,note) VALUES(?,?,?,?,?,?)",params![row.0,row.2,row.1,integer(payload,"valuePp")?,required(payload,"disposition")?,payload.get("note").and_then(Value::as_str).unwrap_or("")]).map_err(err)?;
+    connection.execute("INSERT INTO completed_split_items(item_name,mob_name,looter_name,value_pp,disposition,note,payout_status,paid_at) VALUES(?,?,?,?,?,?,CASE WHEN ?='consumed' THEN 'completed' ELSE 'pending' END,CASE WHEN ?='consumed' THEN CURRENT_TIMESTAMP ELSE NULL END)",params![row.0,row.2,row.1,integer(payload,"valuePp")?,required(payload,"disposition")?,payload.get("note").and_then(Value::as_str).unwrap_or(""),required(payload,"disposition")?,required(payload,"disposition")?]).map_err(err)?;
     let completed = connection.last_insert_rowid();
     let member_sql = if table.starts_with("manual") {
         format!("SELECT member_name FROM {members_table} WHERE {fk}=?")
@@ -1373,6 +1464,42 @@ mod tests {
     }
 
     #[test]
+    fn linked_loot_snapshot_prefers_exact_name_when_inventory_and_market_ids_differ() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source) VALUES(10383,'Rod of Oblations','inventory')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,average_30d_pp,count_30d,fetched_at)
+                 VALUES('Green',15549,0,'Rod of Oblations','Today',135,40,CURRENT_TIMESTAMP)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO linked_loot_items(happened_at,channel,speaker_name,item_name,raw_line,source_file,source_offset,link_index)
+                 VALUES('2026-08-29 13:21:50','group','Youngman','Rod of Oblations','raw','eqlog_Youngman_P1999Green.txt',4000,0)",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        let linked = &value["linkedLoot"][0];
+        assert_eq!(linked["itemId"], 10383);
+        assert_eq!(linked["valuePp"], 135);
+        assert_eq!(linked["count30d"], 40);
+        assert_eq!(linked["valueBasis"], "30-day WTS");
+    }
+
+    #[test]
     fn linked_loot_snapshot_associates_price_by_master_id_across_name_variants() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1545,6 +1672,75 @@ mod tests {
         assert_eq!(tracked["mobName"], "a mortiferous golem");
         assert_eq!(tracked["looterName"], "Youngman");
         assert_eq!(tracked["attendees"], json!(["Posed", "Youngman"]));
+    }
+
+    #[test]
+    fn split_payouts_complete_independently_and_respect_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO completed_split_items(item_name,value_pp,disposition,note,payout_status) VALUES('Shared Item',300,'sold','','pending')",
+            [],
+        ).unwrap();
+        let item_id = connection.last_insert_rowid();
+        connection.execute(
+            "INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'Main'),(?,'Alt'),(?,'Friend')",
+            params![item_id,item_id,item_id],
+        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO character_aliases(alias_name,canonical_name) VALUES('Alt','Main')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.payout.member.complete",
+            &json!({"id":item_id,"memberName":"Main"}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let paid_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM completed_split_payouts WHERE completed_split_item_id=?",
+                [item_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let status: String = connection
+            .query_row(
+                "SELECT payout_status FROM completed_split_items WHERE id=?",
+                [item_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((paid_count, status), (2, "pending".to_owned()));
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.payout.member.complete",
+            &json!({"id":item_id,"memberName":"Friend"}),
+        )
+        .unwrap();
+        let value = snapshot(&database).unwrap();
+        assert_eq!(value["history"][0]["payoutStatus"], "completed");
+        assert_eq!(value["history"][0]["payouts"].as_array().unwrap().len(), 3);
+
+        mutate(
+            &database,
+            "history.payout.member.reopen",
+            &json!({"id":item_id,"memberName":"Main"}),
+        )
+        .unwrap();
+        let value = snapshot(&database).unwrap();
+        assert_eq!(value["history"][0]["payoutStatus"], "pending");
+        assert_eq!(value["history"][0]["payouts"].as_array().unwrap().len(), 1);
+        assert_eq!(value["history"][0]["payouts"][0]["name"], "Friend");
     }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {

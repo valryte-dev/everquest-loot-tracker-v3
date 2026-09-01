@@ -6,7 +6,7 @@ export const FEATURES:FeatureDefinition[] = [
  {key:"live",label:"Live Loot",shortLabel:"Live Loot",icon:"◇",phase:1,group:"Loot",description:"Active log, current group, mob correlation, values, sharing and bulk cleanup."},
  {key:"linked",label:"Linked Loot",shortLabel:"Linked Loot",icon:"↗",phase:2,group:"Loot",description:"Items linked in group and guild chat with speaker, channel, time and current 30-day WTS value."},
  {key:"tracked",label:"Tracked Loot",shortLabel:"Tracked Loot",icon:"◎",phase:2,group:"Loot",description:"Important loot snapshots retained independently from the temporary live-loot list."},
- {key:"splits",label:"Splits & Payouts",shortLabel:"Splits",icon:"÷",phase:2,group:"Loot",description:"Active splits, aliases, holders, proceeds and sold or consumed history."},
+ {key:"splits",label:"Splits & Payouts",shortLabel:"Splits",icon:"÷",phase:2,group:"Loot",description:"Track held loot, sold items awaiting payout, completed payouts, aliases, holders and consumed history."},
  {key:"compounds",label:"Compound Projects",shortLabel:"Compounds",icon:"⬡",phase:3,group:"Loot",description:"Recipes, reusable templates, contributions, readiness and estimated value."},
  {key:"merchant",label:"Merchant Watch",shortLabel:"Merchant",icon:"¤",phase:2,group:"Trading",description:"Opt-in auction monitoring for WTS offers, WTB requests, direct tells and PigParse comparisons."},
  {key:"wts",label:"Want to Sell",shortLabel:"WTS Groups",icon:"$",phase:3,group:"Trading",description:"Character-scoped sale groups and EverQuest Page 10 social export."},
