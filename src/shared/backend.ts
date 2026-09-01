@@ -6,6 +6,7 @@ const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enab
 const desktop=()=>"__TAURI_INTERNALS__" in window;
 export const bootstrapStatus=()=>desktop()?invoke<BootstrapStatus>("bootstrap_status"):Promise.resolve(previewStatus);
 export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promise.resolve(previewSnapshot);
+export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_page_snapshot",{page}):Promise.resolve(previewSnapshot);
 export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;
 export const getSpellInfo=(spellName:string)=>desktop()?invoke<SpellInfo>("spell_info",{spellName}):Promise.reject(new Error("Spell information is available in the desktop app."));

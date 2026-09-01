@@ -102,6 +102,11 @@ pub fn app_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> 
 }
 
 #[tauri::command]
+pub fn app_page_snapshot(state: tauri::State<'_, AppState>, page: String) -> Result<Value, String> {
+    data::page_snapshot(&state.database, &page)
+}
+
+#[tauri::command]
 pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
     state.revision.load(Ordering::Relaxed)
 }

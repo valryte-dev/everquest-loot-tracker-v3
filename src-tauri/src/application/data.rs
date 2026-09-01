@@ -344,6 +344,57 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     )
 }
 
+pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
+    let mut value = snapshot(database)?;
+    let Some(root) = value.as_object_mut() else {
+        return Ok(value);
+    };
+    let keep: &[&str] = match page {
+        "live" => &["loot", "items", "mobs"],
+        "linked" => &["linkedLoot"],
+        "tracked" => &["tracked"],
+        "merchant" => &["merchant"],
+        "splits" => &["splits", "history", "aliases", "items", "mobs"],
+        "compounds" => &["compound", "items", "inventory", "members"],
+        "characters" => &["inventory", "spells", "items", "compound"],
+        "spells" => &["spells", "items"],
+        "gems" => &["inventory"],
+        "imports" => &["imports"],
+        "wts" => &["wts", "inventory", "items"],
+        "items" => &["items"],
+        "system" => &["aliases", "imports"],
+        "logs" => &["logs"],
+        _ => &[],
+    };
+    for key in [
+        "loot",
+        "splits",
+        "tracked",
+        "linkedLoot",
+        "history",
+        "items",
+        "inventory",
+        "spells",
+        "wts",
+        "aliases",
+        "mobs",
+        "logs",
+        "imports",
+        "merchant",
+    ] {
+        if key != "members" && !keep.contains(&key) {
+            root.insert(key.into(), json!([]));
+        }
+    }
+    if !keep.contains(&"compound") {
+        root.insert(
+            "compound".into(),
+            json!({"projects":[],"templates":[],"activeId":null}),
+        );
+    }
+    Ok(value)
+}
+
 fn normalize_compound(mut workspace: Value) -> Value {
     if !workspace.is_object() {
         return json!({"projects":[],"templates":[],"activeId":null});
