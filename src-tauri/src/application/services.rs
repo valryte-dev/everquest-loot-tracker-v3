@@ -7,6 +7,10 @@ use serde_json::{json, Value};
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     thread,
     time::Duration,
 };
@@ -21,7 +25,11 @@ const LATEST_RELEASE_API: &str =
 const RELEASES_URL: &str =
     "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/latest";
 
-pub fn start_update_check(database_path: PathBuf, app_handle: tauri::AppHandle) {
+pub fn start_update_check(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+) {
     thread::spawn(move || {
         let Ok(database) = Database::open(database_path) else {
             return;
@@ -30,6 +38,7 @@ pub fn start_update_check(database_path: PathBuf, app_handle: tauri::AppHandle) 
             return;
         }
         if check_for_update(&database).is_ok() {
+            revision.fetch_add(1, Ordering::Relaxed);
             let _ = app_handle.emit("data-changed", "update.check");
         }
     });

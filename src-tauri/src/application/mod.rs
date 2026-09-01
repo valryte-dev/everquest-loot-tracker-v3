@@ -5,7 +5,13 @@ mod services;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 use tauri::Emitter;
 
 use crate::domain::{
@@ -24,6 +30,7 @@ pub struct AppState {
     schema_version: i64,
     legacy_database: bool,
     spell_catalog: SpellCatalog,
+    revision: Arc<AtomicU64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,13 +59,22 @@ impl AppState {
             schema_version,
             legacy_database,
             spell_catalog,
+            revision: Arc::new(AtomicU64::new(1)),
         })
     }
 
     pub fn start_runtime(&self, app_handle: tauri::AppHandle) {
         self.spell_catalog.start_if_needed();
-        runtime::start(self.database_path.clone(), app_handle.clone());
-        services::start_update_check(self.database_path.clone(), app_handle);
+        runtime::start(
+            self.database_path.clone(),
+            app_handle.clone(),
+            self.revision.clone(),
+        );
+        services::start_update_check(
+            self.database_path.clone(),
+            app_handle,
+            self.revision.clone(),
+        );
         services::start_web(self.database_path.clone());
     }
 }
@@ -83,6 +99,11 @@ pub struct MutationRequest {
 #[tauri::command]
 pub fn app_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
     data::snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
+    state.revision.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
@@ -116,6 +137,7 @@ pub fn mutate_app(
         _ => data::mutate(&state.database, &request.action, &request.payload),
     };
     if result.is_ok() {
+        state.revision.fetch_add(1, Ordering::Relaxed);
         let _ = app_handle.emit("data-changed", request.action);
     }
     result

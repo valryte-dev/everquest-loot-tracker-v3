@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
 import {listen} from "@tauri-apps/api/event";
 import {FEATURE_GROUPS,FEATURES,type FeatureKey} from "./features";
-import {bootstrapStatus,getSnapshot,mutate} from "../shared/backend";
+import {bootstrapStatus,getRevision,getSnapshot,mutate} from "../shared/backend";
 import type {AppSnapshot,BootstrapStatus,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup} from "../shared/contracts";
 import {DataTable,Field,IconButton,Modal,PathPicker,money,when,type Column} from "./ui";
 import {identifyArbitrage,scoreArbitrage,type ArbitrageOpportunity} from "./arbitrage";
@@ -23,8 +23,9 @@ const empty:AppSnapshot={settings:{},members:[],loot:[],splits:[],tracked:[],lin
 export function App(){
  const[page,setPage]=useState(pageFromHash);const[data,setData]=useState<AppSnapshot>(empty);const[status,setStatus]=useState<BootstrapStatus|null>(null);const[loading,setLoading]=useState(true);const[error,setError]=useState("");const[busy,setBusy]=useState(false);
  const refreshTimer=useRef<number|undefined>(undefined);
+ const revision=useRef(0);
  const refresh=useCallback(async(silent=false)=>{try{const value=await getSnapshot();setData(value);setError("")}catch(e){setError(String(e))}finally{if(!silent)setLoading(false)}},[]);
- useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));refresh();let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>{if(!document.querySelector(".modal"))refresh(true)},100)}).then(value=>unlisten=value);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);unlisten?.()}},[refresh]);
+ useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));refresh();getRevision().then(value=>revision.current=value);let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>{if(!document.querySelector(".modal"))refresh(true)},100)}).then(value=>unlisten=value);const guard=window.setInterval(async()=>{const value=await getRevision();if(value!==revision.current&&!document.querySelector(".modal")){revision.current=value;await refresh(true)}},10000);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);window.clearInterval(guard);unlisten?.()}},[refresh]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings.theme||"midnight"},[data.settings.theme]);
  useEffect(()=>{window.scrollTo({top:0,left:0,behavior:"auto"})},[page]);
  const run=async(action:string,payload:Record<string,unknown>={})=>{setBusy(true);try{const result=await mutate(action,payload);return result}catch(e){setError(String(e));return null}finally{setBusy(false)}};

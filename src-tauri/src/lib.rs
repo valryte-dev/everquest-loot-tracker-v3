@@ -3,8 +3,8 @@ mod domain;
 mod infrastructure;
 
 use application::{
-    app_snapshot, bootstrap_status, mutate_app, parse_inventory_preview, parse_log_preview,
-    reload_spell_catalog, spell_catalog_status, spell_info, AppState,
+    app_revision, app_snapshot, bootstrap_status, mutate_app, parse_inventory_preview,
+    parse_log_preview, reload_spell_catalog, spell_catalog_status, spell_info, AppState,
 };
 use tauri::Manager;
 
@@ -21,6 +21,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap_status,
+            app_revision,
             app_snapshot,
             mutate_app,
             parse_log_preview,

@@ -11,19 +11,23 @@ use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     thread,
     time::{Duration, SystemTime},
 };
 use tauri::Emitter;
 
-pub fn start(database_path: PathBuf, app_handle: tauri::AppHandle) {
+pub fn start(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<AtomicU64>) {
     thread::Builder::new()
         .name("eq-runtime-watcher".into())
-        .spawn(move || watch(database_path, app_handle))
+        .spawn(move || watch(database_path, app_handle, revision))
         .expect("runtime watcher thread must start");
 }
 
-fn watch(database_path: PathBuf, app_handle: tauri::AppHandle) {
+fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<AtomicU64>) {
     let signature_path = database_path.with_extension("db-wal");
     let database = match Database::open(database_path) {
         Ok(database) => database,
@@ -49,6 +53,7 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle) {
         let next_signature = file_signature(&signature_path);
         if next_signature != database_signature {
             database_signature = next_signature;
+            revision.fetch_add(1, Ordering::Relaxed);
             let _ = app_handle.emit("data-changed", "watcher");
         }
         thread::sleep(Duration::from_millis(750));
