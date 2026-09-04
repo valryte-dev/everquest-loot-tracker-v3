@@ -3,9 +3,9 @@ mod domain;
 mod infrastructure;
 
 use application::{
-    app_page_snapshot, app_revision, app_snapshot, bootstrap_status, mutate_app,
-    parse_inventory_preview, parse_log_preview, reload_spell_catalog, spell_catalog_status,
-    spell_info, AppState,
+    activity_history_snapshot, app_page_snapshot, app_revision, app_snapshot, bootstrap_status,
+    mutate_app, parse_inventory_preview, parse_log_preview, reload_spell_catalog,
+    spell_catalog_status, spell_info, AppState,
 };
 use tauri::Manager;
 
@@ -25,6 +25,7 @@ pub fn run() {
             app_revision,
             app_page_snapshot,
             app_snapshot,
+            activity_history_snapshot,
             mutate_app,
             parse_log_preview,
             parse_inventory_preview,

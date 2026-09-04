@@ -279,6 +279,71 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     )
 }
 
+pub fn activity_history_snapshot(database: &Database) -> Result<Value, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let loot = query_values(
+        &connection,
+        "SELECT h.id,h.happened_at,h.character_name,h.item_name,h.looter_name,h.source_file,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id
+         FROM activity_loot_history h
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=h.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY h.happened_at DESC,h.id DESC",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"itemName":row.get::<_,String>(3)?,
+                "looterName":row.get::<_,String>(4)?,"sourceFile":row.get::<_,String>(5)?,
+                "valuePp":row.get::<_,Option<i64>>(6)?,"valueBasis":row.get::<_,Option<String>>(7)?,
+                "valueSamples":row.get::<_,i64>(8)?,"itemId":row.get::<_,Option<i64>>(9)?
+            }))
+        },
+    )?;
+    let mobs = query_values(
+        &connection,
+        "SELECT id,happened_at,character_name,mob_name,killer_name,source_file
+         FROM activity_mob_history ORDER BY happened_at DESC,id DESC",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"mobName":row.get::<_,String>(3)?,
+                "killerName":row.get::<_,Option<String>>(4)?,"sourceFile":row.get::<_,String>(5)?
+            }))
+        },
+    )?;
+    let offers = query_values(
+        &connection,
+        "SELECT h.id,h.happened_at,h.character_name,h.offerer_name,h.item_name,h.source_file,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id
+         FROM activity_offer_history h
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=h.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY h.happened_at DESC,h.id DESC",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"offererName":row.get::<_,String>(3)?,
+                "itemName":row.get::<_,String>(4)?,"sourceFile":row.get::<_,String>(5)?,
+                "valuePp":row.get::<_,Option<i64>>(6)?,"valueBasis":row.get::<_,Option<String>>(7)?,
+                "valueSamples":row.get::<_,i64>(8)?,"itemId":row.get::<_,Option<i64>>(9)?
+            }))
+        },
+    )?;
+    let levels = query_values(
+        &connection,
+        "SELECT id,happened_at,character_name,level,direction,source_file
+         FROM activity_level_history ORDER BY happened_at DESC,id DESC",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"level":row.get::<_,i64>(3)?,
+                "direction":row.get::<_,String>(4)?,"sourceFile":row.get::<_,String>(5)?
+            }))
+        },
+    )?;
+    Ok(json!({"loot":loot,"mobs":mobs,"offers":offers,"levels":levels}))
+}
+
 pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
     let mut value = snapshot(database)?;
     let Some(root) = value.as_object_mut() else {
@@ -1154,7 +1219,7 @@ fn import_export_text(
     }
     let now = Local::now().to_rfc3339();
     let detail = if filename.to_ascii_lowercase().ends_with("-inventory.txt") {
-        let items = parse_inventory(&text);
+        let items = parse_inventory(text);
         connection.execute("INSERT INTO inventory_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,source,now]).map_err(err)?;
         let id: i64 = connection
             .query_row(
@@ -1291,9 +1356,22 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
         .collect()
 }
 
+fn integers(value: &Value, key: &str) -> Vec<i64> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_i64)
+        .collect()
+}
+fn err(error: rusqlite::Error) -> String {
+    error.to_string()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{mutate, normalize_compound, snapshot};
+    use super::{activity_history_snapshot, mutate, normalize_compound, snapshot};
     use crate::infrastructure::database::Database;
     use rusqlite::params;
     use serde_json::json;
@@ -1750,6 +1828,49 @@ mod tests {
         assert_eq!(value["history"][0]["payouts"][0]["name"], "Friend");
     }
     #[test]
+    fn activity_history_snapshot_resolves_shared_item_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO master_items(item_id,item_name,source) VALUES(77,'Blue Diamond','test')",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,count_30d,average_30d_pp,fetched_at)
+             VALUES('Green',77,0,'Blue Diamond','2026-09-04',4,250,'2026-09-04')",
+            [],
+        ).unwrap();
+        Database::refresh_item_values(&connection).unwrap();
+        connection.execute(
+            "INSERT INTO activity_loot_history(happened_at,character_name,item_name,looter_name,raw_line,source_file,source_offset)
+             VALUES('2026-09-04 12:00:00','Youngman','Blue Diamond','Youngman','loot raw','eqlog_Youngman_P1999Green.txt',1)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO activity_offer_history(happened_at,character_name,offerer_name,item_name,item_index,raw_line,source_file,source_offset)
+             VALUES('2026-09-04 12:01:00','Posed','Youngman','Blue Diamond',0,'offer raw','eqlog_Posed_P1999Green.txt',1)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO activity_level_history(happened_at,character_name,level,direction,raw_line,source_file,source_offset)
+             VALUES('2026-09-04 12:02:00','Posed',54,'gained','level raw','eqlog_Posed_P1999Green.txt',2)",
+            [],
+        ).unwrap();
+        drop(connection);
+
+        let value = activity_history_snapshot(&database).unwrap();
+        assert_eq!(value["loot"][0]["valuePp"], 250);
+        assert_eq!(value["loot"][0]["valueBasis"], "30-day WTS");
+        assert_eq!(value["offers"][0]["itemId"], 77);
+        assert_eq!(value["offers"][0]["valueSamples"], 4);
+        assert_eq!(value["levels"][0]["character"], "Posed");
+        assert_eq!(value["levels"][0]["level"], 54);
+        assert_eq!(value["levels"][0]["direction"], "gained");
+    }
+
+    #[test]
     fn snapshot_uses_zero_samples_for_items_without_a_catalog_match() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1782,16 +1903,4 @@ mod tests {
         assert_eq!(value["splits"][0]["marketValueSamples"], 0);
         assert_eq!(value["inventory"][0]["valueSamples"], 0);
     }
-}
-fn integers(value: &Value, key: &str) -> Vec<i64> {
-    value
-        .get(key)
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_i64)
-        .collect()
-}
-fn err(error: rusqlite::Error) -> String {
-    error.to_string()
 }

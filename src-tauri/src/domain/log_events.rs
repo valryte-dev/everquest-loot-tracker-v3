@@ -29,6 +29,22 @@ impl ChatChannel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LevelChangeKind {
+    Gained,
+    Lost,
+}
+
+impl LevelChangeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gained => "gained",
+            Self::Lost => "lost",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LogEvent {
@@ -37,6 +53,12 @@ pub enum LogEvent {
         looter: String,
         item_name: String,
     },
+    LevelChanged {
+        happened_at: NaiveDateTime,
+        level: u16,
+        direction: LevelChangeKind,
+    },
+
     MobSlain {
         happened_at: NaiveDateTime,
         mob_name: String,
@@ -61,6 +83,12 @@ pub enum LogEvent {
         speaker: String,
         message: String,
     },
+    TradeOffer {
+        happened_at: NaiveDateTime,
+        offerer: String,
+        message: String,
+        item_names: Vec<String>,
+    },
     LinkedItems {
         happened_at: NaiveDateTime,
         speaker: String,
@@ -84,6 +112,22 @@ fn loot() -> &'static Regex {
             r"^--(?<who>You|[A-Za-z][A-Za-z'_-]*) (?:have|has) looted (?:an? )?(?<item>.+?)\.--$",
         )
         .expect("valid loot regex")
+    })
+}
+
+fn gained_level() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have gained a level! Welcome to level (?<level>\d+)!$")
+            .expect("valid gained level regex")
+    })
+}
+
+fn lost_level() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have lost a level! You are now level (?<level>\d+)!$")
+            .expect("valid lost level regex")
     })
 }
 
@@ -174,6 +218,14 @@ fn direct_tell() -> &'static Regex {
     })
 }
 
+fn trade_offer() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^\[?(?<name>[A-Za-z][A-Za-z'_-]*)\]? has offered you(?:\s+(?<message>.+))?$")
+            .expect("valid trade offer regex")
+    })
+}
+
 fn merchant_intent() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -185,6 +237,18 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     let outer = envelope().captures(line.trim())?;
     let happened_at = NaiveDateTime::parse_from_str(&outer["time"], "%a %b %d %H:%M:%S %Y").ok()?;
     let body = outer.name("body")?.as_str();
+    for (pattern, direction) in [
+        (gained_level(), LevelChangeKind::Gained),
+        (lost_level(), LevelChangeKind::Lost),
+    ] {
+        if let Some(value) = pattern.captures(body) {
+            return Some(LogEvent::LevelChanged {
+                happened_at,
+                level: value.name("level")?.as_str().parse().ok()?,
+                direction,
+            });
+        }
+    }
     if let Some(value) = loot().captures(body) {
         let who = value.name("who")?.as_str();
         return Some(LogEvent::Loot {
@@ -195,6 +259,32 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
                 who.to_owned()
             },
             item_name: value.name("item")?.as_str().to_owned(),
+        });
+    }
+    if let Some(value) = trade_offer().captures(body) {
+        let message = value
+            .name("message")
+            .map(|value| value.as_str())
+            .unwrap_or_default()
+            .trim();
+        let mut item_names = extract_item_links(message);
+        if item_names.is_empty() {
+            let plain_message = unquote(message);
+            let plain_message = plain_message.trim_end_matches(['.', '!']).trim();
+            let plain = plain_message
+                .strip_prefix("an ")
+                .or_else(|| plain_message.strip_prefix("a "))
+                .unwrap_or(plain_message)
+                .trim();
+            if !plain.is_empty() && !plain.eq_ignore_ascii_case("nothing") {
+                item_names.push(plain.to_owned());
+            }
+        }
+        return Some(LogEvent::TradeOffer {
+            happened_at,
+            offerer: value["name"].to_owned(),
+            message: message.to_owned(),
+            item_names,
         });
     }
     if let Some(value) = auction().captures(body) {
@@ -343,6 +433,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_level_gains_and_losses() {
+        let gained = parse_log_event(
+            "[Mon Jul 27 11:46:40 2026] You have gained a level! Welcome to level 54!",
+            "Tornel",
+        );
+        assert!(matches!(
+            gained,
+            Some(LogEvent::LevelChanged {
+                level: 54,
+                direction: LevelChangeKind::Gained,
+                ..
+            })
+        ));
+
+        let lost = parse_log_event(
+            "[Mon Jul 27 12:46:40 2026] You have lost a level! You are now level 53!",
+            "Tornel",
+        );
+        assert!(matches!(
+            lost,
+            Some(LogEvent::LevelChanged {
+                level: 53,
+                direction: LevelChangeKind::Lost,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn parses_local_loot_with_character_resolution() {
         let event = parse_log_event(
             "[Mon Aug 03 07:09:18 2026] --You have looted a Tears of Prexus.--",
@@ -420,6 +539,41 @@ mod tests {
         assert!(
             matches!(event, Some(LogEvent::DirectTell { speaker, message, .. }) if speaker == "Posed" && message == "I will buy that")
         );
+    }
+
+    #[test]
+    fn parses_plain_and_clickable_trade_offers() {
+        let article_prefixed_item = parse_log_event(
+            "[Mon Jul 27 11:46:40 2026] Tornel has offered you a A Blue Throne.",
+            "Youngman",
+        );
+        assert!(matches!(
+            article_prefixed_item,
+            Some(LogEvent::TradeOffer { offerer, item_names, .. })
+                if offerer == "Tornel" && item_names == vec!["A Blue Throne"]
+        ));
+
+        let plain = parse_log_event(
+            "[Mon Aug 03 07:16:29 2026] [Posed] has offered you a Blue Diamond.",
+            "Youngman",
+        );
+        assert!(matches!(
+            plain,
+            Some(LogEvent::TradeOffer { offerer, item_names, .. })
+                if offerer == "Posed" && item_names == vec!["Blue Diamond"]
+        ));
+
+        let first = format!("\u{12}{}A Blue Crown\u{12}", "0".repeat(45));
+        let second = format!("\u{12}{}Blue Diamond\u{12}", "A".repeat(45));
+        let linked = parse_log_event(
+            &format!("[Mon Aug 03 07:16:30 2026] Posed has offered you {first} and {second}."),
+            "Youngman",
+        );
+        assert!(matches!(
+            linked,
+            Some(LogEvent::TradeOffer { offerer, item_names, .. })
+                if offerer == "Posed" && item_names == vec!["A Blue Crown", "Blue Diamond"]
+        ));
     }
 
     #[test]

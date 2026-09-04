@@ -4,6 +4,11 @@ export interface Loot { id:number; happenedAt:string; itemName:string; itemId?:n
 export interface Split { key:string; itemName:string; addedAt:string; mobName?:string; looterName?:string; payoutValuePp?:number; marketValuePp?:number; marketValueBasis?:string; marketValueSamples?:number; attendees:string[] }
 export interface TrackedLoot { id:number; sourceLootId?:number; happenedAt:string; trackedAt:string; itemName:string; mobName?:string; looterName?:string; valuePp?:number; valueBasis?:string; valueSamples?:number; attendees:string[] }
 export interface LinkedLoot { id:number; happenedAt:string; channel:"group"|"guild"; speakerName:string; itemName:string; itemId?:number; valuePp?:number; valueBasis?:string; count30d:number }
+export interface ActivityLoot { id:number; happenedAt:string; character:string; itemName:string; itemId?:number; looterName:string; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
+export interface ActivityMob { id:number; happenedAt:string; character:string; mobName:string; killerName?:string; sourceFile:string }
+export interface ActivityOffer { id:number; happenedAt:string; character:string; offererName:string; itemName:string; itemId?:number; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
+export interface ActivityLevel { id:number; happenedAt:string; character:string; level:number; direction:"gained"|"lost"; sourceFile:string }
+export interface ActivityHistorySnapshot { loot:ActivityLoot[]; mobs:ActivityMob[]; offers:ActivityOffer[]; levels:ActivityLevel[] }
 export interface SplitPayout { name:string; paidAt:string }
 export interface History { id:number; itemName:string; mobName?:string; looterName?:string; valuePp:number; disposition:string; payoutStatus:"pending"|"completed"; note:string; completedAt:string; paidAt?:string; attendees:string[]; payouts:SplitPayout[] }
 export interface MasterItem { id:number; name:string; valuePp:number; valueBasis?:string; count30d:number; lastSeen:string; manual:boolean; source:string }

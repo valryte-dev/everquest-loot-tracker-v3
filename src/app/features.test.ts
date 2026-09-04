@@ -12,6 +12,7 @@ describe("feature catalog", () => {
       "live",
       "linked",
       "tracked",
+      "activity-history",
       "splits",
       "compounds",
       "merchant",

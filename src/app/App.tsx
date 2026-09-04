@@ -2,8 +2,8 @@ import {useCallback,useEffect,useMemo,useRef,useState,type ReactNode} from "reac
 import {listen} from "@tauri-apps/api/event";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import {FEATURE_GROUPS,FEATURES,type FeatureKey} from "./features";
-import {bootstrapStatus,getRevision,getSnapshot,mutate} from "../shared/backend";
-import type {AppSnapshot,BootstrapStatus,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup} from "../shared/contracts";
+import {bootstrapStatus,getActivityHistorySnapshot,getRevision,getSnapshot,mutate} from "../shared/backend";
+import type {ActivityHistorySnapshot,ActivityLevel,ActivityLoot,ActivityMob,ActivityOffer,AppSnapshot,BootstrapStatus,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup} from "../shared/contracts";
 import {DataTable,Field,IconButton,Modal,PathPicker,money,when,type Column} from "./ui";
 import {identifyArbitrage,scoreArbitrage,type ArbitrageOpportunity} from "./arbitrage";
 import {CompoundWorkspacePage} from "./compounds/CompoundPage";
@@ -15,6 +15,7 @@ import {SpellHover} from "./SpellHover";
 import {SpellCatalogPanel} from "./SpellCatalogPanel";
 import {Release35} from "./Release35";
 import {buildSplitPayoutSummary,groupSplitPeople,type ContributionStatus,type PersonPayoutSummary} from "./splits/model";
+import {HistoryAnalytics} from "./history/HistoryCharts";
 
 const pageFromHash=():FeatureKey=>{const key=location.hash.replace(/^#\/?/,"") as FeatureKey;return FEATURES.some(f=>f.key===key)?key:"live"};
 const openExternal=(url?:string)=>url?openUrl(url):Promise.resolve();
@@ -48,10 +49,10 @@ function SystemMessages({data,run}:{data:AppSnapshot;run:any}){
  if(available&&latest&&dismissed!==latest)messages.push({id:`update-${latest}`,title:`Version ${latest} is available`,message:"A newer EverQuest Loot Tracker release is ready to download.",actionLabel:"View update",action:()=>openExternal(data.settings.update_release_url),dismissKey:"dismissed_update_version",dismissValue:latest});
  return messages.length?<section className="system-messages" aria-label="System messages">{messages.map(message=><article className="system-message" role="status" key={message.id}><span className="system-message-icon">↑</span><div><strong>{message.title}</strong><p>{message.message}</p></div>{message.actionLabel&&<button className="primary" onClick={message.action}>{message.actionLabel}</button>}<button className="system-message-dismiss" aria-label={`Dismiss ${message.title}`} title="Dismiss" onClick={()=>run("setting.save",{key:message.dismissKey,value:message.dismissValue})}>×</button></article>)}</section>:null;
 }
-function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
+function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"activity-history":return <ActivityHistoryPage data={data} run={run}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
 const Loading=()=> <section className="loading"><div className="spinner"/><h2>Opening your workspace</h2><p>Loading the local database—no sample data is shown.</p></section>;
 const Card=({title,sub,actions,children,className=""}:{title:string;sub?:string;actions?:ReactNode;children:ReactNode;className?:string})=><section className={`card ${className}`}><header><div><h2>{title}</h2>{sub&&<p>{sub}</p>}</div>{actions&&<div className="card-actions">{actions}</div>}</header>{children}</section>;
-const Stats=({items}:{items:[string,string,string?][]})=><section className="stats">{items.map(([l,v,s])=><article key={l}><span>{l}</span><strong>{v}</strong>{s&&<small>{s}</small>}</article>)}</section>;
+const Stats=({items,className=""}:{items:[string,string,string?][];className?:string})=><section className={`stats ${className}`.trim()}>{items.map(([l,v,s])=><article key={l}><span>{l}</span><strong>{v}</strong>{s&&<small>{s}</small>}</article>)}</section>;
 
 function Live({data,run}:{data:AppSnapshot;run:any}){const[name,setName]=useState("");const[selected,setSelected]=useState<Set<string|number>>(new Set());const[edit,setEdit]=useState<Loot|null>(null);const cols:Column<Loot>[]=[{key:"item",label:"Item",value:r=>r.itemName},{key:"value",label:"30-day WTS",value:r=>r.valuePp||0,render:r=>money(r.valuePp)},{key:"mob",label:"Dropped By",value:r=>r.mobName||""},{key:"looter",label:"Looted By",value:r=>r.looterName||""},{key:"shared",label:"Shared By",value:r=>r.attendees.join(", "),render:r=><span className="names">{r.attendees.join(", ")||"—"}</span>},{key:"time",label:"Dropped",value:r=>r.happenedAt,render:r=>when(r.happenedAt)}];
  return <><Stats items={[["Active character",data.settings.active_character||"Waiting for log"],["Current group",String(data.members.filter(m=>m.active).length)],["Recent loot",String(data.loot.length),money(data.loot.reduce((n,r)=>n+(r.valuePp||0),0))]]}/><div className="two-column"><Card title="Current group" sub="Log events update this automatically. Manual corrections are remembered."><form className="inline-form" onSubmit={e=>{e.preventDefault();if(name.trim())run("member.add",{name});setName("")}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Add character…"/><button className="primary">Add</button></form><div className="member-list">{data.members.map(m=><button key={m.id} className={m.active?"member active":"member"} onClick={()=>run("member.active",{id:m.id,active:!m.active})}><span>{m.name}</span><b>{m.active?"✓":"+"}</b></button>)}</div></Card><Card title="Watcher status" sub="The newest modified eqlog file becomes active."><dl className="details"><div><dt>Folder</dt><dd>{data.settings.logs_directory||"Choose one on System"}</dd></div><div><dt>Log</dt><dd>{data.settings.active_character?`eqlog_${data.settings.active_character}_P1999Green.txt`:"Waiting"}</dd></div><div><dt>Database</dt><dd>WAL mode · shared access</dd></div></dl></Card></div><Card title="Recent loot" sub="Click Edit to adjust item, mob, looter or participants." actions={<><button disabled={!selected.size} onClick={()=>{run("loot.delete",{ids:[...selected]});setSelected(new Set())}}>Delete selected</button></>}><DataTable rows={data.loot} columns={cols} rowKey={r=>r.id} selected={selected} onSelected={setSelected} actions={r=><><button onClick={()=>setEdit(r)}>Edit</button><button className={r.splitListed?"success":""} onClick={()=>run("loot.split",{id:r.id,listed:!r.splitListed})}>{r.splitListed?"On split":"Add to split"}</button></>}/></Card>{edit&&<LootEditor row={edit} data={data} close={()=>setEdit(null)} save={async p=>{await run("loot.save",p);setEdit(null)}}/>}</>}
@@ -344,6 +345,72 @@ function LinkedLootPage({data,run}:{data:AppSnapshot;run:any}){
  return <>
   <Stats items={[["Linked items",String(data.linkedLoot.length)],["Current value",money(totalValue)],["Speakers",String(new Set(data.linkedLoot.map(row=>row.speakerName.toLowerCase())).size)]]}/>
   <Card title="Group and guild item links" sub="Clickable item links are decoded from the active log and valued from PigParse, preferring 30-day WTS and clearly labeled older fallbacks when recent data is unavailable." actions={<><IconButton icon="refresh" label={rescanLabel} onClick={rescan}/><IconButton icon="trash" label={`Delete selected (${selected.size})`} className="danger" disabled={!selected.size} onClick={()=>{void run("linked.delete",{ids:[...selected]});setSelected(new Set())}}/><IconButton icon="trash" label="Clear all linked loot" className="danger" disabled={!data.linkedLoot.length} onClick={()=>confirm("Clear all linked loot history?")&&run("linked.clear")}/></>}><DataTable rows={data.linkedLoot} columns={columns} rowKey={row=>row.id} selected={selected} onSelected={setSelected} empty="No item links captured yet. Links posted in group or guild chat will appear here."/></Card>
+ </>;
+}
+
+const historyLogName=(value:string)=>value.split(/[\\/]/).pop()||value;
+
+function ActivityHistoryPage({data,run}:{data:AppSnapshot;run:any}){
+ const[tab,setTab]=useState<"loot"|"mobs"|"offers"|"levels">("loot");
+ const[archive,setArchive]=useState<ActivityHistorySnapshot>({loot:[],mobs:[],offers:[],levels:[]});
+ const[loadingArchive,setLoadingArchive]=useState(true);
+ const[archiveError,setArchiveError]=useState("");
+ const[scanMessage,setScanMessage]=useState("");
+ const load=useCallback(async()=>{try{setArchive(await getActivityHistorySnapshot());setArchiveError("")}catch(error){setArchiveError(String(error))}finally{setLoadingArchive(false)}},[]);
+ useEffect(()=>{void load();let stop:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen<string>("data-changed",event=>{if(event.payload==="watcher"||event.payload==="activityHistory.scan")void load()}).then(value=>stop=value);return()=>stop?.()},[load]);
+ const scan=async()=>{setScanMessage("Scanning every character log…");const result=await run("activityHistory.scan") as {files?:number;inserted?:number}|null;if(result){setScanMessage("Scanned "+(result.files||0)+" log file"+(result.files===1?"":"s")+" · "+(result.inserted||0)+" new event"+(result.inserted===1?"":"s"));await load()}else setScanMessage("History scan failed. Review the error banner or Application Logs.")};
+ const analyticsRows=tab==="loot"?archive.loot.map(row=>({label:row.itemName,happenedAt:row.happenedAt,valuePp:row.valuePp,actor:row.looterName,character:row.character})):tab==="mobs"?archive.mobs.map(row=>({label:row.mobName,happenedAt:row.happenedAt,actor:row.killerName||"Unknown",character:row.character})):tab==="offers"?archive.offers.map(row=>({label:row.itemName,happenedAt:row.happenedAt,actor:row.offererName,character:row.character})):archive.levels.map(row=>({label:`Level ${row.level}`,happenedAt:row.happenedAt,actor:row.character,character:row.character,level:row.level,direction:row.direction}));
+ const analyticsTitle=tab==="loot"?"Most looted items":tab==="mobs"?"Most slain mobs":tab==="offers"?"Most offered items":"Levels reached";
+ const actorTitle=tab==="loot"?"Top looters":tab==="mobs"?"Top killers":tab==="offers"?"Top offerers":"Level changes by character";
+ const lootColumns:Column<ActivityLoot>[]=[
+  {key:"item",label:"Item",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>},
+  {key:"value",label:"Price",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
+  {key:"basis",label:"Market Window",value:row=>marketWindow(row.valuePp,row.valueBasis)},
+  {key:"samples",label:"Samples",value:row=>row.valueSamples},
+  {key:"looter",label:"Looted By",value:row=>row.looterName},
+  {key:"character",label:"Observed On",value:row=>row.character},
+  {key:"log",label:"Log File",value:row=>row.sourceFile,render:row=><span title={row.sourceFile}>{historyLogName(row.sourceFile)}</span>},
+  {key:"time",label:"When",value:row=>row.happenedAt,render:row=>when(row.happenedAt)}
+ ];
+ const mobColumns:Column<ActivityMob>[]=[
+  {key:"mob",label:"Mob Slain",value:row=>row.mobName},
+  {key:"killer",label:"Slain By",value:row=>row.killerName||"Unknown"},
+  {key:"character",label:"Observed On",value:row=>row.character},
+  {key:"log",label:"Log File",value:row=>row.sourceFile,render:row=><span title={row.sourceFile}>{historyLogName(row.sourceFile)}</span>},
+  {key:"time",label:"When",value:row=>row.happenedAt,render:row=>when(row.happenedAt)}
+ ];
+ const offerColumns:Column<ActivityOffer>[]=[
+  {key:"item",label:"Item Offered",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>},
+  {key:"value",label:"Price",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
+  {key:"basis",label:"Market Window",value:row=>marketWindow(row.valuePp,row.valueBasis)},
+  {key:"samples",label:"Samples",value:row=>row.valueSamples},
+  {key:"offerer",label:"Offered By",value:row=>row.offererName},
+  {key:"character",label:"Received On",value:row=>row.character},
+  {key:"log",label:"Log File",value:row=>row.sourceFile,render:row=><span title={row.sourceFile}>{historyLogName(row.sourceFile)}</span>},
+  {key:"time",label:"When",value:row=>row.happenedAt,render:row=>when(row.happenedAt)}
+ ];
+ const levelColumns:Column<ActivityLevel>[]=[
+  {key:"level",label:"Level",value:row=>row.level,render:row=><strong className={row.direction==="lost"?"level-lost":"level-gained"}>{row.level}</strong>},
+  {key:"direction",label:"Change",value:row=>row.direction,render:row=><span className={`pill ${row.direction==="lost"?"warn":"success"}`}>{row.direction==="lost"?"Level lost":"Level gained"}</span>},
+  {key:"character",label:"Character",value:row=>row.character},
+  {key:"log",label:"Log File",value:row=>row.sourceFile,render:row=><span title={row.sourceFile}>{historyLogName(row.sourceFile)}</span>},
+  {key:"time",label:"When",value:row=>row.happenedAt,render:row=>when(row.happenedAt)}
+ ];
+ return <>
+  <Stats className="history-summary" items={[["Loot records",String(archive.loot.length)],["Mobs slain",String(archive.mobs.length)],["Items offered",String(archive.offers.length)],["Level changes",String(archive.levels.length)]]}/>
+  <Card title="Cross-character log archive" sub="Every eqlog file is scanned from its last saved byte position. Records remain independent from the clearable Live Loot list." actions={<IconButton icon="refresh" label="Scan all character logs now" onClick={scan}/>}>
+   <div className="tabs history-tabs">
+    <button className={tab==="loot"?"active":""} onClick={()=>setTab("loot")}>Loot <span>{archive.loot.length}</span></button>
+    <button className={tab==="mobs"?"active":""} onClick={()=>setTab("mobs")}>Mobs Slain <span>{archive.mobs.length}</span></button>
+    <button className={tab==="offers"?"active":""} onClick={()=>setTab("offers")}>Items Offered <span>{archive.offers.length}</span></button>
+    <button className={tab==="levels"?"active":""} onClick={()=>setTab("levels")}>Levels <span>{archive.levels.length}</span></button>
+   </div>
+   {scanMessage&&<p className="history-scan-status" role="status">{scanMessage}</p>}
+   {archiveError&&<div className="alert"><strong>History could not load</strong><span>{archiveError}</span></div>}
+   {!loadingArchive&&<HistoryAnalytics rows={analyticsRows} categoryTitle={analyticsTitle} actorTitle={actorTitle} showValues={tab==="loot"} showCards={tab==="loot"} levelPath={tab==="levels"}/>}
+   {loadingArchive?<div className="small-empty">Loading log history…</div>:tab==="loot"?<DataTable rows={archive.loot} columns={lootColumns} rowKey={row=>row.id} empty="No loot records have been archived yet."/>:tab==="mobs"?<DataTable rows={archive.mobs} columns={mobColumns} rowKey={row=>row.id} empty="No slain mobs have been archived yet."/>:tab==="offers"?<DataTable rows={archive.offers} columns={offerColumns} rowKey={row=>row.id} empty="No offered items have been archived yet."/>:<DataTable rows={archive.levels} columns={levelColumns} rowKey={row=>row.id} empty="No level changes have been archived yet."/>}
+  </Card>
+  <p className="history-footnote">Last automatic scan: {data.settings.activity_history_last_scan_at?when(data.settings.activity_history_last_scan_at):"Waiting for the watcher"} · {data.settings.activity_history_files_scanned||"0"} log files discovered</p>
  </>;
 }
 

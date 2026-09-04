@@ -112,6 +112,11 @@ pub fn app_page_snapshot(state: tauri::State<'_, AppState>, page: String) -> Res
 }
 
 #[tauri::command]
+pub fn activity_history_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    data::activity_history_snapshot(&state.database)
+}
+
+#[tauri::command]
 pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
     state.revision.load(Ordering::Relaxed)
 }
@@ -125,6 +130,7 @@ pub fn mutate_app(
     let result = match request.action.as_str() {
         "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
+        "activityHistory.scan" => runtime::scan_history(&state.database),
         "planner.upload" => services::upload_exports(&state.database),
         "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
         "wts.export" => services::export_wts(
