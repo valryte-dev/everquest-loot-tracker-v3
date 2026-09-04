@@ -114,9 +114,12 @@ function CardLootChart({rows,expanded,onExpand}:{rows:HistoryChartDatum[];expand
   </ExpandablePanel>;
 }
 
-function LevelPathChart({rows,expanded,onExpand}:{rows:HistoryChartDatum[];expanded?:boolean;onExpand?:()=>void}) {
-  const events=useMemo(()=>rows.filter(row=>Number.isFinite(row.level)&&Number.isFinite(Date.parse(row.happenedAt))).sort((left,right)=>Date.parse(left.happenedAt)-Date.parse(right.happenedAt)),[rows]);
-  const characters=useMemo(()=>[...new Set(events.map(row=>row.character||"Unknown"))],[events]);
+function LevelPathChart({rows,selectedCharacters,onSelectionChange,expanded,onExpand}:{rows:HistoryChartDatum[];selectedCharacters:string[];onSelectionChange:(characters:string[])=>void;expanded?:boolean;onExpand?:()=>void}) {
+  const allEvents=useMemo(()=>rows.filter(row=>Number.isFinite(row.level)&&Number.isFinite(Date.parse(row.happenedAt))).sort((left,right)=>Date.parse(left.happenedAt)-Date.parse(right.happenedAt)),[rows]);
+  const characters=useMemo(()=>[...new Set(allEvents.map(row=>row.character||"Unknown"))],[allEvents]);
+  const activeCharacters=selectedCharacters.filter(character=>characters.includes(character));
+  const visibleCharacters=activeCharacters.length?activeCharacters:characters;
+  const events=useMemo(()=>allEvents.filter(row=>visibleCharacters.includes(row.character||"Unknown")),[allEvents,visibleCharacters]);
   const width=expanded?1180:900,height=330,left=48,right=24,top=24,bottom=42;
   const times=events.map(row=>Date.parse(row.happenedAt));
   const minimumTime=Math.min(...times),maximumTime=Math.max(...times);
@@ -126,27 +129,29 @@ function LevelPathChart({rows,expanded,onExpand}:{rows:HistoryChartDatum[];expan
   const y=(level:number)=>top+(maximumLevel-level)/Math.max(1,maximumLevel-minimumLevel)*(height-top-bottom);
   const tickCount=Math.min(6,maximumLevel-minimumLevel+1);
   const ticks=Array.from({length:tickCount},(_,index)=>Math.round(minimumLevel+(maximumLevel-minimumLevel)*index/Math.max(1,tickCount-1))).filter((value,index,array)=>array.indexOf(value)===index);
-  const current=characters.map(character=>events.filter(row=>(row.character||"Unknown")===character).at(-1)).filter(Boolean) as HistoryChartDatum[];
+  const current=characters.map(character=>allEvents.filter(row=>(row.character||"Unknown")===character).at(-1)).filter(Boolean) as HistoryChartDatum[];
+  const toggleCharacter=(character:string)=>onSelectionChange(!activeCharacters.length?[character]:activeCharacters.includes(character)?activeCharacters.filter(value=>value!==character):[...activeCharacters,character]);
   return <ExpandablePanel expanded={expanded} onExpand={onExpand} className="history-level-chart">
-    <header><div><span className="eyebrow">Character progression</span><h3>Leveling path</h3></div><div className="history-level-current">{current.map((row,index)=><span key={row.character}><i style={{background:CHART_COLORS[index%CHART_COLORS.length]}}/>{row.character} <b>{row.level}</b></span>)}</div></header>
+    <header><div><span className="eyebrow">Character progression</span><h3>Leveling path</h3></div><div className="history-level-current" onClick={event=>event.stopPropagation()}>{activeCharacters.length>0&&<button className="history-level-reset" onClick={()=>onSelectionChange([])}>Reset</button>}{current.map((row,index)=>{const character=row.character||"Unknown",active=!activeCharacters.length||activeCharacters.includes(character);return <button key={character} className={active?"active":""} aria-pressed={activeCharacters.includes(character)} title={activeCharacters.length?"Add or remove this character":"Show only this character"} onClick={()=>toggleCharacter(character)}><i style={{background:CHART_COLORS[index%CHART_COLORS.length]}}/>{character} <b>{row.level}</b></button>})}</div></header>
     {!events.length?<div className="history-chart-empty">No level milestones have been discovered yet.</div>:<div className="history-bar-scroll"><svg className="history-level-path" style={{width}} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Character levels over time">
       {ticks.map(level=><g key={level}><line x1={left} x2={width-right} y1={y(level)} y2={y(level)}/><text x={left-9} y={y(level)+4} textAnchor="end">L{level}</text></g>)}
-      {characters.map((character,index)=>{const characterEvents=events.filter(row=>(row.character||"Unknown")===character);const points=characterEvents.map(row=>`${x(Date.parse(row.happenedAt))},${y(row.level||1)}`).join(" ");return <g key={character}><polyline points={points} fill="none" stroke={CHART_COLORS[index%CHART_COLORS.length]} strokeWidth="3"/>{characterEvents.map((row,eventIndex)=><circle key={eventIndex} cx={x(Date.parse(row.happenedAt))} cy={y(row.level||1)} r={row.direction==="lost"?5:4} fill={row.direction==="lost"?"var(--bad)":CHART_COLORS[index%CHART_COLORS.length]} stroke="var(--panel)" strokeWidth="2"><title>{character} reached level {row.level} · {new Date(row.happenedAt).toLocaleString()}{row.direction==="lost"?" · level lost":""}</title></circle>)}</g>})}
+      {visibleCharacters.map(character=>{const index=characters.indexOf(character),characterEvents=events.filter(row=>(row.character||"Unknown")===character);const points=characterEvents.map(row=>`${x(Date.parse(row.happenedAt))},${y(row.level||1)}`).join(" ");return <g key={character}><polyline points={points} fill="none" stroke={CHART_COLORS[index%CHART_COLORS.length]} strokeWidth="3"/>{characterEvents.map((row,eventIndex)=><circle key={eventIndex} cx={x(Date.parse(row.happenedAt))} cy={y(row.level||1)} r={row.direction==="lost"?5:4} fill={row.direction==="lost"?"var(--bad)":CHART_COLORS[index%CHART_COLORS.length]} stroke="var(--panel)" strokeWidth="2"><title>{character} reached level {row.level} · {new Date(row.happenedAt).toLocaleString()}{row.direction==="lost"?" · level lost":""}</title></circle>)}</g>})}
       <text className="history-level-date" x={left} y={height-13}>{new Date(minimumTime).toLocaleDateString()}</text>
       <text className="history-level-date" x={width-right} y={height-13} textAnchor="end">{new Date(maximumTime).toLocaleDateString()}</text>
     </svg></div>}
   </ExpandablePanel>;
 }
 
-export function HistoryAnalytics({rows,categoryTitle,actorTitle,showValues=false,showCards=false,levelPath=false}:{rows:HistoryChartDatum[];categoryTitle:string;actorTitle:string;showValues?:boolean;showCards?:boolean;levelPath?:boolean}) {
+export function HistoryAnalytics({rows,categoryTitle,actorTitle,showValues=false,showCards=false,showActors=true,levelPath=false}:{rows:HistoryChartDatum[];categoryTitle:string;actorTitle:string;showValues?:boolean;showCards?:boolean;showActors?:boolean;levelPath?:boolean}) {
   const[grain,setGrain]=useState<TimeGrain>("auto");
   const[expanded,setExpanded]=useState<ChartKey|null>(null);
+  const[levelCharacters,setLevelCharacters]=useState<string[]>([]);
   useEffect(()=>{if(!expanded)return;const close=(event:globalThis.KeyboardEvent)=>event.key==="Escape"&&setExpanded(null);addEventListener("keydown",close);return()=>removeEventListener("keydown",close)},[expanded]);
   const actorRows=useMemo(()=>rows.filter(row=>row.actor?.trim()).map(row=>({...row,label:row.actor!.trim()})),[rows]);
   const characterRows=useMemo(()=>rows.filter(row=>row.character?.trim()).map(row=>({...row,label:row.character!.trim()})),[rows]);
   const chart=(key:ChartKey,isExpanded=false)=>{
     const open=isExpanded?undefined:()=>setExpanded(key);
-    if(key==="levels")return <LevelPathChart rows={rows} expanded={isExpanded} onExpand={open}/>;
+    if(key==="levels")return <LevelPathChart rows={rows} selectedCharacters={levelCharacters} onSelectionChange={setLevelCharacters} expanded={isExpanded} onExpand={open}/>;
     if(key==="frequency")return <DonutChart rows={rows} title={categoryTitle} expanded={isExpanded} onExpand={open}/>;
     if(key==="timeline")return <BarChart rows={rows} grain={grain} setGrain={setGrain} expanded={isExpanded} onExpand={open}/>;
     if(key==="value")return <ValueChart rows={rows} expanded={isExpanded} onExpand={open}/>;
@@ -161,7 +166,7 @@ export function HistoryAnalytics({rows,categoryTitle,actorTitle,showValues=false
       {chart("timeline")}
       {showValues&&chart("value")}
       {showCards&&chart("cards")}
-      {!levelPath&&chart("actors")}
+      {!levelPath&&showActors&&chart("actors")}
       {chart("characters")}
       {chart("rhythm")}
     </section>

@@ -59,6 +59,10 @@ pub enum LogEvent {
         direction: LevelChangeKind,
     },
 
+    PlayerDeath {
+        happened_at: NaiveDateTime,
+        killer_name: String,
+    },
     MobSlain {
         happened_at: NaiveDateTime,
         mob_name: String,
@@ -218,6 +222,13 @@ fn direct_tell() -> &'static Regex {
     })
 }
 
+fn player_death() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have been slain by (?<killer>.+)!$").expect("valid player death regex")
+    })
+}
+
 fn trade_offer() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -248,6 +259,12 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
                 direction,
             });
         }
+    }
+    if let Some(value) = player_death().captures(body) {
+        return Some(LogEvent::PlayerDeath {
+            happened_at,
+            killer_name: value.name("killer")?.as_str().trim().to_owned(),
+        });
     }
     if let Some(value) = loot().captures(body) {
         let who = value.name("who")?.as_str();
@@ -458,6 +475,19 @@ mod tests {
                 direction: LevelChangeKind::Lost,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn parses_player_death_and_preserves_the_killer_name() {
+        let event = parse_log_event(
+            "[Tue Sep 01 12:31:21 2026] You have been slain by Overking Bathezid!",
+            "Derpscleric",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::PlayerDeath { killer_name, .. })
+                if killer_name == "Overking Bathezid"
         ));
     }
 

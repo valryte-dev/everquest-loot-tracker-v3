@@ -9,6 +9,9 @@ export interface ActivityMob { id:number; happenedAt:string; character:string; m
 export interface ActivityOffer { id:number; happenedAt:string; character:string; offererName:string; itemName:string; itemId?:number; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
 export interface ActivityLevel { id:number; happenedAt:string; character:string; level:number; direction:"gained"|"lost"; sourceFile:string }
 export interface ActivityHistorySnapshot { loot:ActivityLoot[]; mobs:ActivityMob[]; offers:ActivityOffer[]; levels:ActivityLevel[] }
+export interface DeathReport { id:number; happenedAt:string; character:string; killerName:string; sourceFile:string; contextCount:number }
+export interface DeathReportEntry { sequenceNumber:number; rawLine:string }
+export interface DeathReportDetail extends DeathReport { rawLine:string; sourceOffset:number; entries:DeathReportEntry[] }
 export interface SplitPayout { name:string; paidAt:string }
 export interface History { id:number; itemName:string; mobName?:string; looterName?:string; valuePp:number; disposition:string; payoutStatus:"pending"|"completed"; note:string; completedAt:string; paidAt?:string; attendees:string[]; payouts:SplitPayout[] }
 export interface MasterItem { id:number; name:string; valuePp:number; valueBasis?:string; count30d:number; lastSeen:string; manual:boolean; source:string }
@@ -25,5 +28,5 @@ export interface ImportRecord { id:number; happenedAt:string; fileName:string; s
 export interface MerchantListingItem { id:number; itemName:string; itemId?:number; askingPricePp?:number; marketValuePp?:number; marketValueBasis?:string; marketCount30d:number }
 export interface MerchantMessage { id:number; happenedAt:string; kind:"wts"|"wtb"|"tell"; speakerName:string; message:string; items:MerchantListingItem[] }
 export interface CompoundWorkspace { projects:any[]; templates:any[]; activeId?:string|null }
-export interface AppSnapshot { settings:Record<string,string>; members:Member[]; loot:Loot[]; splits:Split[]; tracked:TrackedLoot[]; linkedLoot:LinkedLoot[]; history:History[]; items:MasterItem[]; inventory:InventoryItem[]; spells:Spell[]; wts:WtsGroup[]; aliases:Alias[]; mobs:string[]; logs:AppLog[]; imports:ImportRecord[]; merchant:MerchantMessage[]; compound:CompoundWorkspace }
+export interface AppSnapshot { settings:Record<string,string>; members:Member[]; loot:Loot[]; splits:Split[]; tracked:TrackedLoot[]; linkedLoot:LinkedLoot[]; history:History[]; items:MasterItem[]; inventory:InventoryItem[]; spells:Spell[]; wts:WtsGroup[]; aliases:Alias[]; mobs:string[]; logs:AppLog[]; imports:ImportRecord[]; merchant:MerchantMessage[]; deathReports:DeathReport[]; compound:CompoundWorkspace }
 export type LoadingState<T>={kind:"loading"}|{kind:"ready";value:T}|{kind:"error";message:string};

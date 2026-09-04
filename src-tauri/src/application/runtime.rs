@@ -8,7 +8,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -200,6 +200,7 @@ fn poll(
         logs.pop()
     };
     if let Some(newest) = newest {
+        let mut character_changed = false;
         if active_log.as_ref() != Some(&newest) {
             let character = character_from_log(&newest).unwrap_or_else(|| "Unknown".into());
             let connection = database.connect().map_err(|error| error.to_string())?;
@@ -210,10 +211,10 @@ fn poll(
                     |r| r.get(0),
                 )
                 .ok();
-            if previous
+            character_changed = previous
                 .as_deref()
-                .is_some_and(|value| !value.eq_ignore_ascii_case(&character))
-            {
+                .is_some_and(|value| !value.eq_ignore_ascii_case(&character));
+            if character_changed {
                 connection
                     .execute("DELETE FROM current_group", [])
                     .map_err(|e| e.to_string())?;
@@ -231,12 +232,22 @@ fn poll(
                 "watcher",
                 &format!("Active log: {} ({character})", newest.display()),
             );
-            let size = fs::metadata(&newest).map(|m| m.len()).unwrap_or(0);
-            offsets.entry(newest.clone()).or_insert(size);
+            if !offsets.contains_key(&newest) {
+                let size = fs::metadata(&newest).map(|m| m.len()).unwrap_or(0);
+                let offset = initial_live_offset(database, &newest, size)?;
+                offsets.insert(newest.clone(), offset);
+            }
             *active_log = Some(newest.clone());
             changed = true;
         }
         changed |= process_log(database, &newest, offsets, last_mob)?;
+        if character_changed {
+            database
+                .connect()
+                .map_err(|error| error.to_string())?
+                .execute("DELETE FROM current_group", [])
+                .map_err(|error| error.to_string())?;
+        }
     }
     let output = services::output_directory(&directory);
     if watched_export_directory.as_ref() != Some(&output) {
@@ -293,6 +304,7 @@ fn scan_history_directory(
     for path in paths {
         summary.files += 1;
         summary.inserted += scan_history_file(database, &path)?;
+        summary.inserted += scan_death_report_file(database, &path)?;
     }
 
     let connection = database.connect().map_err(|error| error.to_string())?;
@@ -306,6 +318,20 @@ fn scan_history_directory(
     connection
         .execute(
             "INSERT INTO app_settings(key,value) VALUES('activity_history_files_scanned',?)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [summary.files.to_string()],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('death_reports_last_scan_at',CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('death_report_files_scanned',?)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [summary.files.to_string()],
         )
@@ -387,6 +413,116 @@ fn scan_history_file(database: &Database, path: &Path) -> Result<usize, String> 
                 file_size=excluded.file_size,
                 scanned_at=excluded.scanned_at",
             params![source, character, line_offset, size],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(inserted)
+}
+
+fn scan_death_report_file(database: &Database, path: &Path) -> Result<usize, String> {
+    const CONTEXT_LINES: usize = 30;
+
+    let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
+    let source = path.display().to_string();
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let saved = connection
+        .query_row(
+            "SELECT byte_offset,context_json FROM death_report_scan_cursors WHERE source_file=?",
+            [&source],
+            |row| Ok((row.get::<_, u64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let (mut line_offset, mut context) = match saved {
+        Some((offset, raw_context)) if offset <= size => {
+            let lines = serde_json::from_str::<Vec<String>>(&raw_context).unwrap_or_default();
+            (offset, VecDeque::from(lines))
+        }
+        _ => (0, VecDeque::new()),
+    };
+    while context.len() > CONTEXT_LINES {
+        context.pop_front();
+    }
+    if size == line_offset {
+        return Ok(0);
+    }
+
+    file.seek(SeekFrom::Start(line_offset))
+        .map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(file);
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut inserted = 0;
+    let mut line_bytes = Vec::new();
+    loop {
+        line_bytes.clear();
+        let bytes_read = reader
+            .read_until(b'\n', &mut line_bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes_read == 0 || !line_bytes.ends_with(b"\n") {
+            break;
+        }
+        let text = String::from_utf8_lossy(&line_bytes);
+        let line = text.trim_end_matches(['\r', '\n']).to_owned();
+        if let Some(LogEvent::PlayerDeath {
+            happened_at,
+            killer_name,
+        }) = parse_log_event(&line, &character)
+        {
+            let created = transaction
+                .execute(
+                    "INSERT OR IGNORE INTO death_reports(
+                        happened_at,character_name,killer_name,raw_line,source_file,source_offset
+                     ) VALUES(?,?,?,?,?,?)",
+                    params![
+                        happened_at.to_string(),
+                        character,
+                        killer_name,
+                        line,
+                        source,
+                        line_offset as i64
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            if created > 0 {
+                let report_id = transaction.last_insert_rowid();
+                for (index, context_line) in context.iter().enumerate() {
+                    transaction
+                        .execute(
+                            "INSERT INTO death_report_entries(
+                                death_report_id,sequence_number,raw_line
+                             ) VALUES(?,?,?)",
+                            params![report_id, index as i64 + 1, context_line],
+                        )
+                        .map_err(|error| error.to_string())?;
+                }
+                inserted += 1;
+            }
+        }
+        context.push_back(line);
+        while context.len() > CONTEXT_LINES {
+            context.pop_front();
+        }
+        line_offset += bytes_read as u64;
+    }
+
+    let context_json = serde_json::to_string(&context.iter().cloned().collect::<Vec<_>>())
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO death_report_scan_cursors(
+                source_file,character_name,byte_offset,file_size,context_json,scanned_at
+             ) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(source_file) DO UPDATE SET
+                character_name=excluded.character_name,
+                byte_offset=excluded.byte_offset,
+                file_size=excluded.file_size,
+                context_json=excluded.context_json,
+                scanned_at=excluded.scanned_at",
+            params![source, character, line_offset, size, context_json],
         )
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
@@ -542,11 +678,59 @@ fn process_log(
     }
     *offset = line_offset;
     if let Ok(connection) = database.connect() {
+        let _ = connection.execute(
+            "INSERT INTO live_log_cursors(source_file,byte_offset,file_size,updated_at)
+             VALUES(?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(source_file) DO UPDATE SET
+                 byte_offset=excluded.byte_offset,
+                 file_size=excluded.file_size,
+                 updated_at=CURRENT_TIMESTAMP",
+            params![path.display().to_string(), line_offset as i64, size as i64],
+        );
         let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_path',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[path.display().to_string()]);
         let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[line_offset.to_string()]);
         let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_log_read_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
     }
     Ok(before != log_data_signature(database)?)
+}
+
+fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u64, String> {
+    let source_file = path.display().to_string();
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let saved = connection
+        .query_row(
+            "SELECT byte_offset FROM live_log_cursors WHERE source_file=?",
+            [&source_file],
+            |row| row.get::<_, u64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    let offset = match saved {
+        Some(saved) if saved <= size => saved,
+        Some(_) => 0,
+        None => connection
+            .query_row(
+                "SELECT MAX(source_offset) FROM loot_drops WHERE source_file=?",
+                [&source_file],
+                |row| row.get::<_, Option<u64>>(0),
+            )
+            .map_err(|error| error.to_string())?
+            .unwrap_or(size),
+    };
+
+    connection
+        .execute(
+            "INSERT INTO live_log_cursors(source_file,byte_offset,file_size,updated_at)
+             VALUES(?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(source_file) DO UPDATE SET
+                 byte_offset=excluded.byte_offset,
+                 file_size=excluded.file_size,
+                 updated_at=CURRENT_TIMESTAMP",
+            params![source_file, offset as i64, size as i64],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(offset)
 }
 
 fn log_data_signature(database: &Database) -> Result<(i64, i64, i64, i64, i64, String), String> {
@@ -679,7 +863,9 @@ fn apply_event(
                 finish_merchant_capture(&c)?;
             }
         }
-        LogEvent::TradeOffer { .. } | LogEvent::LevelChanged { .. } => {}
+        LogEvent::TradeOffer { .. }
+        | LogEvent::LevelChanged { .. }
+        | LogEvent::PlayerDeath { .. } => {}
         LogEvent::LinkedItems {
             happened_at,
             speaker,
@@ -1060,7 +1246,9 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{poll, process_log, resolve_linked_items, scan_history_directory};
+    use super::{
+        poll, process_log, resolve_linked_items, scan_death_report_file, scan_history_directory,
+    };
     use crate::infrastructure::database::Database;
     use std::{collections::HashMap, fs, io::Write};
 
@@ -1100,6 +1288,75 @@ mod tests {
         assert_eq!(active.as_deref(), Some(first.as_path()));
         assert_eq!(character, "Youngman");
     }
+    #[test]
+    fn character_switch_finishes_with_an_empty_group_even_when_replaying_backlog() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('active_character','Youngman')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO known_members(name) VALUES('Youngman'),('Posed')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO current_group(member_id) SELECT id FROM known_members",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let previous_log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let next_log = directory.path().join("eqlog_Valmezz_P1999Green.txt");
+        fs::write(&previous_log, b"").unwrap();
+        fs::write(
+            &next_log,
+            b"[Fri Sep 04 12:27:20 2026] Posed tells the group, 'ready'\r\n",
+        )
+        .unwrap();
+
+        let mut active = Some(previous_log);
+        let mut offsets = HashMap::from([(next_log.clone(), 0)]);
+        poll(
+            &database,
+            &mut active,
+            &mut offsets,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&next_log),
+        )
+        .unwrap();
+
+        let connection = database.connect().unwrap();
+        let group_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM current_group", [], |row| row.get(0))
+            .unwrap();
+        let active_character: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='active_character'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(group_count, 0);
+        assert_eq!(active_character, "Valmezz");
+    }
+
     #[test]
     fn unknown_longer_item_phrase_does_not_collapse_to_known_suffix() {
         let directory = tempfile::tempdir().unwrap();
@@ -1172,6 +1429,166 @@ mod tests {
             )
             .unwrap();
         assert_eq!((count, distinct), (2, 2));
+    }
+
+    #[test]
+    fn persisted_live_cursor_recovers_loot_written_while_stopped() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+
+        let log = directory.path().join("eqlog_Valmezz_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Fri Sep 04 12:20:00 2026] --You have looted A Blue Throne.--\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .unwrap()
+            .write_all(b"[Fri Sep 04 12:27:20 2026] --Hansz has looted a A White Throne.--\r\n")
+            .unwrap();
+
+        let mut active = None;
+        poll(
+            &database,
+            &mut active,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&log),
+        )
+        .unwrap();
+
+        let connection = database.connect().unwrap();
+        let recovered: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM loot_drops
+                 WHERE looter_name='Hansz' AND item_name='A White Throne'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(recovered, 1);
+    }
+
+    #[test]
+    fn upgrade_without_cursor_replays_from_last_live_loot() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+
+        let log = directory.path().join("eqlog_Valmezz_P1999Green.txt");
+        let first = "[Fri Sep 04 12:20:00 2026] --You have looted A Blue Throne.--";
+        fs::write(
+            &log,
+            format!(
+                "{first}\r\n[Fri Sep 04 12:27:20 2026] --Hansz has looted a A White Throne.--\r\n"
+            ),
+        )
+        .unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO loot_drops(
+                    happened_at,item_name,looter_name,raw_line,source_file,source_offset
+                 ) VALUES('2026-09-04 12:20:00','A Blue Throne','Valmezz',?,?,0)",
+                rusqlite::params![first, log.display().to_string()],
+            )
+            .unwrap();
+
+        let mut active = None;
+        poll(
+            &database,
+            &mut active,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&log),
+        )
+        .unwrap();
+
+        let connection = database.connect().unwrap();
+        let total: i64 = connection
+            .query_row("SELECT COUNT(*) FROM loot_drops", [], |row| row.get(0))
+            .unwrap();
+        let recovered: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM loot_drops
+                 WHERE looter_name='Hansz' AND item_name='A White Throne'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((total, recovered), (2, 1));
+    }
+
+    #[test]
+    fn death_report_backfill_captures_exactly_the_previous_thirty_complete_lines() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Derpscleric_P1999Green.txt");
+        let mut contents = String::new();
+        for index in 1..=35 {
+            contents.push_str(&format!(
+                "[Tue Sep 01 12:31:20 2026] context line {index}\r\n"
+            ));
+        }
+        contents
+            .push_str("[Tue Sep 01 12:31:21 2026] You have been slain by Overking Bathezid!\r\n");
+        fs::write(&log, contents).unwrap();
+
+        assert_eq!(scan_death_report_file(&database, &log).unwrap(), 1);
+        assert_eq!(scan_death_report_file(&database, &log).unwrap(), 0);
+
+        let connection = database.connect().unwrap();
+        let report: (String, String, i64) = connection
+            .query_row(
+                "SELECT character_name,killer_name,source_offset FROM death_reports",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        let context: Vec<String> = connection
+            .prepare(
+                "SELECT raw_line FROM death_report_entries
+                 ORDER BY sequence_number",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(report.0, "Derpscleric");
+        assert_eq!(report.1, "Overking Bathezid");
+        assert!(report.2 > 0);
+        assert_eq!(context.len(), 30);
+        assert!(context.first().unwrap().ends_with("context line 6"));
+        assert!(context.last().unwrap().ends_with("context line 35"));
     }
 
     #[test]

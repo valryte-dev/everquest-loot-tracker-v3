@@ -264,6 +264,23 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             }))
         },
     )?;
+    let death_reports = query_values(
+        &connection,
+        "SELECT d.id,d.happened_at,d.character_name,d.killer_name,d.source_file,
+                COUNT(e.sequence_number)
+         FROM death_reports d
+         LEFT JOIN death_report_entries e ON e.death_report_id=d.id
+         GROUP BY d.id
+         ORDER BY d.happened_at DESC,d.id DESC",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"killerName":row.get::<_,String>(3)?,
+                "sourceFile":row.get::<_,String>(4)?,"contextCount":row.get::<_,i64>(5)?
+            }))
+        },
+    )?;
+
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -275,7 +292,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
-        "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,"compound":compound}),
+        "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
+        "deathReports":death_reports,"compound":compound}),
     )
 }
 
@@ -344,6 +362,50 @@ pub fn activity_history_snapshot(database: &Database) -> Result<Value, String> {
     Ok(json!({"loot":loot,"mobs":mobs,"offers":offers,"levels":levels}))
 }
 
+pub fn death_report_details(database: &Database, id: i64) -> Result<Value, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let report = connection
+        .query_row(
+            "SELECT id,happened_at,character_name,killer_name,raw_line,source_file,source_offset
+             FROM death_reports WHERE id=?",
+            [id],
+            |row| {
+                Ok(json!({
+                    "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                    "character":row.get::<_,String>(2)?,"killerName":row.get::<_,String>(3)?,
+                    "rawLine":row.get::<_,String>(4)?,"sourceFile":row.get::<_,String>(5)?,
+                    "sourceOffset":row.get::<_,i64>(6)?
+                }))
+            },
+        )
+        .optional()
+        .map_err(err)?
+        .ok_or("Death report was not found")?;
+    let entries = {
+        let mut statement = connection
+            .prepare(
+                "SELECT sequence_number,raw_line FROM death_report_entries
+                 WHERE death_report_id=? ORDER BY sequence_number",
+            )
+            .map_err(err)?;
+        let rows = statement
+            .query_map([id], |row| {
+                Ok(json!({
+                    "sequenceNumber":row.get::<_,i64>(0)?,
+                    "rawLine":row.get::<_,String>(1)?
+                }))
+            })
+            .map_err(err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(err)?
+    };
+    let mut value = report;
+    value
+        .as_object_mut()
+        .expect("death report query returns an object")
+        .insert("entries".into(), Value::Array(entries));
+    Ok(value)
+}
+
 pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
     let mut value = snapshot(database)?;
     let Some(root) = value.as_object_mut() else {
@@ -353,6 +415,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "live" => &["loot", "items", "mobs"],
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
+        "death-reports" => &["deathReports"],
         "merchant" => &["merchant"],
         "splits" => &["splits", "history", "aliases", "items", "mobs"],
         "compounds" => &["compound", "items", "inventory", "members"],
@@ -371,6 +434,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "splits",
         "tracked",
         "linkedLoot",
+        "deathReports",
         "history",
         "items",
         "inventory",
@@ -581,32 +645,7 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         "split.save" => save_split(&mut connection, payload)?,
         "split.delete" => delete_split(&mut connection, required(payload, "key")?)?,
         "split.complete" => complete_split(&mut connection, payload)?,
-        "history.save" => {
-            let disposition = required(payload, "disposition")?;
-            connection
-                .execute(
-                    "UPDATE completed_split_items SET disposition=?,value_pp=?,note=?,payout_status=CASE WHEN ?='consumed' THEN 'completed' WHEN disposition='consumed' AND ?='sold' THEN 'pending' ELSE payout_status END,paid_at=CASE WHEN ?='consumed' THEN COALESCE(paid_at,CURRENT_TIMESTAMP) WHEN disposition='consumed' AND ?='sold' THEN NULL ELSE paid_at END WHERE id=?",
-                    params![
-                        disposition,
-                        integer(payload, "valuePp")?,
-                        payload.get("note").and_then(Value::as_str).unwrap_or(""),
-                        disposition,
-                        disposition,
-                        disposition,
-                        disposition,
-                        integer(payload, "id")?
-                    ],
-                )
-                .map_err(err)?;
-            if disposition == "consumed" {
-                connection
-                    .execute(
-                        "DELETE FROM completed_split_payouts WHERE completed_split_item_id=?",
-                        [integer(payload, "id")?],
-                    )
-                    .map_err(err)?;
-            }
-        }
+        "history.save" => save_history(&mut connection, payload)?,
         "history.payout.member.complete" => {
             set_split_member_payout(&mut connection, payload, true)?;
         }
@@ -987,6 +1026,139 @@ fn save_split(connection: &mut rusqlite::Connection, payload: &Value) -> Result<
                 .map_err(err)?;
         }
     }
+    Ok(())
+}
+
+fn save_history(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
+    let id = integer(payload, "id")?;
+    let disposition = required(payload, "disposition")?;
+    if !matches!(disposition.as_str(), "sold" | "consumed") {
+        return Err("disposition must be sold or consumed".into());
+    }
+    let attendees = payload.get("attendees").map(|_| {
+        let mut unique = HashMap::new();
+        for name in strings(payload, "attendees") {
+            unique.entry(name.to_lowercase()).or_insert(name);
+        }
+        let mut names = unique.into_values().collect::<Vec<_>>();
+        names.sort_by_key(|name| name.to_lowercase());
+        names
+    });
+    if attendees.as_ref().is_some_and(Vec::is_empty) {
+        return Err("Choose at least one payout participant".into());
+    }
+
+    let transaction = connection.transaction().map_err(err)?;
+    let existing_payouts = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT member_name,paid_at FROM completed_split_payouts
+                 WHERE completed_split_item_id=?",
+            )
+            .map_err(err)?;
+        let rows = statement
+            .query_map([id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(err)?
+            .filter_map(Result::ok)
+            .collect::<HashMap<_, _>>();
+        rows
+    };
+
+    let updated = transaction
+        .execute(
+            "UPDATE completed_split_items SET disposition=?,value_pp=?,note=? WHERE id=?",
+            params![
+                disposition,
+                integer(payload, "valuePp")?,
+                payload.get("note").and_then(Value::as_str).unwrap_or(""),
+                id
+            ],
+        )
+        .map_err(err)?;
+    if updated == 0 {
+        return Err("Sale record was not found".into());
+    }
+
+    if let Some(attendees) = attendees {
+        transaction
+            .execute(
+                "DELETE FROM completed_split_members WHERE completed_split_item_id=?",
+                [id],
+            )
+            .map_err(err)?;
+        transaction
+            .execute(
+                "DELETE FROM completed_split_payouts WHERE completed_split_item_id=?",
+                [id],
+            )
+            .map_err(err)?;
+        for name in attendees {
+            remember(&transaction, &name)?;
+            transaction
+                .execute(
+                    "INSERT INTO completed_split_members(completed_split_item_id,member_name)
+                     VALUES(?,?)",
+                    params![id, name],
+                )
+                .map_err(err)?;
+            if disposition == "sold" {
+                if let Some((_, paid_at)) = existing_payouts
+                    .iter()
+                    .find(|(paid_name, _)| paid_name.eq_ignore_ascii_case(&name))
+                {
+                    transaction
+                        .execute(
+                            "INSERT INTO completed_split_payouts(
+                                completed_split_item_id,member_name,paid_at
+                             ) VALUES(?,?,?)",
+                            params![id, name, paid_at],
+                        )
+                        .map_err(err)?;
+                }
+            }
+        }
+    }
+
+    if disposition == "consumed" {
+        transaction
+            .execute(
+                "DELETE FROM completed_split_payouts WHERE completed_split_item_id=?",
+                [id],
+            )
+            .map_err(err)?;
+        transaction
+            .execute(
+                "UPDATE completed_split_items
+                 SET payout_status='completed',paid_at=COALESCE(paid_at,CURRENT_TIMESTAMP)
+                 WHERE id=?",
+                [id],
+            )
+            .map_err(err)?;
+    } else {
+        let unpaid: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM completed_split_members m
+                 LEFT JOIN completed_split_payouts p
+                   ON p.completed_split_item_id=m.completed_split_item_id
+                  AND p.member_name=m.member_name COLLATE NOCASE
+                 WHERE m.completed_split_item_id=? AND p.member_name IS NULL",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(err)?;
+        transaction
+            .execute(
+                "UPDATE completed_split_items
+                 SET payout_status=CASE WHEN ?=0 THEN 'completed' ELSE 'pending' END,
+                     paid_at=CASE WHEN ?=0 THEN COALESCE(paid_at,CURRENT_TIMESTAMP) ELSE NULL END
+                 WHERE id=?",
+                params![unpaid, unpaid, id],
+            )
+            .map_err(err)?;
+    }
+    transaction.commit().map_err(err)?;
     Ok(())
 }
 
@@ -1827,6 +1999,63 @@ mod tests {
         assert_eq!(value["history"][0]["payouts"].as_array().unwrap().len(), 1);
         assert_eq!(value["history"][0]["payouts"][0]["name"], "Friend");
     }
+    #[test]
+    fn editing_a_sale_can_add_a_pending_participant_without_losing_paid_players() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO completed_split_items(
+                item_name,value_pp,disposition,note,payout_status,paid_at
+             ) VALUES('Shared Item',300,'sold','original','completed','2026-09-01')",
+                [],
+            )
+            .unwrap();
+        let item_id = connection.last_insert_rowid();
+        connection
+            .execute(
+                "INSERT INTO completed_split_members(completed_split_item_id,member_name)
+             VALUES(?,'Main'),(?,'Friend')",
+                params![item_id, item_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO completed_split_payouts(completed_split_item_id,member_name,paid_at)
+             VALUES(?,'Main','2026-09-02'),(?,'Friend','2026-09-03')",
+                params![item_id, item_id],
+            )
+            .unwrap();
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.save",
+            &json!({
+                "id":item_id,
+                "disposition":"sold",
+                "valuePp":300,
+                "note":"added late participant",
+                "attendees":["Main","Friend","Newperson"]
+            }),
+        )
+        .unwrap();
+
+        let value = snapshot(&database).unwrap();
+        let history = &value["history"][0];
+        assert_eq!(history["attendees"], json!(["Friend", "Main", "Newperson"]));
+        assert_eq!(history["payoutStatus"], "pending");
+        assert_eq!(history["paidAt"], json!(null));
+        assert_eq!(history["payouts"].as_array().unwrap().len(), 2);
+        assert!(history["payouts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|payout| payout["name"] != "Newperson"));
+    }
+
     #[test]
     fn activity_history_snapshot_resolves_shared_item_values() {
         let directory = tempfile::tempdir().unwrap();

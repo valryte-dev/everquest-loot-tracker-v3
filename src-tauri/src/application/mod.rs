@@ -117,6 +117,11 @@ pub fn activity_history_snapshot(state: tauri::State<'_, AppState>) -> Result<Va
 }
 
 #[tauri::command]
+pub fn death_report_details(state: tauri::State<'_, AppState>, id: i64) -> Result<Value, String> {
+    data::death_report_details(&state.database, id)
+}
+
+#[tauri::command]
 pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
     state.revision.load(Ordering::Relaxed)
 }

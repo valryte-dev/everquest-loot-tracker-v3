@@ -13,6 +13,7 @@ describe("feature catalog", () => {
       "linked",
       "tracked",
       "activity-history",
+      "death-reports",
       "splits",
       "compounds",
       "merchant",
