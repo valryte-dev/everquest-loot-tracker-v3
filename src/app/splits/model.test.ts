@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {buildSplitPayoutSummary} from "./model";
+import {buildSplitPayoutSummary,groupSplitPeople} from "./model";
 
 describe("buildSplitPayoutSummary",()=>{
  it("tracks payments independently per canonical participant",()=>{
@@ -14,5 +14,21 @@ describe("buildSplitPayoutSummary",()=>{
  it("treats consumed items as terminal without adding them to paid payouts",()=>{
   const summary=buildSplitPayoutSummary([], [{id:2,itemName:"Used",valuePp:20,disposition:"consumed",payoutStatus:"completed",note:"Quest",completedAt:"2026-08-02",paidAt:"2026-08-02",attendees:["A"],payouts:[]}], []);
   expect(summary.consumedValuePp).toBe(20);expect(summary.paidValuePp).toBe(0);expect(summary.people[0].consumedItems).toBe(1);expect(summary.people[0].paidSharePp).toBe(0);
+ });
+});
+
+describe("groupSplitPeople",()=>{
+ it("places each person in the highest-priority group without case-insensitive duplicates",()=>{
+  const groups=groupSplitPeople(
+   ["Valryte","Bluid"],
+   ["bluid","Tonel","Historical","VALRYTE"],
+   ["Valryte","Tonel","Newperson","historical","Another"],
+  );
+  expect(groups.current).toEqual(["Bluid","Valryte"]);
+  expect(groups.acrossSplits).toEqual(["Historical","Tonel"]);
+  expect(groups.others).toEqual(["Another","Newperson"]);
+ });
+ it("filters each group without changing its membership priority",()=>{
+  expect(groupSplitPeople(["Valryte"],["Tonel"],["Other"],"to")).toEqual({current:[],acrossSplits:["Tonel"],others:[]});
  });
 });

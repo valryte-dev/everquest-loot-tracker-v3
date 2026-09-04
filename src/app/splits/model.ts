@@ -4,6 +4,17 @@ export type ContributionStatus="held"|"pending"|"paid"|"consumed";
 export interface PayoutContribution{key:string;itemName:string;status:ContributionStatus;totalValuePp:number;shareValuePp:number;participantCount:number;mobName?:string;holderName?:string;note?:string;happenedAt:string;paidAt?:string}
 export interface PersonPayoutSummary{name:string;heldSharePp:number;pendingSharePp:number;paidSharePp:number;consumedSharePp:number;totalTrackedPp:number;heldItems:number;pendingItems:number;paidItems:number;consumedItems:number;contributions:PayoutContribution[]}
 export interface SplitPayoutSummary{people:PersonPayoutSummary[];heldValuePp:number;pendingValuePp:number;paidValuePp:number;consumedValuePp:number;heldCount:number;pendingCount:number;paidCount:number;consumedCount:number}
+export interface SplitPeopleGroups{current:string[];acrossSplits:string[];others:string[]}
+
+export function groupSplitPeople(current:string[],splitPeople:string[],members:string[],query=""):SplitPeopleGroups{
+ const unique=(names:string[])=>[...new Map(names.map(name=>name.trim()).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+ const matches=(name:string)=>name.toLowerCase().includes(query.trim().toLowerCase());
+ const sort=(names:string[])=>names.filter(matches).sort((a,b)=>a.localeCompare(b));
+ const currentNames=unique(current),currentKeys=new Set(currentNames.map(name=>name.toLowerCase()));
+ const acrossSplits=unique(splitPeople).filter(name=>!currentKeys.has(name.toLowerCase())),splitKeys=new Set(acrossSplits.map(name=>name.toLowerCase()));
+ const others=unique(members).filter(name=>!currentKeys.has(name.toLowerCase())&&!splitKeys.has(name.toLowerCase()));
+ return {current:sort(currentNames),acrossSplits:sort(acrossSplits),others:sort(others)};
+}
 
 export function buildSplitPayoutSummary(splits:Split[],history:History[],aliases:Alias[]):SplitPayoutSummary{
  const aliasMap=new Map(aliases.map(alias=>[alias.alias.trim().toLowerCase(),alias.canonical.trim()]));

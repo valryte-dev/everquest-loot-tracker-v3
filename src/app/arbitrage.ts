@@ -23,6 +23,7 @@ export interface ArbitrageOpportunity extends ArbitrageScore{
  trader:string;
  happenedAt:string;
  count30d:number;
+ marketValueBasis?:string;
 }
 
 export function scoreArbitrage(kind:MerchantMessage["kind"],item:MerchantListingItem):ArbitrageScore|null{
@@ -44,6 +45,6 @@ export function scoreArbitrage(kind:MerchantMessage["kind"],item:MerchantListing
 
 export function identifyArbitrage(messages:MerchantMessage[]):ArbitrageOpportunity[]{
  const latest=new Map<string,ArbitrageOpportunity>();
- for(const message of messages){for(const item of message.items){const result=scoreArbitrage(message.kind,item);if(!result)continue;const opportunity={...result,key:`${message.id}-${item.id}`,messageId:message.id,itemId:item.id,itemName:item.itemName,trader:message.speakerName,happenedAt:message.happenedAt,count30d:item.marketCount30d||0};const identity=`${result.direction}|${message.speakerName.toLowerCase()}|${item.itemName.toLowerCase()}`,previous=latest.get(identity);if(!previous||new Date(opportunity.happenedAt).valueOf()>new Date(previous.happenedAt).valueOf())latest.set(identity,opportunity)}}
+ for(const message of messages){for(const item of message.items){const result=scoreArbitrage(message.kind,item);if(!result)continue;const opportunity={...result,key:`${message.id}-${item.id}`,messageId:message.id,itemId:item.id,itemName:item.itemName,trader:message.speakerName,happenedAt:message.happenedAt,count30d:item.marketCount30d||0,marketValueBasis:item.marketValueBasis};const identity=`${result.direction}|${message.speakerName.toLowerCase()}|${item.itemName.toLowerCase()}`,previous=latest.get(identity);if(!previous||new Date(opportunity.happenedAt).valueOf()>new Date(previous.happenedAt).valueOf())latest.set(identity,opportunity)}}
  return[...latest.values()].sort((left,right)=>right.score-left.score||right.potentialProfitPp-left.potentialProfitPp);
 }

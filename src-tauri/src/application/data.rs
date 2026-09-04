@@ -68,52 +68,65 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
 
     let loot = query_values(
         &connection,
-        "SELECT d.id, d.happened_at, d.item_name, COALESCE(m.name,d.mob_name), d.looter_name,
-                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE
-                 AND v.transaction_type=0 AND v.item_name=d.item_name COLLATE NOCASE AND v.average_30d_pp>0
-                 ORDER BY v.count_30d DESC, v.last_seen DESC LIMIT 1),
+        "SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id,
                 EXISTS(SELECT 1 FROM split_loot_items s WHERE s.loot_drop_id=d.id),
-                (SELECT GROUP_CONCAT(member_name, char(31)) FROM loot_drop_members lm WHERE lm.loot_drop_id=d.id)
-         FROM loot_drops d LEFT JOIN mobs m ON m.id=d.mob_id
-         ORDER BY d.happened_at DESC, d.id DESC LIMIT 1000",
+                (SELECT GROUP_CONCAT(member_name,char(31)) FROM loot_drop_members lm WHERE lm.loot_drop_id=d.id)
+         FROM loot_drops d
+         LEFT JOIN mobs m ON m.id=d.mob_id
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=d.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY d.happened_at DESC,d.id DESC LIMIT 1000",
         |row| Ok(json!({
             "id": row.get::<_, i64>(0)?, "happenedAt": row.get::<_, String>(1)?,
-            "itemName": row.get::<_, String>(2)?, "mobName": row.get::<_, Option<String>>(3)?,
-            "looterName": row.get::<_, Option<String>>(4)?, "valuePp": row.get::<_, Option<i64>>(5)?,
-            "splitListed": row.get::<_, bool>(6)?, "attendees": names(row.get::<_, Option<String>>(7)?)
+            "itemName":row.get::<_,String>(2)?,"mobName":row.get::<_,Option<String>>(3)?,
+            "looterName":row.get::<_,Option<String>>(4)?,"valuePp":row.get::<_,Option<i64>>(5)?,
+            "valueBasis":row.get::<_,Option<String>>(6)?,"valueSamples":row.get::<_,i64>(7)?,
+            "itemId":row.get::<_,Option<i64>>(8)?,"splitListed":row.get::<_,bool>(9)?,
+            "attendees":names(row.get::<_,Option<String>>(10)?)
         })),
     )?;
 
     let splits = query_values(
         &connection,
-        "SELECT 'manual:'||s.id, s.item_name, s.added_at, m.name, s.looter_name, s.payout_value_pp,
-                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
-                 AND v.item_name=s.item_name COLLATE NOCASE AND v.average_30d_pp>0 ORDER BY v.count_30d DESC LIMIT 1),
+        "SELECT 'manual:'||s.id,s.item_name,s.added_at,m.name,s.looter_name,s.payout_value_pp,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM manual_split_list_members x WHERE x.split_list_item_id=s.id)
          FROM manual_split_list_items s LEFT JOIN mobs m ON m.id=s.mob_id
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=s.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
          UNION ALL
-         SELECT 'loot:'||s.loot_drop_id, s.item_name, s.added_at, s.mob_name, s.looter_name, s.payout_value_pp,
-                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
-                 AND v.item_name=s.item_name COLLATE NOCASE AND v.average_30d_pp>0 ORDER BY v.count_30d DESC LIMIT 1),
+         SELECT 'loot:'||s.loot_drop_id,s.item_name,s.added_at,s.mob_name,s.looter_name,s.payout_value_pp,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM split_loot_members x WHERE x.split_loot_item_id=s.id)
-         FROM split_loot_items s ORDER BY 3 DESC",
+         FROM split_loot_items s
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=s.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY 3 DESC",
         |row| Ok(json!({
             "key": row.get::<_, String>(0)?, "itemName": row.get::<_, String>(1)?, "addedAt": row.get::<_, String>(2)?,
             "mobName": row.get::<_, Option<String>>(3)?, "looterName": row.get::<_, Option<String>>(4)?,
-            "payoutValuePp": row.get::<_, Option<i64>>(5)?, "marketValuePp": row.get::<_, Option<i64>>(6)?,
-            "attendees": names(row.get::<_, Option<String>>(7)?)
+            "payoutValuePp":row.get::<_,Option<i64>>(5)?,"marketValuePp":row.get::<_,Option<i64>>(6)?,
+            "marketValueBasis":row.get::<_,Option<String>>(7)?,"marketValueSamples":row.get::<_,i64>(8)?,
+            "attendees":names(row.get::<_,Option<String>>(9)?)
         })),
     )?;
 
     let tracked = query_values(
         &connection,
-        "SELECT t.id,t.source_loot_id,t.happened_at,t.item_name,t.mob_name,t.looter_name,t.value_pp,t.tracked_at,
-                (SELECT GROUP_CONCAT(member_name,char(31)) FROM tracked_loot_members x WHERE x.tracked_loot_item_id=t.id)
-         FROM tracked_loot_items t ORDER BY t.happened_at DESC,t.id DESC LIMIT 2000",
+        "SELECT t.id,t.source_loot_id,t.happened_at,t.item_name,t.mob_name,t.looter_name,
+                COALESCE(rv.value_pp,t.value_pp),t.tracked_at,
+                (SELECT GROUP_CONCAT(member_name,char(31)) FROM tracked_loot_members x WHERE x.tracked_loot_item_id=t.id),
+                COALESCE(rv.value_basis,CASE WHEN t.value_pp>0 THEN 'saved estimate' END),COALESCE(rv.sample_count,0)
+         FROM tracked_loot_items t LEFT JOIN item_name_resolutions ni ON ni.item_name=t.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY t.happened_at DESC,t.id DESC LIMIT 2000",
         |row| Ok(json!({
             "id":row.get::<_,i64>(0)?,"sourceLootId":row.get::<_,Option<i64>>(1)?,"happenedAt":row.get::<_,String>(2)?,
             "itemName":row.get::<_,String>(3)?,"mobName":row.get::<_,Option<String>>(4)?,"looterName":row.get::<_,Option<String>>(5)?,
-            "valuePp":row.get::<_,Option<i64>>(6)?,"trackedAt":row.get::<_,String>(7)?,"attendees":names(row.get::<_,Option<String>>(8)?)
+            "valuePp":row.get::<_,Option<i64>>(6)?,"trackedAt":row.get::<_,String>(7)?,
+            "attendees":names(row.get::<_,Option<String>>(8)?),"valueBasis":row.get::<_,Option<String>>(9)?,
+            "valueSamples":row.get::<_,i64>(10)?
         })),
     )?;
 
@@ -134,30 +147,31 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
 
     let items = query_values(
         &connection,
-        "SELECT m.item_id,m.item_name,
-                COALESCE((SELECT v.average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),0),
-                COALESCE((SELECT v.count_30d FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),0),
-                COALESCE((SELECT v.last_seen FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.item_name=m.item_name COLLATE NOCASE ORDER BY v.count_30d DESC LIMIT 1),m.updated_at),
-                m.source='manual',m.source
-         FROM master_items m ORDER BY m.item_name COLLATE NOCASE LIMIT 10000",
+        "SELECT m.item_id,m.item_name,COALESCE(rv.value_pp,0),COALESCE(rv.sample_count,0),
+                COALESCE(rv.last_seen,m.updated_at),COALESCE(rv.is_manual,0),m.source,rv.value_basis
+         FROM master_items m LEFT JOIN resolved_item_values rv ON rv.item_id=m.item_id
+         ORDER BY m.item_name COLLATE NOCASE LIMIT 10000",
         |row| {
             Ok(
                 json!({"id":row.get::<_,i64>(0)?,"name":row.get::<_,String>(1)?,"valuePp":row.get::<_,i64>(2)?,
-            "count30d":row.get::<_,i64>(3)?,"lastSeen":row.get::<_,String>(4)?,"manual":row.get::<_,bool>(5)?,"source":row.get::<_,String>(6)?}),
+            "count30d":row.get::<_,i64>(3)?,"lastSeen":row.get::<_,String>(4)?,"manual":row.get::<_,bool>(5)?,
+            "source":row.get::<_,String>(6)?,"valueBasis":row.get::<_,Option<String>>(7)?}),
             )
         },
     )?;
 
     let inventory = query_values(
         &connection,
-        "SELECT c.name,c.imported_at,i.id,i.location,i.item_name,i.item_id,i.item_count,i.slots,
-                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0
-                 AND v.item_name=i.item_name COLLATE NOCASE AND v.average_30d_pp>0 ORDER BY v.count_30d DESC LIMIT 1)
+        "SELECT c.name,c.imported_at,i.id,i.location,i.item_name,COALESCE(i.item_id,ni.item_id),i.item_count,i.slots,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0)
          FROM inventory_characters c JOIN inventory_items i ON i.character_id=c.id
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=i.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(i.item_id,ni.item_id)
          ORDER BY c.name COLLATE NOCASE,i.sort_order",
         |row| Ok(json!({"character":row.get::<_,String>(0)?,"importedAt":row.get::<_,String>(1)?,"id":row.get::<_,i64>(2)?,
             "location":row.get::<_,String>(3)?,"itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
-            "count":row.get::<_,i64>(6)?,"slots":row.get::<_,Option<i64>>(7)?,"valuePp":row.get::<_,Option<i64>>(8)?})),
+            "count":row.get::<_,i64>(6)?,"slots":row.get::<_,Option<i64>>(7)?,"valuePp":row.get::<_,Option<i64>>(8)?,
+            "valueBasis":row.get::<_,Option<String>>(9)?,"valueSamples":row.get::<_,i64>(10)?})),
     )?;
 
     let spells = query_values(
@@ -204,32 +218,17 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     )?;
     let merchant_item_values = query_values(
         &connection,
-        "SELECT i.merchant_message_id,i.id,i.item_name,i.item_id,i.asking_price_pp,
-                COALESCE(
-                    (SELECT v.average_30d_pp FROM item_market_values v
-                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
-                       AND v.source_item_id=i.item_id
-                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
-                    (SELECT v.average_30d_pp FROM item_market_values v
-                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
-                       AND v.item_name=i.item_name COLLATE NOCASE
-                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1)),
-                COALESCE(
-                    (SELECT v.count_30d FROM item_market_values v
-                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
-                       AND v.source_item_id=i.item_id
-                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),
-                    (SELECT v.count_30d FROM item_market_values v
-                     WHERE v.server='Green' COLLATE NOCASE AND v.transaction_type=0 AND v.average_30d_pp>0
-                       AND v.item_name=i.item_name COLLATE NOCASE
-                     ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1),0)
+        "SELECT i.merchant_message_id,i.id,i.item_name,COALESCE(i.item_id,ni.item_id),i.asking_price_pp,
+                rv.value_pp,COALESCE(rv.sample_count,0),rv.value_basis
          FROM merchant_message_items i
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=i.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(i.item_id,ni.item_id)
          WHERE i.merchant_message_id IN (SELECT id FROM merchant_messages ORDER BY id DESC LIMIT 2000)
          ORDER BY i.merchant_message_id DESC,i.sort_order",
         |row| Ok(json!({"messageId":row.get::<_,i64>(0)?,"id":row.get::<_,i64>(1)?,
             "itemName":row.get::<_,String>(2)?,"itemId":row.get::<_,Option<i64>>(3)?,
             "askingPricePp":row.get::<_,Option<i64>>(4)?,"marketValuePp":row.get::<_,Option<i64>>(5)?,
-            "marketCount30d":row.get::<_,i64>(6)?})),
+            "marketCount30d":row.get::<_,i64>(6)?,"marketValueBasis":row.get::<_,Option<String>>(7)?})),
     )?;
     let mut merchant_items: HashMap<i64, Vec<Value>> = HashMap::new();
     for item in merchant_item_values {
@@ -249,76 +248,12 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
     )?;
     let linked_loot = query_values(
         &connection,
-        "WITH linked_base AS (
-             SELECT l.*,
-                    (SELECT m.item_id FROM master_items m
-                     WHERE m.item_name=l.item_name COLLATE NOCASE LIMIT 1) AS resolved_item_id
-             FROM linked_loot_items l
-         ),
-         market_candidates AS (
-             SELECT b.id AS linked_id,v.*,
-                    CASE
-                        WHEN v.item_name=b.item_name COLLATE NOCASE THEN 0
-                        ELSE 1
-                    END AS match_priority,
-                    CASE
-                        WHEN v.transaction_type=0 AND v.average_30d_pp>0 THEN 1
-                        WHEN v.transaction_type=0 AND v.average_60d_pp>0 THEN 2
-                        WHEN v.transaction_type=0 AND v.average_90d_pp>0 THEN 3
-                        WHEN v.transaction_type=0 AND v.average_6m_pp>0 THEN 4
-                        WHEN v.transaction_type=0 AND v.average_all_pp>0 THEN 5
-                        WHEN v.transaction_type=1 AND v.average_30d_pp>0 THEN 6
-                        WHEN v.transaction_type=1 AND v.average_60d_pp>0 THEN 7
-                        WHEN v.transaction_type=1 AND v.average_90d_pp>0 THEN 8
-                        WHEN v.transaction_type=1 AND v.average_6m_pp>0 THEN 9
-                        WHEN v.transaction_type=1 AND v.average_all_pp>0 THEN 10
-                        ELSE 99
-                    END AS price_priority
-             FROM linked_base b
-             JOIN item_market_values v
-               ON v.server='Green' COLLATE NOCASE
-              AND (v.item_name=b.item_name COLLATE NOCASE
-                   OR v.source_item_id=b.resolved_item_id)
-         ),
-         ranked_market AS (
-             SELECT c.*,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY c.linked_id
-                        ORDER BY c.match_priority,c.price_priority,c.count_30d DESC,c.last_seen DESC
-                    ) AS price_rank
-             FROM market_candidates c
-             WHERE c.price_priority<99
-         )
-         SELECT b.id,b.happened_at,b.channel,b.speaker_name,b.item_name,b.resolved_item_id,
-                CASE
-                    WHEN p.price_priority IN (1,6) THEN p.average_30d_pp
-                    WHEN p.price_priority IN (2,7) THEN p.average_60d_pp
-                    WHEN p.price_priority IN (3,8) THEN p.average_90d_pp
-                    WHEN p.price_priority IN (4,9) THEN p.average_6m_pp
-                    WHEN p.price_priority IN (5,10) THEN p.average_all_pp
-                END,
-                COALESCE(CASE
-                    WHEN p.price_priority IN (1,6) THEN p.count_30d
-                    WHEN p.price_priority IN (2,7) THEN p.count_60d
-                    WHEN p.price_priority IN (3,8) THEN p.count_90d
-                    WHEN p.price_priority IN (4,9) THEN p.count_6m
-                    WHEN p.price_priority IN (5,10) THEN p.count_all
-                END,0),
-                CASE p.price_priority
-                    WHEN 1 THEN '30-day WTS'
-                    WHEN 2 THEN '60-day WTS'
-                    WHEN 3 THEN '90-day WTS'
-                    WHEN 4 THEN '6-month WTS'
-                    WHEN 5 THEN 'all-time WTS'
-                    WHEN 6 THEN '30-day WTB'
-                    WHEN 7 THEN '60-day WTB'
-                    WHEN 8 THEN '90-day WTB'
-                    WHEN 9 THEN '6-month WTB'
-                    WHEN 10 THEN 'all-time WTB'
-                END
-         FROM linked_base b
-         LEFT JOIN ranked_market p ON p.linked_id=b.id AND p.price_rank=1
-         ORDER BY b.happened_at DESC,b.id DESC LIMIT 5000",
+        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,ni.item_id,
+                rv.value_pp,COALESCE(rv.sample_count,0),rv.value_basis
+         FROM linked_loot_items l
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=l.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
         |row| {
             Ok(json!({
                 "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
@@ -717,6 +652,12 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         }
         _ => return Err(format!("Unknown action: {action}")),
     }
+    if matches!(
+        action,
+        "item.save" | "item.delete" | "inventory.import" | "inventory.importFiles"
+    ) {
+        Database::refresh_item_values(&connection).map_err(|error| error.to_string())?;
+    }
     connection
         .execute(
             "INSERT INTO application_logs(level,area,message) VALUES('info','action',?)",
@@ -856,11 +797,11 @@ fn set_loot_split(
 fn track_loot(connection: &mut rusqlite::Connection, loot_id: i64) -> Result<(), String> {
     connection.execute(
         "INSERT OR IGNORE INTO tracked_loot_items(source_loot_id,happened_at,item_name,mob_name,looter_name,value_pp)
-         SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
-                (SELECT average_30d_pp FROM item_market_values v WHERE v.server='Green' COLLATE NOCASE
-                 AND v.transaction_type=0 AND v.item_name=d.item_name COLLATE NOCASE AND v.average_30d_pp>0
-                 ORDER BY v.count_30d DESC,v.last_seen DESC LIMIT 1)
-         FROM loot_drops d LEFT JOIN mobs m ON m.id=d.mob_id WHERE d.id=?",
+         SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,rv.value_pp
+         FROM loot_drops d LEFT JOIN mobs m ON m.id=d.mob_id
+         LEFT JOIN item_name_resolutions ni ON ni.item_name=d.item_name COLLATE NOCASE
+         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         WHERE d.id=?",
         [loot_id],
     ).map_err(err)?;
     let tracked_id: Option<i64> = connection
@@ -906,7 +847,7 @@ fn add_split(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(
     } else {
         None
     };
-    connection.execute("INSERT INTO manual_split_list_items(item_name,mob_id,looter_name,payout_value_pp) VALUES(?,?,?,?)",params![item,mob_id,looter,payload.get("payoutValuePp").and_then(Value::as_i64)]).map_err(err)?;
+    connection.execute("INSERT INTO manual_split_list_items(item_name,mob_id,looter_name,payout_value_pp) VALUES(?,?,?,?)",params![item,mob_id,looter,payload.get("payoutValuePp").and_then(Value::as_i64).filter(|value| *value > 0)]).map_err(err)?;
     let id = connection.last_insert_rowid();
     for name in strings(payload, "attendees") {
         remember(connection, &name)?;
@@ -920,7 +861,10 @@ fn save_split(connection: &mut rusqlite::Connection, payload: &Value) -> Result<
     let item = required(payload, "itemName")?;
     let mob = optional(payload, "mobName");
     let looter = optional(payload, "looterName");
-    let payout = payload.get("payoutValuePp").and_then(Value::as_i64);
+    let payout = payload
+        .get("payoutValuePp")
+        .and_then(Value::as_i64)
+        .filter(|value| *value > 0);
     if let Some(id) = key
         .strip_prefix("manual:")
         .and_then(|v| v.parse::<i64>().ok())
@@ -1388,6 +1332,7 @@ mod tests {
         connection.execute("INSERT INTO wts_groups(character_name,name,created_at,updated_at) VALUES('Khards','Tunnel',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",[]).unwrap();
         let group_id = connection.last_insert_rowid();
         connection.execute("INSERT INTO wts_group_items(wts_group_id,item_name,item_id,sort_order) VALUES(?,?,999,0)",params![group_id,"A Blue Crown"]).unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(&database,"inventory.importFiles",&json!({"files":[{"name":"Khards-Inventory.txt","text":"General1\tA Blue Crown\t12345\t1\n"}]})).unwrap();
@@ -1421,6 +1366,7 @@ mod tests {
         connection.execute("INSERT INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(CURRENT_TIMESTAMP,'wts','Trader','WTS This Item 1300','raw','eqlog_Test_P1999Green.txt',1)",[]).unwrap();
         let message_id = connection.last_insert_rowid();
         connection.execute("INSERT INTO merchant_message_items(merchant_message_id,item_name,item_id,asking_price_pp,sort_order) VALUES(?,'This Item',42,1300,0)",[message_id]).unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         let value = snapshot(&database).unwrap();
@@ -1443,6 +1389,7 @@ mod tests {
         ] {
             connection.execute("INSERT INTO merchant_messages(happened_at,kind,speaker_name,message,raw_line,source_file,source_offset) VALUES(CURRENT_TIMESTAMP,?,?,?,?,'eqlog_Test_P1999Green.txt',?)",params![kind,speaker,format!("{kind} message"),format!("raw {offset}"),offset]).unwrap();
         }
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(
@@ -1467,6 +1414,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!((remaining_wts, trader_other_panels), (1, 2));
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(&database, "merchant.delete", &json!({"kind":"wts"})).unwrap();
@@ -1503,6 +1451,7 @@ mod tests {
              VALUES('2026-08-19 12:00:00','guild','Posed','a blue crown','raw','eqlog_Youngman_P1999Green.txt',42,0)",
             [],
         ).unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         let value = snapshot(&database).unwrap();
@@ -1540,6 +1489,7 @@ mod tests {
                 [],
             )
             .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         let value = snapshot(&database).unwrap();
@@ -1576,6 +1526,7 @@ mod tests {
                 [],
             )
             .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         let value = snapshot(&database).unwrap();
@@ -1619,6 +1570,7 @@ mod tests {
                 [log.display().to_string()],
             )
             .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         std::fs::OpenOptions::new()
@@ -1680,6 +1632,7 @@ mod tests {
                 params![raw, log.display().to_string()],
             )
             .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         let result = mutate(&database, "linked.rescan", &json!({})).unwrap();
@@ -1709,6 +1662,7 @@ mod tests {
             "INSERT INTO loot_drop_members(loot_drop_id,member_name) VALUES(?,'Youngman'),(?,'Posed')",
             params![loot_id, loot_id],
         ).unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(&database, "loot.track", &json!({"id":loot_id})).unwrap();
@@ -1746,6 +1700,7 @@ mod tests {
                 [],
             )
             .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(
@@ -1770,6 +1725,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!((paid_count, status), (2, "pending".to_owned()));
+        Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
         mutate(
@@ -1792,6 +1748,39 @@ mod tests {
         assert_eq!(value["history"][0]["payoutStatus"], "pending");
         assert_eq!(value["history"][0]["payouts"].as_array().unwrap().len(), 1);
         assert_eq!(value["history"][0]["payouts"][0]["name"], "Friend");
+    }
+    #[test]
+    fn snapshot_uses_zero_samples_for_items_without_a_catalog_match() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+
+        connection.execute(
+            "INSERT INTO loot_drops(happened_at,item_name,raw_line,source_file,source_offset) VALUES('2026-09-04 12:00:00','Unknown Loot','raw','eqlog_Test_P1999Green.txt',1)",
+            [],
+        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO manual_split_list_items(item_name) VALUES('Unknown Split')",
+                [],
+            )
+            .unwrap();
+        connection.execute(
+            "INSERT INTO inventory_characters(name,source_file,imported_at) VALUES('Test','Test-Inventory.txt','2026-09-04 12:00:00')",
+            [],
+        ).unwrap();
+        let character_id = connection.last_insert_rowid();
+        connection.execute(
+            "INSERT INTO inventory_items(character_id,location,item_name,item_count,sort_order) VALUES(?1,'Carried','Unknown Inventory',1,1)",
+            [character_id],
+        ).unwrap();
+        drop(connection);
+
+        let value = snapshot(&database).unwrap();
+        assert_eq!(value["loot"][0]["valueSamples"], 0);
+        assert_eq!(value["splits"][0]["marketValueSamples"], 0);
+        assert_eq!(value["inventory"][0]["valueSamples"], 0);
     }
 }
 fn integers(value: &Value, key: &str) -> Vec<i64> {

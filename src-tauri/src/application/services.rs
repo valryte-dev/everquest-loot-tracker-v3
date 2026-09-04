@@ -44,6 +44,47 @@ pub fn start_update_check(
     });
 }
 
+pub fn start_market_refresh(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+) {
+    thread::spawn(move || {
+        let Ok(database) = Database::open(database_path) else {
+            return;
+        };
+        let recent = database.connect().ok().and_then(|connection| {
+            connection.query_row(
+                "SELECT MAX(fetched_at) FROM item_market_values WHERE server='Green' COLLATE NOCASE AND is_manual=0",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            ).ok().flatten()
+        }).and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+          .is_some_and(|value| Utc::now().signed_duration_since(value.with_timezone(&Utc)).num_hours() < 24);
+        if recent {
+            return;
+        }
+        let result = refresh_market(&database);
+        if let Ok(connection) = database.connect() {
+            let (level, message) = match &result {
+                Ok(value) => (
+                    "info",
+                    format!("PigParse market refresh loaded {} records", value["count"]),
+                ),
+                Err(error) => ("error", format!("PigParse market refresh failed: {error}")),
+            };
+            let _ = connection.execute(
+                "INSERT INTO application_logs(level,area,message) VALUES(?, 'market', ?)",
+                params![level, message],
+            );
+        }
+        if result.is_ok() {
+            revision.fetch_add(1, Ordering::Relaxed);
+            let _ = app_handle.emit("data-changed", "market.refresh");
+        }
+    });
+}
+
 pub fn check_for_update(database: &Database) -> Result<Value, String> {
     let checked_at = Utc::now().to_rfc3339();
     let response = Client::builder()
@@ -193,12 +234,13 @@ pub fn refresh_market(database: &Database) -> Result<Value, String> {
             continue;
         }
         tx.execute("INSERT OR IGNORE INTO item_market_values(server,source_item_id,transaction_type,item_name,last_seen,current_count,current_average_pp,count_30d,average_30d_pp,count_60d,average_60d_pp,count_90d,average_90d_pp,count_6m,average_6m_pp,count_all,average_all_pp,fetched_at,is_manual) VALUES('Green',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",params![num(row,"i"),num(row,"t"),name,text(row,"l"),num(row,"tc"),num(row,"ta"),num(row,"t30"),num(row,"a30"),num(row,"t60"),num(row,"a60"),num(row,"t90"),num(row,"a90"),num(row,"t6m"),num(row,"a6m"),num(row,"ty"),num(row,"ay"),now]).map_err(sql)?;
-        if num(row, "t") == 0 && num(row, "i") > 0 {
+        if num(row, "i") > 0 {
             tx.execute("INSERT OR IGNORE INTO master_items(item_id,item_name,source,updated_at) VALUES(?,?,'market',?)",params![num(row,"i"),name,now]).map_err(sql)?;
         }
         count += 1;
     }
     tx.commit().map_err(sql)?;
+    Database::refresh_item_values(&c).map_err(|error| error.to_string())?;
     Ok(json!({"count":count}))
 }
 

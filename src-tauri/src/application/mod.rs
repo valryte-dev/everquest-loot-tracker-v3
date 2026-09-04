@@ -72,6 +72,11 @@ impl AppState {
         );
         services::start_update_check(
             self.database_path.clone(),
+            app_handle.clone(),
+            self.revision.clone(),
+        );
+        services::start_market_refresh(
+            self.database_path.clone(),
             app_handle,
             self.revision.clone(),
         );
