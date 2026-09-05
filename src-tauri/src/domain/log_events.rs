@@ -253,6 +253,16 @@ fn player_death() -> &'static Regex {
     })
 }
 
+fn healing_message() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^(?:You|[A-Za-z][A-Za-z'_-]*) (?:have|has) healed .+? for \d+(?: hit)? points?(?: of health)?[.!]?$",
+        )
+        .expect("valid healing message regex")
+    })
+}
+
 fn melee_damage() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -341,6 +351,9 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             happened_at,
             killer_name: value.name("killer")?.as_str().trim().to_owned(),
         });
+    }
+    if healing_message().is_match(body) {
+        return None;
     }
     if let Some(value) = melee_damage().captures(body) {
         return Some(LogEvent::Damage {
@@ -606,6 +619,20 @@ mod tests {
             Some(LogEvent::Damage { ref attacker_name, ref mob_name, ref attack, amount: 81, damage_type: DamageType::Melee, .. })
                 if attacker_name == "Legiteral" && mob_name == "a mortiferous golem" && attack == "crush"
         ));
+    }
+
+    #[test]
+    fn healing_is_never_reported_as_damage() {
+        for line in [
+            "[Sat Sep 05 10:00:00 2026] You have healed Legiteral for 120 points.",
+            "[Sat Sep 05 10:00:01 2026] Youngman has healed Legiteral for 95 hit points.",
+            "[Sat Sep 05 10:00:02 2026] You have healed Legiteral for 80 points of health.",
+        ] {
+            assert!(
+                parse_log_event(line, "Youngman").is_none(),
+                "healing line must not produce a combat event: {line}"
+            );
+        }
     }
 
     #[test]

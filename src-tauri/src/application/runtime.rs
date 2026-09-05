@@ -1663,6 +1663,7 @@ mod tests {
         fs::write(
             &log,
             b"[Sat Sep 05 10:00:00 2026] You slash a frost giant for 100 points of damage.\r\n\
+[Sat Sep 05 10:00:00 2026] You have healed Legiteral for 999 points.\r\n\
 [Sat Sep 05 10:00:01 2026] a frost giant was hit by non-melee for 250 points of damage.\r\n\
 [Sat Sep 05 10:00:02 2026] a frost giant has taken 50 damage from your Engulfing Darkness.\r\n\
 [Sat Sep 05 10:00:02 2026] Legiteral crushes a frost giant for 81 points of damage.\r\n\
