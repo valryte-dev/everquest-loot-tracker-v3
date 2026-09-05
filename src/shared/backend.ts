@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DeathReportDetail, SpellCatalogStatus, SpellInfo } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DeathReportDetail, SpellCatalogStatus, SpellInfo } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
-const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],compound:{projects:[],templates:[],activeId:null}};
+const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],compound:{projects:[],templates:[],activeId:null}};
 const desktop=()=>"__TAURI_INTERNALS__" in window;
 export const bootstrapStatus=()=>desktop()?invoke<BootstrapStatus>("bootstrap_status"):Promise.resolve(previewStatus);
 export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promise.resolve(previewSnapshot);
@@ -10,6 +10,7 @@ export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_p
 export const getActivityHistorySnapshot=()=>desktop()?invoke<ActivityHistorySnapshot>("activity_history_snapshot"):Promise.resolve({loot:[],mobs:[],offers:[],levels:[]});
 export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
 export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDetail>("death_report_details",{id}):Promise.reject(new Error("Death reports are available in the desktop app."));
+export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;
 export const getSpellInfo=(spellName:string)=>desktop()?invoke<SpellInfo>("spell_info",{spellName}):Promise.reject(new Error("Spell information is available in the desktop app."));
 const previewSpellCatalog:SpellCatalogStatus={cachedCount:0,processed:0,saved:0,failed:0,refreshing:false};

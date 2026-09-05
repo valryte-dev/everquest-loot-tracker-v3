@@ -122,6 +122,14 @@ pub fn death_report_details(state: tauri::State<'_, AppState>, id: i64) -> Resul
 }
 
 #[tauri::command]
+pub fn damage_encounter_details(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<Value, String> {
+    data::damage_encounter_details(&state.database, id)
+}
+
+#[tauri::command]
 pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
     state.revision.load(Ordering::Relaxed)
 }
@@ -136,6 +144,7 @@ pub fn mutate_app(
         "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
         "activityHistory.scan" => runtime::scan_history(&state.database),
+        "damageTracker.rescan" => runtime::rescan_damage(&state.database),
         "planner.upload" => services::upload_exports(&state.database),
         "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
         "wts.export" => services::export_wts(

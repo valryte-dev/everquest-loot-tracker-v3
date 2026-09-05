@@ -45,6 +45,22 @@ impl LevelChangeKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DamageType {
+    Melee,
+    Spell,
+}
+
+impl DamageType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Melee => "melee",
+            Self::Spell => "spell",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LogEvent {
@@ -62,6 +78,14 @@ pub enum LogEvent {
     PlayerDeath {
         happened_at: NaiveDateTime,
         killer_name: String,
+    },
+    Damage {
+        happened_at: NaiveDateTime,
+        attacker_name: String,
+        mob_name: String,
+        attack: String,
+        amount: u64,
+        damage_type: DamageType,
     },
     MobSlain {
         happened_at: NaiveDateTime,
@@ -229,6 +253,58 @@ fn player_death() -> &'static Regex {
     })
 }
 
+fn melee_damage() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You (?<attack>hit|kick|bash|punch|slash|crush|pierce|backstab|claw|bite|maul|smash|sting|gore) (?<mob>.+?) for (?<damage>\d+) points? of damage\.$")
+            .expect("valid melee damage regex")
+    })
+}
+
+fn other_melee_damage() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?<attacker>[A-Za-z][A-Za-z'_-]*) (?<attack>hits|kicks|bashes|punches|slashes|crushes|pierces|backstabs|claws|bites|mauls|smashes|stings|gores) (?<mob>.+?) for (?<damage>\d+) points? of damage\.$")
+            .expect("valid other melee damage regex")
+    })
+}
+
+fn normalized_other_attack(value: &str) -> &'static str {
+    match value {
+        "hits" => "hit",
+        "kicks" => "kick",
+        "bashes" => "bash",
+        "punches" => "punch",
+        "slashes" => "slash",
+        "crushes" => "crush",
+        "pierces" => "pierce",
+        "backstabs" => "backstab",
+        "claws" => "claw",
+        "bites" => "bite",
+        "mauls" => "maul",
+        "smashes" => "smash",
+        "stings" => "sting",
+        "gores" => "gore",
+        _ => "hit",
+    }
+}
+
+fn non_melee_damage() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?<mob>.+?) was hit by non-melee for (?<damage>\d+) points? of damage\.$")
+            .expect("valid non-melee damage regex")
+    })
+}
+
+fn damage_over_time() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?<mob>.+?) has taken (?<damage>\d+) damage from your (?<spell>.+)\.$")
+            .expect("valid damage over time regex")
+    })
+}
+
 fn trade_offer() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -264,6 +340,46 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
         return Some(LogEvent::PlayerDeath {
             happened_at,
             killer_name: value.name("killer")?.as_str().trim().to_owned(),
+        });
+    }
+    if let Some(value) = melee_damage().captures(body) {
+        return Some(LogEvent::Damage {
+            happened_at,
+            attacker_name: active_character.to_owned(),
+            mob_name: value["mob"].trim().to_owned(),
+            attack: value["attack"].to_ascii_lowercase(),
+            amount: value["damage"].parse().ok()?,
+            damage_type: DamageType::Melee,
+        });
+    }
+    if let Some(value) = other_melee_damage().captures(body) {
+        return Some(LogEvent::Damage {
+            happened_at,
+            attacker_name: value["attacker"].to_owned(),
+            mob_name: value["mob"].trim().to_owned(),
+            attack: normalized_other_attack(&value["attack"]).to_owned(),
+            amount: value["damage"].parse().ok()?,
+            damage_type: DamageType::Melee,
+        });
+    }
+    if let Some(value) = non_melee_damage().captures(body) {
+        return Some(LogEvent::Damage {
+            happened_at,
+            attacker_name: active_character.to_owned(),
+            mob_name: value["mob"].trim().to_owned(),
+            attack: "non-melee".to_owned(),
+            amount: value["damage"].parse().ok()?,
+            damage_type: DamageType::Spell,
+        });
+    }
+    if let Some(value) = damage_over_time().captures(body) {
+        return Some(LogEvent::Damage {
+            happened_at,
+            attacker_name: active_character.to_owned(),
+            mob_name: value["mob"].trim().to_owned(),
+            attack: value["spell"].trim().to_owned(),
+            amount: value["damage"].parse().ok()?,
+            damage_type: DamageType::Spell,
         });
     }
     if let Some(value) = loot().captures(body) {
@@ -448,6 +564,49 @@ fn unquote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_melee_non_melee_and_damage_over_time() {
+        let melee = parse_log_event(
+            "[Sat Sep 05 10:00:00 2026] You slash a frost giant for 123 points of damage.",
+            "Youngman",
+        );
+        assert!(matches!(
+            melee,
+            Some(LogEvent::Damage { ref mob_name, ref attack, amount: 123, damage_type: DamageType::Melee, .. })
+                if mob_name == "a frost giant" && attack == "slash"
+        ));
+
+        let spell = parse_log_event(
+            "[Sat Sep 05 10:00:01 2026] a frost giant was hit by non-melee for 250 points of damage.",
+            "Youngman",
+        );
+        assert!(matches!(
+            spell,
+            Some(LogEvent::Damage { ref mob_name, amount: 250, damage_type: DamageType::Spell, .. })
+                if mob_name == "a frost giant"
+        ));
+
+        let dot = parse_log_event(
+            "[Sat Sep 05 10:00:02 2026] a frost giant has taken 42 damage from your Engulfing Darkness.",
+            "Youngman",
+        );
+        assert!(matches!(
+            dot,
+            Some(LogEvent::Damage { ref attack, ref attacker_name, amount: 42, damage_type: DamageType::Spell, .. })
+                if attack == "Engulfing Darkness" && attacker_name == "Youngman"
+        ));
+
+        let other = parse_log_event(
+            "[Sat Sep 05 07:39:45 2026] Legiteral crushes a mortiferous golem for 81 points of damage.",
+            "Youngman",
+        );
+        assert!(matches!(
+            other,
+            Some(LogEvent::Damage { ref attacker_name, ref mob_name, ref attack, amount: 81, damage_type: DamageType::Melee, .. })
+                if attacker_name == "Legiteral" && mob_name == "a mortiferous golem" && attack == "crush"
+        ));
+    }
 
     #[test]
     fn parses_level_gains_and_losses() {

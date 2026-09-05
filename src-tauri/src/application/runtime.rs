@@ -4,6 +4,7 @@ use crate::{
     domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
 };
+use chrono::NaiveDateTime;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rusqlite::{params, OptionalExtension};
 use serde_json::json;
@@ -177,9 +178,6 @@ fn poll(
         return Ok(false);
     }
 
-    let history_scan = scan_history_directory(database, &directory)?;
-    changed |= history_scan.inserted > 0;
-
     let preferred = preferred_log
         .filter(|path| path.parent() == Some(directory.as_path()) && is_log(path))
         .map(Path::to_path_buf);
@@ -288,6 +286,65 @@ pub fn scan_history(database: &Database) -> Result<serde_json::Value, String> {
     Ok(json!({"files":summary.files,"inserted":summary.inserted}))
 }
 
+pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
+    let directory = configured_log_directory(database)
+        .ok_or("Choose a Logs folder on the System page first")?;
+    if !directory.is_dir() {
+        return Err(format!(
+            "Logs folder does not exist: {}",
+            directory.display()
+        ));
+    }
+    let mut paths = fs::read_dir(&directory)
+        .map_err(|error| error.to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| is_log(path))
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    {
+        let connection = database.connect().map_err(|error| error.to_string())?;
+        connection
+            .execute_batch(
+                "DELETE FROM damage_events;
+                 DELETE FROM damage_encounters;
+                 DELETE FROM damage_scan_cursors;",
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    let mut inserted = 0;
+    for path in &paths {
+        inserted += scan_damage_file(database, path)?;
+    }
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('damage_tracker_last_scan_at',CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('damage_tracker_files_scanned',?)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [paths.len().to_string()],
+        )
+        .map_err(|error| error.to_string())?;
+    log_with(
+        &connection,
+        "info",
+        "damage",
+        &format!(
+            "Rebuilt {inserted} damage events from {} character logs",
+            paths.len()
+        ),
+    );
+    Ok(json!({"files":paths.len(),"inserted":inserted}))
+}
+
 fn scan_history_directory(
     database: &Database,
     directory: &Path,
@@ -305,6 +362,7 @@ fn scan_history_directory(
         summary.files += 1;
         summary.inserted += scan_history_file(database, &path)?;
         summary.inserted += scan_death_report_file(database, &path)?;
+        summary.inserted += scan_damage_file(database, &path)?;
     }
 
     let connection = database.connect().map_err(|error| error.to_string())?;
@@ -332,6 +390,20 @@ fn scan_history_directory(
     connection
         .execute(
             "INSERT INTO app_settings(key,value) VALUES('death_report_files_scanned',?)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [summary.files.to_string()],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('damage_tracker_last_scan_at',CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value) VALUES('damage_tracker_files_scanned',?)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [summary.files.to_string()],
         )
@@ -527,6 +599,276 @@ fn scan_death_report_file(database: &Database, path: &Path) -> Result<usize, Str
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(inserted)
+}
+
+fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
+    let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
+    let source = path.display().to_string();
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let saved_offset = connection
+        .query_row(
+            "SELECT byte_offset FROM damage_scan_cursors WHERE source_file=?",
+            [&source],
+            |row| row.get::<_, u64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .unwrap_or(0);
+    let mut line_offset = if size < saved_offset { 0 } else { saved_offset };
+    if size == line_offset {
+        return Ok(0);
+    }
+
+    file.seek(SeekFrom::Start(line_offset))
+        .map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(file);
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut inserted = 0;
+    let mut line_bytes = Vec::new();
+    loop {
+        line_bytes.clear();
+        let bytes_read = reader
+            .read_until(b'\n', &mut line_bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes_read == 0 || !line_bytes.ends_with(b"\n") {
+            break;
+        }
+        let text = String::from_utf8_lossy(&line_bytes);
+        let line = text.trim_end_matches(['\r', '\n']);
+        if let Some(event) = parse_log_event(line, &character) {
+            match event {
+                LogEvent::Damage {
+                    happened_at,
+                    attacker_name,
+                    mob_name,
+                    attack,
+                    amount,
+                    damage_type,
+                } => {
+                    inserted += record_damage_event(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        &attacker_name,
+                        happened_at,
+                        &mob_name,
+                        &attack,
+                        amount,
+                        damage_type.as_str(),
+                    )?;
+                }
+                LogEvent::MobSlain {
+                    happened_at,
+                    mob_name,
+                    ..
+                } => {
+                    transaction
+                        .execute(
+                            "UPDATE damage_encounters
+                             SET outcome='slain',ended_at=?,last_source_offset=MAX(last_source_offset,?)
+                             WHERE id=(
+                                SELECT id FROM damage_encounters
+                                WHERE source_file=? AND character_name=? COLLATE NOCASE
+                                  AND mob_name=? COLLATE NOCASE AND outcome='active'
+                                ORDER BY last_source_offset DESC LIMIT 1
+                             )",
+                            params![
+                                happened_at.to_string(),
+                                line_offset as i64,
+                                source,
+                                character,
+                                mob_name
+                            ],
+                        )
+                        .map_err(|error| error.to_string())?;
+                }
+                LogEvent::PlayerDeath { happened_at, .. } => {
+                    transaction
+                        .execute(
+                            "UPDATE damage_encounters
+                             SET outcome='playerDeath',ended_at=?,last_source_offset=MAX(last_source_offset,?)
+                             WHERE source_file=? AND character_name=? COLLATE NOCASE AND outcome='active'",
+                            params![
+                                happened_at.to_string(),
+                                line_offset as i64,
+                                source,
+                                character
+                            ],
+                        )
+                        .map_err(|error| error.to_string())?;
+                }
+                _ => {}
+            }
+        }
+        line_offset += bytes_read as u64;
+    }
+
+    transaction
+        .execute(
+            "INSERT INTO damage_scan_cursors(
+                source_file,character_name,byte_offset,file_size,scanned_at
+             ) VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(source_file) DO UPDATE SET
+                character_name=excluded.character_name,
+                byte_offset=excluded.byte_offset,
+                file_size=excluded.file_size,
+                scanned_at=excluded.scanned_at",
+            params![source, character, line_offset, size],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(inserted)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_damage_event(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    attacker_name: &str,
+    happened_at: NaiveDateTime,
+    mob_name: &str,
+    attack: &str,
+    amount: u64,
+    damage_type: &str,
+) -> Result<usize, String> {
+    const ENCOUNTER_GAP_SECONDS: i64 = 120;
+    let already_recorded = connection
+        .query_row(
+            "SELECT 1 FROM damage_events WHERE source_file=? AND source_offset=?",
+            params![source, source_offset],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if already_recorded {
+        return Ok(0);
+    }
+    let active = connection
+        .query_row(
+            "SELECT id,last_damage_at FROM damage_encounters
+             WHERE source_file=? AND character_name=? COLLATE NOCASE
+               AND mob_name=? COLLATE NOCASE AND outcome='active'
+             ORDER BY last_source_offset DESC LIMIT 1",
+            params![source, character, mob_name],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let mut encounter_id = active.as_ref().map(|value| value.0);
+    if let Some((id, last_damage_at)) = active {
+        let last = NaiveDateTime::parse_from_str(&last_damage_at, "%Y-%m-%d %H:%M:%S")
+            .map_err(|error| error.to_string())?;
+        let gap = happened_at.signed_duration_since(last).num_seconds();
+        if !(0..=ENCOUNTER_GAP_SECONDS).contains(&gap) {
+            connection
+                .execute(
+                    "UPDATE damage_encounters
+                     SET outcome='disengaged',ended_at=last_damage_at WHERE id=?",
+                    [id],
+                )
+                .map_err(|error| error.to_string())?;
+            encounter_id = None;
+        }
+    }
+    let encounter_id = match encounter_id {
+        Some(id) => id,
+        None => {
+            connection
+                .execute(
+                    "INSERT INTO damage_encounters(
+                        character_name,mob_name,started_at,last_damage_at,source_file,
+                        first_source_offset,last_source_offset
+                     ) VALUES(?,?,?,?,?,?,?)",
+                    params![
+                        character,
+                        mob_name,
+                        happened_at.to_string(),
+                        happened_at.to_string(),
+                        source,
+                        source_offset,
+                        source_offset
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            connection.last_insert_rowid()
+        }
+    };
+    let happened_at_text = happened_at.to_string();
+    let weapon_loadout_id = if attacker_name.eq_ignore_ascii_case(character) {
+        connection
+            .query_row(
+                "SELECT id FROM character_weapon_loadouts
+                 WHERE character_name=? COLLATE NOCASE AND captured_at<=?
+                 ORDER BY captured_at DESC,id DESC LIMIT 1",
+                params![character, happened_at_text],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+    } else {
+        None
+    };
+    let created = connection
+        .execute(
+            "INSERT OR IGNORE INTO damage_events(
+                encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,
+                source_offset,weapon_loadout_id,attacker_name
+             ) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            params![
+                encounter_id,
+                happened_at_text,
+                damage_type,
+                attack,
+                amount as i64,
+                raw,
+                source,
+                source_offset,
+                weapon_loadout_id,
+                attacker_name
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if created > 0 {
+        let melee = if damage_type == "melee" {
+            amount as i64
+        } else {
+            0
+        };
+        let spell = if damage_type == "spell" {
+            amount as i64
+        } else {
+            0
+        };
+        connection
+            .execute(
+                "UPDATE damage_encounters SET
+                    last_damage_at=?,last_source_offset=?,
+                    total_damage=total_damage+?,melee_damage=melee_damage+?,
+                    spell_damage=spell_damage+?,hit_count=hit_count+1,max_hit=MAX(max_hit,?)
+                 WHERE id=?",
+                params![
+                    happened_at.to_string(),
+                    source_offset,
+                    amount as i64,
+                    melee,
+                    spell,
+                    amount as i64,
+                    encounter_id
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(created)
 }
 
 fn record_activity_event(
@@ -733,7 +1075,9 @@ fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u6
     Ok(offset)
 }
 
-fn log_data_signature(database: &Database) -> Result<(i64, i64, i64, i64, i64, String), String> {
+type LogDataSignature = (i64, i64, i64, i64, i64, i64, String);
+
+fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
     database.connect().map_err(|error| error.to_string())?.query_row(
         "SELECT
             COALESCE((SELECT MAX(id) FROM loot_drops),0),
@@ -741,9 +1085,10 @@ fn log_data_signature(database: &Database) -> Result<(i64, i64, i64, i64, i64, S
             COALESCE((SELECT MAX(id) FROM merchant_messages),0),
             COALESCE((SELECT MAX(id) FROM mobs),0),
             COALESCE((SELECT MAX(id) FROM application_logs),0),
+            COALESCE((SELECT MAX(id) FROM damage_events),0),
             COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),'')",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
     ).map_err(|error| error.to_string())
 }
 
@@ -759,13 +1104,35 @@ fn apply_event(
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
     record_activity_event(&c, path, source_offset, raw, &character, event)?;
     match event {
-        LogEvent::MobSlain { mob_name, .. } => {
+        LogEvent::MobSlain {
+            happened_at,
+            mob_name,
+            ..
+        } => {
             c.execute(
                 "INSERT INTO mobs(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
                 [mob_name],
             )
             .map_err(|e| e.to_string())?;
             last_mob.insert(path.to_owned(), mob_name.clone());
+            c.execute(
+                "UPDATE damage_encounters
+                 SET outcome='slain',ended_at=?,last_source_offset=MAX(last_source_offset,?)
+                 WHERE id=(
+                    SELECT id FROM damage_encounters
+                    WHERE source_file=? AND character_name=? COLLATE NOCASE
+                      AND mob_name=? COLLATE NOCASE AND outcome='active'
+                    ORDER BY last_source_offset DESC LIMIT 1
+                 )",
+                params![
+                    happened_at.to_string(),
+                    source_offset,
+                    path.display().to_string(),
+                    character,
+                    mob_name
+                ],
+            )
+            .map_err(|error| error.to_string())?;
         }
         LogEvent::GroupChange {
             character, change, ..
@@ -863,9 +1230,43 @@ fn apply_event(
                 finish_merchant_capture(&c)?;
             }
         }
-        LogEvent::TradeOffer { .. }
-        | LogEvent::LevelChanged { .. }
-        | LogEvent::PlayerDeath { .. } => {}
+        LogEvent::Damage {
+            happened_at,
+            attacker_name,
+            mob_name,
+            attack,
+            amount,
+            damage_type,
+        } => {
+            record_damage_event(
+                &c,
+                &path.display().to_string(),
+                source_offset,
+                raw,
+                &character,
+                attacker_name,
+                *happened_at,
+                mob_name,
+                attack,
+                *amount,
+                damage_type.as_str(),
+            )?;
+        }
+        LogEvent::PlayerDeath { happened_at, .. } => {
+            c.execute(
+                "UPDATE damage_encounters
+                 SET outcome='playerDeath',ended_at=?,last_source_offset=MAX(last_source_offset,?)
+                 WHERE source_file=? AND character_name=? COLLATE NOCASE AND outcome='active'",
+                params![
+                    happened_at.to_string(),
+                    source_offset,
+                    path.display().to_string(),
+                    character
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        }
+        LogEvent::TradeOffer { .. } | LogEvent::LevelChanged { .. } => {}
         LogEvent::LinkedItems {
             happened_at,
             speaker,
@@ -1247,10 +1648,152 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        poll, process_log, resolve_linked_items, scan_death_report_file, scan_history_directory,
+        poll, process_log, resolve_linked_items, scan_damage_file, scan_death_report_file,
+        scan_history_directory,
     };
     use crate::infrastructure::database::Database;
     use std::{collections::HashMap, fs, io::Write};
+
+    #[test]
+    fn damage_scan_aggregates_encounters_and_closes_on_kill() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 10:00:00 2026] You slash a frost giant for 100 points of damage.\r\n\
+[Sat Sep 05 10:00:01 2026] a frost giant was hit by non-melee for 250 points of damage.\r\n\
+[Sat Sep 05 10:00:02 2026] a frost giant has taken 50 damage from your Engulfing Darkness.\r\n\
+[Sat Sep 05 10:00:02 2026] Legiteral crushes a frost giant for 81 points of damage.\r\n\
+[Sat Sep 05 10:00:03 2026] You have slain a frost giant!\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 4);
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 0);
+        let connection = database.connect().unwrap();
+        let encounter: (i64, i64, i64, i64, i64, String) = connection
+            .query_row(
+                "SELECT total_damage,melee_damage,spell_damage,hit_count,max_hit,outcome
+                 FROM damage_encounters",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(encounter, (481, 181, 300, 4, 250, "slain".into()));
+        let player_damage = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT attacker_name,SUM(damage) FROM damage_events
+                     GROUP BY attacker_name ORDER BY SUM(damage) DESC",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(
+            player_damage,
+            vec![("Youngman".into(), 400), ("Legiteral".into(), 81)]
+        );
+    }
+
+    #[test]
+    fn damage_events_use_the_latest_known_character_weapon_loadout() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO character_weapon_loadouts(
+                character_name,captured_at,primary_weapon_name,secondary_weapon_name,source_file
+             ) VALUES('Youngman','2026-09-05 09:59:00','Wurmslayer','Sarnak Warhammer','first'),
+                     ('Youngman','2026-09-05 10:00:01','Epic Blade',NULL,'second')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 10:00:00 2026] You slash a frost giant for 100 points of damage.\r\n\
+[Sat Sep 05 10:00:02 2026] You slash a frost giant for 110 points of damage.\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 2);
+        let connection = database.connect().unwrap();
+        let weapons = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT w.primary_weapon_name,w.secondary_weapon_name
+                 FROM damage_events e JOIN character_weapon_loadouts w ON w.id=e.weapon_loadout_id
+                 ORDER BY e.happened_at",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(
+            weapons[0],
+            (Some("Wurmslayer".into()), Some("Sarnak Warhammer".into()))
+        );
+        assert_eq!(weapons[1], (Some("Epic Blade".into()), None));
+    }
+
+    #[test]
+    fn damage_scan_splits_same_mob_after_two_minute_gap() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 10:00:00 2026] You hit a skeleton for 10 points of damage.\r\n\
+[Sat Sep 05 10:02:01 2026] You hit a skeleton for 20 points of damage.\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 2);
+        let connection = database.connect().unwrap();
+        let encounters: i64 = connection
+            .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let disengaged: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM damage_encounters WHERE outcome='disengaged'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(encounters, 2);
+        assert_eq!(disengaged, 1);
+    }
 
     #[test]
     fn notified_log_path_wins_over_directory_timestamp_order() {
@@ -1404,6 +1947,72 @@ mod tests {
         assert_eq!(
             resolve_linked_items(&connection, "'still 7500 for elders earring'", &[]).unwrap(),
             vec!["Elders Earring"]
+        );
+    }
+
+    #[test]
+    fn live_damage_uses_notified_character_without_running_directory_backfill() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+        let current = directory.path().join("eqlog_Valmonk_P1999Green.txt");
+        let archived = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &current,
+            b"[Sat Sep 05 09:15:00 2026] You crush a snow cougar for 79 points of damage.\r\n",
+        )
+        .unwrap();
+        fs::write(
+            &archived,
+            b"[Sat Sep 05 08:00:00 2026] You hit a skeleton for 10 points of damage.\r\n",
+        )
+        .unwrap();
+
+        let mut active = None;
+        let mut offsets = HashMap::from([(current.clone(), 0)]);
+        let changed = poll(
+            &database,
+            &mut active,
+            &mut offsets,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&current),
+        )
+        .unwrap();
+
+        let connection = database.connect().unwrap();
+        let active_character: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='active_character'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let damage: i64 = connection
+            .query_row("SELECT total_damage FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let backfill_cursors: i64 = connection
+            .query_row("SELECT COUNT(*) FROM damage_scan_cursors", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(changed, "live damage must request a UI refresh");
+        assert_eq!(active_character, "Valmonk");
+        assert_eq!(damage, 79);
+        assert_eq!(
+            backfill_cursors, 0,
+            "live polling must not start a full history scan"
         );
     }
 

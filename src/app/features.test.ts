@@ -14,6 +14,7 @@ describe("feature catalog", () => {
       "tracked",
       "activity-history",
       "death-reports",
+      "damage",
       "splits",
       "compounds",
       "merchant",

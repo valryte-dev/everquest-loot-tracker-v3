@@ -1,13 +1,14 @@
-export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "spells" | "gems" | "imports" | "items" | "system" | "logs" | "help" | "changes";
-export type FeatureGroup = "Loot" | "Trading" | "Roster" | "Data" | "Application";
+export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "spells" | "gems" | "imports" | "items" | "system" | "logs" | "help" | "changes";
+export type FeatureGroup = "Loot" | "Combat" | "Trading" | "Roster" | "Data" | "Application";
 export interface FeatureDefinition { key:FeatureKey; label:string; shortLabel:string; description:string; icon:string; phase:1|2|3|4; group:FeatureGroup }
-export const FEATURE_GROUPS:FeatureGroup[] = ["Loot", "Trading", "Roster", "Data", "Application"];
+export const FEATURE_GROUPS:FeatureGroup[] = ["Loot", "Combat", "Trading", "Roster", "Data", "Application"];
 export const FEATURES:FeatureDefinition[] = [
  {key:"live",label:"Live Loot",shortLabel:"Live Loot",icon:"◇",phase:1,group:"Loot",description:"Active log, current group, mob correlation, values, sharing and bulk cleanup."},
  {key:"linked",label:"Linked Loot",shortLabel:"Linked Loot",icon:"↗",phase:2,group:"Loot",description:"Items linked in group and guild chat with speaker, channel, time and current 30-day WTS value."},
  {key:"tracked",label:"Tracked Loot",shortLabel:"Tracked Loot",icon:"◎",phase:2,group:"Loot",description:"Important loot snapshots retained independently from the temporary live-loot list."},
  {key:"activity-history",label:"Log History",shortLabel:"History",icon:"◴",phase:2,group:"Loot",description:"Permanent, searchable history of loot, slain mobs and items offered across every character log."},
- {key:"death-reports",label:"Death Reports",shortLabel:"Death Reports",icon:"☠",phase:2,group:"Loot",description:"Search every character log for deaths and review the killer with the preceding 30 log entries."},
+ {key:"death-reports",label:"Death Reports",shortLabel:"Death Reports",icon:"☠",phase:2,group:"Combat",description:"Search every character log for deaths and review the killer with the preceding 30 log entries."},
+ {key:"damage",label:"Damage Tracker",shortLabel:"Damage Tracker",icon:"D",phase:2,group:"Combat",description:"Track personal melee and spell damage for each mob encounter, including DPS, attack mix and damage over time."},
  {key:"splits",label:"Splits & Payouts",shortLabel:"Splits",icon:"÷",phase:2,group:"Loot",description:"Track held loot, sold items awaiting payout, completed payouts, aliases, holders and consumed history."},
  {key:"compounds",label:"Compound Projects",shortLabel:"Compounds",icon:"⬡",phase:3,group:"Loot",description:"Recipes, reusable templates, contributions, readiness and estimated value."},
  {key:"merchant",label:"Merchant Watch",shortLabel:"Merchant",icon:"¤",phase:2,group:"Trading",description:"Opt-in auction monitoring for WTS offers, WTB requests, direct tells and PigParse comparisons."},

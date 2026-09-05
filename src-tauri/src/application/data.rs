@@ -281,6 +281,77 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
+    let damage_encounters = query_values(
+        &connection,
+        "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
+                e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
+                (SELECT GROUP_CONCAT(name,char(31)) FROM (
+                    SELECT w.primary_weapon_name AS name
+                    FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id
+                    WHERE de.encounter_id=e.id AND COALESCE(w.primary_weapon_name,'')<>''
+                    UNION
+                    SELECT w.secondary_weapon_name AS name
+                    FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id
+                    WHERE de.encounter_id=e.id AND COALESCE(w.secondary_weapon_name,'')<>''
+                )),
+                (SELECT json_group_array(json_object(
+                    'name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,
+                    'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
+                )) FROM (
+                    SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown') AS attacker_name,
+                           SUM(de.damage) AS total_damage,COUNT(*) AS hit_count,
+                           MIN(de.happened_at) AS first_damage_at,MAX(de.happened_at) AS last_damage_at
+                    FROM damage_events de WHERE de.encounter_id=e.id
+                    GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
+                    ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
+                ))
+         FROM damage_encounters e ORDER BY e.started_at DESC,e.id DESC LIMIT 5000",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,
+                "mobName":row.get::<_,String>(2)?,"startedAt":row.get::<_,String>(3)?,
+                "endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,
+                "totalDamage":row.get::<_,i64>(6)?,"meleeDamage":row.get::<_,i64>(7)?,
+                "spellDamage":row.get::<_,i64>(8)?,"hitCount":row.get::<_,i64>(9)?,
+                "maxHit":row.get::<_,i64>(10)?,"outcome":row.get::<_,String>(11)?,
+                "sourceFile":row.get::<_,String>(12)?,
+                "weapons":names(row.get::<_,Option<String>>(13)?),
+                "players":row.get::<_,Option<String>>(14)?
+                    .and_then(|value|serde_json::from_str::<Value>(&value).ok())
+                    .unwrap_or_else(||json!([]))
+            }))
+        },
+    )?;
+
+    let current_weapon_loadout = if let Some(character) = settings
+        .get("active_character")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        connection
+            .query_row(
+                "SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id
+                 FROM character_weapon_loadouts
+                 WHERE character_name=? COLLATE NOCASE
+                 ORDER BY captured_at DESC,id DESC LIMIT 1",
+                [character],
+                |row| {
+                    Ok(json!({
+                        "character":character,
+                        "capturedAt":row.get::<_,String>(0)?,
+                        "primary":row.get::<_,Option<String>>(1)?,
+                        "primaryItemId":row.get::<_,Option<i64>>(2)?,
+                        "secondary":row.get::<_,Option<String>>(3)?,
+                        "secondaryItemId":row.get::<_,Option<i64>>(4)?
+                    }))
+                },
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+    } else {
+        None
+    };
+
     let compound = normalize_compound(
         settings
             .get("compound_workspace")
@@ -293,7 +364,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
-        "deathReports":death_reports,"compound":compound}),
+        "deathReports":death_reports,"damageEncounters":damage_encounters,
+        "currentWeaponLoadout":current_weapon_loadout,"compound":compound}),
     )
 }
 
@@ -406,6 +478,90 @@ pub fn death_report_details(database: &Database, id: i64) -> Result<Value, Strin
     Ok(value)
 }
 
+pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let encounter = connection
+        .query_row(
+            "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
+                    e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
+                    (SELECT GROUP_CONCAT(name,char(31)) FROM (
+                        SELECT w.primary_weapon_name AS name
+                        FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id
+                        WHERE de.encounter_id=e.id AND COALESCE(w.primary_weapon_name,'')<>''
+                        UNION
+                        SELECT w.secondary_weapon_name AS name
+                        FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id
+                        WHERE de.encounter_id=e.id AND COALESCE(w.secondary_weapon_name,'')<>''
+                    )),
+                    (SELECT json_group_array(json_object(
+                                        'name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,
+                                        'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
+                                    )) FROM (
+                                        SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown') AS attacker_name,
+                                               SUM(de.damage) AS total_damage,COUNT(*) AS hit_count,
+                                               MIN(de.happened_at) AS first_damage_at,MAX(de.happened_at) AS last_damage_at
+                                        FROM damage_events de WHERE de.encounter_id=e.id
+                                        GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
+                                        ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
+                                    ))
+             FROM damage_encounters e WHERE e.id=?",
+            [id],
+            |row| {
+                Ok(json!({
+                    "id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,
+                    "mobName":row.get::<_,String>(2)?,"startedAt":row.get::<_,String>(3)?,
+                    "endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,
+                    "totalDamage":row.get::<_,i64>(6)?,"meleeDamage":row.get::<_,i64>(7)?,
+                    "spellDamage":row.get::<_,i64>(8)?,"hitCount":row.get::<_,i64>(9)?,
+                    "maxHit":row.get::<_,i64>(10)?,"outcome":row.get::<_,String>(11)?,
+                    "sourceFile":row.get::<_,String>(12)?,
+                    "weapons":names(row.get::<_,Option<String>>(13)?),
+                    "players":row.get::<_,Option<String>>(14)?
+                        .and_then(|value|serde_json::from_str::<Value>(&value).ok())
+                        .unwrap_or_else(||json!([]))
+                }))
+            },
+        )
+        .optional()
+        .map_err(err)?
+        .ok_or("Damage encounter was not found")?;
+    let events = {
+        let mut statement = connection
+            .prepare(
+                "SELECT e.id,e.happened_at,e.damage_type,e.attack_kind,e.damage,
+                        w.primary_weapon_name,w.primary_item_id,
+                        w.secondary_weapon_name,w.secondary_item_id,
+                        COALESCE(e.attacker_name,encounter.character_name,'Unknown')
+                 FROM damage_events e
+                 LEFT JOIN character_weapon_loadouts w ON w.id=e.weapon_loadout_id
+                 LEFT JOIN damage_encounters encounter ON encounter.id=e.encounter_id
+                 WHERE e.encounter_id=? ORDER BY e.happened_at,e.id",
+            )
+            .map_err(err)?;
+        let rows = statement
+            .query_map([id], |row| {
+                Ok(json!({
+                    "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                    "damageType":row.get::<_,String>(2)?,"attack":row.get::<_,String>(3)?,
+                    "damage":row.get::<_,i64>(4)?,
+                    "primaryWeapon":row.get::<_,Option<String>>(5)?,
+                    "primaryItemId":row.get::<_,Option<i64>>(6)?,
+                    "secondaryWeapon":row.get::<_,Option<String>>(7)?,
+                    "secondaryItemId":row.get::<_,Option<i64>>(8)?,
+                    "attacker":row.get::<_,String>(9)?
+                }))
+            })
+            .map_err(err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(err)?
+    };
+    let mut value = encounter;
+    value
+        .as_object_mut()
+        .expect("damage encounter query returns an object")
+        .insert("events".into(), Value::Array(events));
+    Ok(value)
+}
+
 pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
     let mut value = snapshot(database)?;
     let Some(root) = value.as_object_mut() else {
@@ -416,6 +572,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
+        "damage" => &["damageEncounters"],
         "merchant" => &["merchant"],
         "splits" => &["splits", "history", "aliases", "items", "mobs"],
         "compounds" => &["compound", "items", "inventory", "members"],
@@ -435,6 +592,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "tracked",
         "linkedLoot",
         "deathReports",
+        "damageEncounters",
         "history",
         "items",
         "inventory",
@@ -1409,6 +1567,7 @@ fn import_export_text(
             }
             connection.execute("INSERT INTO inventory_items(character_id,location,item_name,item_id,item_count,slots,sort_order) VALUES(?,?,?,?,?,?,?)",params![id,item.location,item.item_name,item.item_id,item.count,item.slots,order as i64]).map_err(err)?;
         }
+        record_weapon_loadout(connection, character, source, &items)?;
         format!("Imported {} inventory rows for {character}", items.len())
     } else if filename.to_ascii_lowercase().ends_with("-spellbook.txt") {
         connection.execute("INSERT INTO spellbook_characters(name,source_file,imported_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET source_file=excluded.source_file,imported_at=excluded.imported_at",params![character,source,now]).map_err(err)?;
@@ -1446,6 +1605,43 @@ fn import_export_text(
         .execute(
             "INSERT INTO import_uploads(file_name,status,detail) VALUES(?,?,?)",
             params![filename, status, detail],
+        )
+        .map_err(err)?;
+    Ok(())
+}
+
+fn record_weapon_loadout(
+    connection: &rusqlite::Connection,
+    character: &str,
+    source: &str,
+    items: &[crate::domain::inventory::InventoryItem],
+) -> Result<(), String> {
+    let equipped = |slot: &str| {
+        items.iter().find(|item| {
+            item.location.eq_ignore_ascii_case(slot) && !item.item_name.trim().is_empty()
+        })
+    };
+    let primary = equipped("Primary");
+    let secondary = equipped("Secondary");
+    let captured_at = Local::now()
+        .naive_local()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    connection
+        .execute(
+            "INSERT INTO character_weapon_loadouts(
+                character_name,captured_at,primary_weapon_name,primary_item_id,
+                secondary_weapon_name,secondary_item_id,source_file
+             ) VALUES(?,?,?,?,?,?,?)",
+            params![
+                character,
+                captured_at,
+                primary.map(|item| item.item_name.trim()),
+                primary.and_then(|item| item.item_id),
+                secondary.map(|item| item.item_name.trim()),
+                secondary.and_then(|item| item.item_id),
+                source
+            ],
         )
         .map_err(err)?;
     Ok(())
@@ -1543,7 +1739,9 @@ fn err(error: rusqlite::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{activity_history_snapshot, mutate, normalize_compound, snapshot};
+    use super::{
+        activity_history_snapshot, damage_encounter_details, mutate, normalize_compound, snapshot,
+    };
     use crate::infrastructure::database::Database;
     use rusqlite::params;
     use serde_json::json;
@@ -1574,6 +1772,87 @@ mod tests {
     }
 
     #[test]
+    fn damage_snapshot_and_detail_share_the_same_persisted_encounter() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO damage_encounters(
+                character_name,mob_name,started_at,last_damage_at,total_damage,melee_damage,
+                spell_damage,hit_count,max_hit,outcome,source_file,first_source_offset,last_source_offset
+             ) VALUES('Youngman','a frost giant','2026-09-05 10:00:00','2026-09-05 10:00:02',
+                      350,100,250,2,250,'slain','eqlog_Youngman_P1999Green.txt',1,2)",
+            [],
+        ).unwrap();
+        let encounter_id = connection.last_insert_rowid();
+        connection.execute(
+            "INSERT INTO damage_events(
+                encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name
+             ) VALUES(?,'2026-09-05 10:00:00','melee','slash',100,'raw one',
+                      'eqlog_Youngman_P1999Green.txt',1,'Youngman'),
+                     (?,'2026-09-05 10:00:02','spell','non-melee',250,'raw two',
+                      'eqlog_Youngman_P1999Green.txt',2,'Legiteral')",
+            [encounter_id, encounter_id],
+        ).unwrap();
+        drop(connection);
+
+        let overview = snapshot(&database).unwrap();
+        assert_eq!(overview["damageEncounters"][0]["totalDamage"], 350);
+        assert_eq!(
+            overview["damageEncounters"][0]["players"][0]["name"],
+            "Legiteral"
+        );
+        assert_eq!(
+            overview["damageEncounters"][0]["players"][0]["totalDamage"],
+            250
+        );
+        assert_eq!(
+            overview["damageEncounters"][0]["players"][1]["name"],
+            "Youngman"
+        );
+        let detail = damage_encounter_details(&database, encounter_id).unwrap();
+        assert_eq!(detail["mobName"], "a frost giant");
+        assert_eq!(detail["events"].as_array().unwrap().len(), 2);
+        assert_eq!(detail["events"][1]["damage"], 250);
+        assert_eq!(detail["events"][1]["attacker"], "Legiteral");
+    }
+
+    #[test]
+    fn damage_snapshot_exposes_the_active_characters_latest_weapon_loadout() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('active_character','Youngman')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO character_weapon_loadouts(
+                    character_name,captured_at,primary_weapon_name,primary_item_id,
+                    secondary_weapon_name,secondary_item_id,source_file
+                 ) VALUES
+                    ('Youngman','2026-09-05 09:00:00','Old Sword',1,NULL,NULL,'old.txt'),
+                    ('Youngman','2026-09-05 10:00:00','New Sword',2,'New Dagger',3,'new.txt'),
+                    ('SomeoneElse','2026-09-05 11:00:00','Wrong Sword',4,NULL,NULL,'wrong.txt')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let overview = snapshot(&database).unwrap();
+        assert_eq!(overview["currentWeaponLoadout"]["character"], "Youngman");
+        assert_eq!(overview["currentWeaponLoadout"]["primary"], "New Sword");
+        assert_eq!(overview["currentWeaponLoadout"]["primaryItemId"], 2);
+        assert_eq!(overview["currentWeaponLoadout"]["secondary"], "New Dagger");
+        assert_eq!(overview["currentWeaponLoadout"]["secondaryItemId"], 3);
+    }
+
+    #[test]
     fn inventory_ids_become_authoritative_for_master_items_and_wts() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1585,7 +1864,7 @@ mod tests {
         Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
-        mutate(&database,"inventory.importFiles",&json!({"files":[{"name":"Khards-Inventory.txt","text":"General1\tA Blue Crown\t12345\t1\n"}]})).unwrap();
+        mutate(&database,"inventory.importFiles",&json!({"files":[{"name":"Khards-Inventory.txt","text":"Primary\tA Blue Crown\t12345\t1\nSecondary\tOffhand Test\t54321\t1\n"}]})).unwrap();
 
         let connection = database.connect().unwrap();
         let master_id: i64 = connection
@@ -1603,6 +1882,18 @@ mod tests {
             )
             .unwrap();
         assert_eq!((master_id, wts_id), (12345, 12345));
+        let loadout: (Option<String>, Option<String>) = connection
+            .query_row(
+                "SELECT primary_weapon_name,secondary_weapon_name
+                 FROM character_weapon_loadouts WHERE character_name='Khards'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            loadout,
+            (Some("A Blue Crown".into()), Some("Offhand Test".into()))
+        );
     }
 
     #[test]

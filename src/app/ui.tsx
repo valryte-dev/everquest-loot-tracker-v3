@@ -3,18 +3,20 @@ import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {isVeliousArmorGem} from "./gems/catalog";
 
 export type Column<T> = {key:string; label:string; value:(row:T)=>unknown; render?:(row:T)=>ReactNode; className?:string};
-export type IconName="add"|"bookmark"|"check"|"clipboard"|"coin"|"download"|"edit"|"external"|"flame"|"pause"|"play"|"refresh"|"save"|"split"|"trash";
+export type IconName="add"|"bookmark"|"check"|"clipboard"|"close"|"coin"|"download"|"edit"|"external"|"flame"|"pause"|"pin"|"play"|"refresh"|"save"|"split"|"trash";
 const ICON_PATHS:Record<IconName,ReactNode>={
   add:<><path d="M12 5v14M5 12h14"/></>,
   bookmark:<path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.5L6 21Z"/>,
   check:<path d="m5 12 4 4L19 6"/>,
   clipboard:<><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M9 9h6M9 13h6M9 17h4"/></>,
+  close:<path d="m6 6 12 12M18 6 6 18"/>,
   coin:<><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5c-.8-.7-1.8-1-3-1-1.7 0-3 .8-3 2s1.1 1.8 3 2.2 3 1 3 2.3-1.3 2.5-3.2 2.5c-1.2 0-2.4-.4-3.3-1.2M12 5.5v13"/></>,
   download:<><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></>,
   edit:<><path d="M4 20h4l11-11-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></>,
   external:<><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/></>,
   flame:<path d="M13 22c4-1 7-4 7-8 0-3-1.5-5.5-4-8 .2 3-1 4.5-2.5 5.5C14 7 11 4 8 2c.3 3-1.5 5.5-3 7.5S3 13 4 16c1.2 3.5 4.4 5.5 9 6Z"/>,
   pause:<><path d="M8 5v14M16 5v14"/></>,
+  pin:<><path d="m14 4 6 6-3 1-4 4v5l-2 2-2-7-7-2 2-2h5l4-4 1-3Z"/><path d="m9 15-5 5"/></>,
   play:<path d="m8 5 11 7-11 7Z"/>,
   refresh:<><path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 0-2 5"/></>,
   save:<><path d="M5 3h12l3 3v15H4V4a1 1 0 0 1 1-1Z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></>,
