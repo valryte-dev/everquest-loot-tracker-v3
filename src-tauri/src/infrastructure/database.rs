@@ -153,6 +153,28 @@ impl Database {
             transaction.execute_batch(DAMAGE_SUMMARIES_MIGRATION)?;
         }
         if schema_version < 24 {
+            for table in [
+                "loot_drops",
+                "tracked_loot_items",
+                "manual_split_list_items",
+                "split_loot_items",
+                "completed_split_items",
+                "activity_loot_history",
+                "activity_offer_history",
+                "linked_loot_items",
+            ] {
+                let exists: i64 = transaction.query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name='item_id'",
+                    [table],
+                    |row| row.get(0),
+                )?;
+                if exists == 0 {
+                    transaction.execute(
+                        &format!("ALTER TABLE {table} ADD COLUMN item_id INTEGER REFERENCES master_items(item_id) ON DELETE SET NULL"),
+                        [],
+                    )?;
+                }
+            }
             transaction.execute_batch(CANONICAL_ITEM_IDS_MIGRATION)?;
         }
         transaction.commit()?;
