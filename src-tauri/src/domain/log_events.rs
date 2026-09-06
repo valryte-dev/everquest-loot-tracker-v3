@@ -87,6 +87,20 @@ pub enum LogEvent {
         amount: u64,
         damage_type: DamageType,
     },
+    ObservedMelee {
+        happened_at: NaiveDateTime,
+        subject_name: String,
+        target_name: String,
+        attack: String,
+        amount: u64,
+    },
+    IncomingDamage {
+        happened_at: NaiveDateTime,
+        attacker_name: String,
+        target_name: String,
+        attack: String,
+        amount: u64,
+    },
     MobSlain {
         happened_at: NaiveDateTime,
         mob_name: String,
@@ -123,6 +137,14 @@ pub enum LogEvent {
         channel: ChatChannel,
         message: String,
         item_names: Vec<String>,
+    },
+    ClericHealCall {
+        happened_at: NaiveDateTime,
+        cleric_name: String,
+        call_number: u32,
+        target_name: Option<String>,
+        channel: ChatChannel,
+        message: String,
     },
 }
 
@@ -208,6 +230,16 @@ fn linked_chat() -> &'static Regex {
     })
 }
 
+fn cleric_heal_call() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(
+            r"(?i)\blof\s*[-:#]?\s*0*(?<number>\d{1,4})\s*[-:]?\s*ch\b(?:\s*[-:]\s*(?<target>[A-Za-z][A-Za-z'_-]*))?",
+        )
+        .expect("valid cleric heal call regex")
+    })
+}
+
 fn outgoing_party_chat() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -271,11 +303,19 @@ fn melee_damage() -> &'static Regex {
     })
 }
 
-fn other_melee_damage() -> &'static Regex {
+fn observed_melee_damage() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
-        Regex::new(r"^(?<attacker>[A-Za-z][A-Za-z'_-]*) (?<attack>hits|kicks|bashes|punches|slashes|crushes|pierces|backstabs|claws|bites|mauls|smashes|stings|gores) (?<mob>.+?) for (?<damage>\d+) points? of damage\.$")
-            .expect("valid other melee damage regex")
+        Regex::new(r"^(?<subject>.+?) (?<attack>hits|kicks|bashes|punches|slashes|crushes|pierces|backstabs|claws|bites|mauls|smashes|stings|gores) (?<target>.+?) for (?<damage>\d+) points? of damage\.$")
+            .expect("valid observed melee damage regex")
+    })
+}
+
+fn incoming_spell_damage() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have taken (?<damage>\d+) (?:points? of )?damage from (?<spell>.+?) by (?<attacker>.+?)[.!]$")
+            .expect("valid incoming spell damage regex")
     })
 }
 
@@ -365,14 +405,32 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             damage_type: DamageType::Melee,
         });
     }
-    if let Some(value) = other_melee_damage().captures(body) {
-        return Some(LogEvent::Damage {
+    if let Some(value) = incoming_spell_damage().captures(body) {
+        return Some(LogEvent::IncomingDamage {
             happened_at,
-            attacker_name: value["attacker"].to_owned(),
-            mob_name: value["mob"].trim().to_owned(),
+            attacker_name: value["attacker"].trim().to_owned(),
+            target_name: active_character.to_owned(),
+            attack: value["spell"].trim().to_owned(),
+            amount: value["damage"].parse().ok()?,
+        });
+    }
+    if let Some(value) = observed_melee_damage().captures(body) {
+        let target = value["target"].trim();
+        if target.eq_ignore_ascii_case("YOU") {
+            return Some(LogEvent::IncomingDamage {
+                happened_at,
+                attacker_name: value["subject"].trim().to_owned(),
+                target_name: active_character.to_owned(),
+                attack: normalized_other_attack(&value["attack"]).to_owned(),
+                amount: value["damage"].parse().ok()?,
+            });
+        }
+        return Some(LogEvent::ObservedMelee {
+            happened_at,
+            subject_name: value["subject"].trim().to_owned(),
+            target_name: target.to_owned(),
             attack: normalized_other_attack(&value["attack"]).to_owned(),
             amount: value["damage"].parse().ok()?,
-            damage_type: DamageType::Melee,
         });
     }
     if let Some(value) = non_melee_damage().captures(body) {
@@ -467,6 +525,19 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     ] {
         if let Some(value) = pattern.captures(body) {
             let message = value.name("message")?.as_str().to_owned();
+            let clean_message = unquote(&message);
+            if channel == ChatChannel::Guild {
+                if let Some(call) = cleric_heal_call().captures(&clean_message) {
+                    return Some(LogEvent::ClericHealCall {
+                        happened_at,
+                        cleric_name: active_character.to_owned(),
+                        call_number: call.name("number")?.as_str().parse().ok()?,
+                        target_name: call.name("target").map(|value| value.as_str().to_owned()),
+                        channel,
+                        message: clean_message,
+                    });
+                }
+            }
             return Some(LogEvent::LinkedItems {
                 happened_at,
                 speaker: active_character.to_owned(),
@@ -480,18 +551,33 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
         let message = value.name("message")?.as_str().to_owned();
         let item_names = extract_item_links(&message);
         let who = value.name("name")?.as_str();
+        let speaker = if who.eq_ignore_ascii_case("You") {
+            active_character.to_owned()
+        } else {
+            who.to_owned()
+        };
+        let channel = if value["channel"].eq_ignore_ascii_case("group") {
+            ChatChannel::Group
+        } else {
+            ChatChannel::Guild
+        };
+        let clean_message = unquote(&message);
+        if channel == ChatChannel::Guild {
+            if let Some(call) = cleric_heal_call().captures(&clean_message) {
+                return Some(LogEvent::ClericHealCall {
+                    happened_at,
+                    cleric_name: speaker,
+                    call_number: call.name("number")?.as_str().parse().ok()?,
+                    target_name: call.name("target").map(|value| value.as_str().to_owned()),
+                    channel,
+                    message: clean_message,
+                });
+            }
+        }
         return Some(LogEvent::LinkedItems {
             happened_at,
-            speaker: if who.eq_ignore_ascii_case("You") {
-                active_character.to_owned()
-            } else {
-                who.to_owned()
-            },
-            channel: if &value["channel"] == "group" {
-                ChatChannel::Group
-            } else {
-                ChatChannel::Guild
-            },
+            speaker,
+            channel,
             message,
             item_names,
         });
@@ -616,8 +702,41 @@ mod tests {
         );
         assert!(matches!(
             other,
-            Some(LogEvent::Damage { ref attacker_name, ref mob_name, ref attack, amount: 81, damage_type: DamageType::Melee, .. })
-                if attacker_name == "Legiteral" && mob_name == "a mortiferous golem" && attack == "crush"
+            Some(LogEvent::ObservedMelee { ref subject_name, ref target_name, ref attack, amount: 81, .. })
+                if subject_name == "Legiteral" && target_name == "a mortiferous golem" && attack == "crush"
+        ));
+    }
+
+    #[test]
+    fn parses_mob_damage_against_the_active_and_other_players() {
+        let active = parse_log_event(
+            "[Sat Sep 05 07:39:46 2026] A mortiferous golem crushes YOU for 92 points of damage.",
+            "Youngman",
+        );
+        assert!(matches!(
+            active,
+            Some(LogEvent::IncomingDamage { ref attacker_name, ref target_name, ref attack, amount: 92, .. })
+                if attacker_name == "A mortiferous golem" && target_name == "Youngman" && attack == "crush"
+        ));
+
+        let observed = parse_log_event(
+            "[Sat Sep 05 07:39:47 2026] A mortiferous golem hits Legiteral for 74 points of damage.",
+            "Youngman",
+        );
+        assert!(matches!(
+            observed,
+            Some(LogEvent::ObservedMelee { ref subject_name, ref target_name, ref attack, amount: 74, .. })
+                if subject_name == "A mortiferous golem" && target_name == "Legiteral" && attack == "hit"
+        ));
+
+        let spell = parse_log_event(
+            "[Sat Sep 05 07:39:48 2026] You have taken 120 damage from Ice Comet by A mortiferous golem.",
+            "Youngman",
+        );
+        assert!(matches!(
+            spell,
+            Some(LogEvent::IncomingDamage { ref attacker_name, ref target_name, ref attack, amount: 120, .. })
+                if attacker_name == "A mortiferous golem" && target_name == "Youngman" && attack == "Ice Comet"
         ));
     }
 
@@ -744,6 +863,65 @@ mod tests {
         assert!(
             matches!(wtb, Some(LogEvent::MerchantListing { speaker, action: MerchantAction::Wtb, .. }) if speaker == "Youngman")
         );
+    }
+
+    #[test]
+    fn parses_case_insensitive_and_flexible_cleric_heal_calls() {
+        for (line, number, target) in [
+            (
+                "[Sat Sep 05 16:40:29 2026] Bakamore tells the guild, 'LoF 001 CH - Forsure'",
+                1,
+                Some("Forsure"),
+            ),
+            (
+                "[Sat Sep 05 16:40:39 2026] Bakamore tells the guild, 'lof-002-ch: Forsure'",
+                2,
+                Some("Forsure"),
+            ),
+            (
+                "[Sat Sep 05 16:40:49 2026] Bakamore tells the guild, 'LOF #003 CH'",
+                3,
+                None,
+            ),
+        ] {
+            let event = parse_log_event(line, "Youngman");
+            assert!(matches!(
+                event,
+                Some(LogEvent::ClericHealCall {
+                    ref cleric_name,
+                    call_number,
+                    ref target_name,
+                    ..
+                }) if cleric_name == "Bakamore"
+                    && call_number == number
+                    && target_name.as_deref() == target
+            ));
+        }
+    }
+
+    #[test]
+    fn ignores_cleric_heal_calls_outside_guild_chat() {
+        for line in [
+            "[Sat Sep 05 16:40:29 2026] Bakamore tells the group, 'LoF 001 CH - Forsure'",
+            "[Sat Sep 05 16:40:39 2026] You tell your party, 'LoF 002 CH - Forsure'",
+        ] {
+            let event = parse_log_event(line, "Youngman");
+            assert!(!matches!(event, Some(LogEvent::ClericHealCall { .. })));
+        }
+
+        let event = parse_log_event(
+            "[Sat Sep 05 16:40:49 2026] You say to your guild, 'LoF 003 CH - Forsure'",
+            "Youngman",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::ClericHealCall {
+                cleric_name,
+                call_number: 3,
+                channel: ChatChannel::Guild,
+                ..
+            }) if cleric_name == "Youngman"
+        ));
     }
 
     #[test]

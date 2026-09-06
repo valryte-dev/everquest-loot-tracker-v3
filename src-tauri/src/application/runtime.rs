@@ -307,7 +307,9 @@ pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
         let connection = database.connect().map_err(|error| error.to_string())?;
         connection
             .execute_batch(
-                "DELETE FROM damage_events;
+                "DELETE FROM cleric_heal_calls;
+                 DELETE FROM damage_received_events;
+                 DELETE FROM damage_events;
                  DELETE FROM damage_encounters;
                  DELETE FROM damage_scan_cursors;",
             )
@@ -338,7 +340,7 @@ pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
         "info",
         "damage",
         &format!(
-            "Rebuilt {inserted} damage events from {} character logs",
+            "Rebuilt {inserted} combat and CH-chain events from {} character logs",
             paths.len()
         ),
     );
@@ -663,6 +665,68 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
                         damage_type.as_str(),
                     )?;
                 }
+                LogEvent::ObservedMelee {
+                    happened_at,
+                    subject_name,
+                    target_name,
+                    attack,
+                    amount,
+                } => {
+                    inserted += record_observed_melee_event(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        happened_at,
+                        &subject_name,
+                        &target_name,
+                        &attack,
+                        amount,
+                    )?;
+                }
+                LogEvent::IncomingDamage {
+                    happened_at,
+                    attacker_name,
+                    target_name,
+                    attack,
+                    amount,
+                } => {
+                    inserted += record_incoming_damage_event(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        happened_at,
+                        &attacker_name,
+                        &target_name,
+                        &attack,
+                        amount,
+                    )?;
+                }
+                LogEvent::ClericHealCall {
+                    happened_at,
+                    cleric_name,
+                    call_number,
+                    target_name,
+                    channel,
+                    message,
+                } => {
+                    inserted += record_cleric_heal_call(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        happened_at,
+                        &cleric_name,
+                        call_number,
+                        target_name.as_deref(),
+                        channel.as_str(),
+                        &message,
+                    )?;
+                }
                 LogEvent::MobSlain {
                     happened_at,
                     mob_name,
@@ -724,6 +788,220 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(inserted)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_cleric_heal_call(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    happened_at: NaiveDateTime,
+    cleric_name: &str,
+    call_number: u32,
+    target_name: Option<&str>,
+    channel: &str,
+    message: &str,
+) -> Result<usize, String> {
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO cleric_heal_calls(
+                happened_at,character_name,cleric_name,call_number,target_name,channel,
+                message,raw_line,source_file,source_offset
+             ) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            params![
+                happened_at.to_string(),
+                character,
+                cleric_name,
+                call_number as i64,
+                target_name,
+                channel,
+                message,
+                raw,
+                source,
+                source_offset
+            ],
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_observed_melee_event(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    happened_at: NaiveDateTime,
+    subject_name: &str,
+    target_name: &str,
+    attack: &str,
+    amount: u64,
+) -> Result<usize, String> {
+    let known_target = target_name.eq_ignore_ascii_case(character)
+        || connection
+            .query_row(
+                "SELECT 1 FROM known_members WHERE name=? COLLATE NOCASE",
+                [target_name],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .is_some();
+    let known_subject = subject_name.eq_ignore_ascii_case(character)
+        || connection
+            .query_row(
+                "SELECT 1 FROM known_members WHERE name=? COLLATE NOCASE",
+                [subject_name],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .is_some();
+    let subject_lower = subject_name.to_ascii_lowercase();
+    let looks_like_mob = subject_name.contains(' ')
+        || subject_lower.starts_with("a ")
+        || subject_lower.starts_with("an ")
+        || subject_lower.starts_with("the ");
+    let target_looks_like_player =
+        !target_name.contains(' ') && target_name.chars().next().is_some_and(char::is_uppercase);
+    if known_target || (!known_subject && looks_like_mob && target_looks_like_player) {
+        record_incoming_damage_event(
+            connection,
+            source,
+            source_offset,
+            raw,
+            character,
+            happened_at,
+            subject_name,
+            target_name,
+            attack,
+            amount,
+        )
+    } else {
+        record_damage_event(
+            connection,
+            source,
+            source_offset,
+            raw,
+            character,
+            subject_name,
+            happened_at,
+            target_name,
+            attack,
+            amount,
+            "melee",
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_incoming_damage_event(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    happened_at: NaiveDateTime,
+    attacker_name: &str,
+    target_name: &str,
+    attack: &str,
+    amount: u64,
+) -> Result<usize, String> {
+    const ENCOUNTER_GAP_SECONDS: i64 = 120;
+    let already_recorded = connection
+        .query_row(
+            "SELECT 1 FROM damage_received_events WHERE source_file=? AND source_offset=?",
+            params![source, source_offset],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if already_recorded {
+        return Ok(0);
+    }
+    let active = connection
+        .query_row(
+            "SELECT id,last_damage_at FROM damage_encounters
+             WHERE source_file=? AND character_name=? COLLATE NOCASE
+               AND mob_name=? COLLATE NOCASE AND outcome='active'
+             ORDER BY last_source_offset DESC LIMIT 1",
+            params![source, character, attacker_name],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let mut encounter_id = active.as_ref().map(|value| value.0);
+    if let Some((id, last_damage_at)) = active {
+        let last = NaiveDateTime::parse_from_str(&last_damage_at, "%Y-%m-%d %H:%M:%S")
+            .map_err(|error| error.to_string())?;
+        let gap = happened_at.signed_duration_since(last).num_seconds();
+        if !(0..=ENCOUNTER_GAP_SECONDS).contains(&gap) {
+            connection
+                .execute(
+                    "UPDATE damage_encounters
+                     SET outcome='disengaged',ended_at=last_damage_at WHERE id=?",
+                    [id],
+                )
+                .map_err(|error| error.to_string())?;
+            encounter_id = None;
+        }
+    }
+    let encounter_id = match encounter_id {
+        Some(id) => id,
+        None => {
+            connection
+                .execute(
+                    "INSERT INTO damage_encounters(
+                        character_name,mob_name,started_at,last_damage_at,source_file,
+                        first_source_offset,last_source_offset
+                     ) VALUES(?,?,?,?,?,?,?)",
+                    params![
+                        character,
+                        attacker_name,
+                        happened_at.to_string(),
+                        happened_at.to_string(),
+                        source,
+                        source_offset,
+                        source_offset
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            connection.last_insert_rowid()
+        }
+    };
+    let created = connection
+        .execute(
+            "INSERT OR IGNORE INTO damage_received_events(
+                encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,
+                raw_line,source_file,source_offset
+             ) VALUES(?,?,?,?,?,?,?,?,?)",
+            params![
+                encounter_id,
+                happened_at.to_string(),
+                attacker_name,
+                target_name,
+                attack,
+                amount as i64,
+                raw,
+                source,
+                source_offset
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if created > 0 {
+        connection
+            .execute(
+                "UPDATE damage_encounters
+                 SET last_damage_at=?,last_source_offset=MAX(last_source_offset,?)
+                 WHERE id=?",
+                params![happened_at.to_string(), source_offset, encounter_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(created)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1075,7 +1353,7 @@ fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u6
     Ok(offset)
 }
 
-type LogDataSignature = (i64, i64, i64, i64, i64, i64, String);
+type LogDataSignature = (i64, i64, i64, i64, i64, i64, i64, i64, i64, String);
 
 fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
     database.connect().map_err(|error| error.to_string())?.query_row(
@@ -1086,9 +1364,23 @@ fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
             COALESCE((SELECT MAX(id) FROM mobs),0),
             COALESCE((SELECT MAX(id) FROM application_logs),0),
             COALESCE((SELECT MAX(id) FROM damage_events),0),
+            COALESCE((SELECT MAX(id) FROM damage_received_events),0),
+            COALESCE((SELECT MAX(id) FROM cleric_heal_calls),0),
+            COALESCE((SELECT SUM(last_source_offset) FROM damage_encounters),0),
             COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),'')",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
+        |row| Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+            row.get(7)?,
+            row.get(8)?,
+            row.get(9)?,
+        )),
     ).map_err(|error| error.to_string())
 }
 
@@ -1251,6 +1543,81 @@ fn apply_event(
                 *amount,
                 damage_type.as_str(),
             )?;
+        }
+        LogEvent::ObservedMelee {
+            happened_at,
+            subject_name,
+            target_name,
+            attack,
+            amount,
+        } => {
+            record_observed_melee_event(
+                &c,
+                &path.display().to_string(),
+                source_offset,
+                raw,
+                &character,
+                *happened_at,
+                subject_name,
+                target_name,
+                attack,
+                *amount,
+            )?;
+        }
+        LogEvent::IncomingDamage {
+            happened_at,
+            attacker_name,
+            target_name,
+            attack,
+            amount,
+        } => {
+            record_incoming_damage_event(
+                &c,
+                &path.display().to_string(),
+                source_offset,
+                raw,
+                &character,
+                *happened_at,
+                attacker_name,
+                target_name,
+                attack,
+                *amount,
+            )?;
+        }
+        LogEvent::ClericHealCall {
+            happened_at,
+            cleric_name,
+            call_number,
+            target_name,
+            channel,
+            message,
+        } => {
+            record_cleric_heal_call(
+                &c,
+                &path.display().to_string(),
+                source_offset,
+                raw,
+                &character,
+                *happened_at,
+                cleric_name,
+                *call_number,
+                target_name.as_deref(),
+                channel.as_str(),
+                message,
+            )?;
+            if *channel == ChatChannel::Group {
+                c.execute(
+                    "INSERT INTO known_members(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                    [cleric_name],
+                )
+                .map_err(|error| error.to_string())?;
+                c.execute(
+                    "INSERT OR IGNORE INTO current_group(member_id)
+                     SELECT id FROM known_members WHERE name=? COLLATE NOCASE",
+                    [cleric_name],
+                )
+                .map_err(|error| error.to_string())?;
+            }
         }
         LogEvent::PlayerDeath { happened_at, .. } => {
             c.execute(
@@ -1667,11 +2034,15 @@ mod tests {
 [Sat Sep 05 10:00:01 2026] a frost giant was hit by non-melee for 250 points of damage.\r\n\
 [Sat Sep 05 10:00:02 2026] a frost giant has taken 50 damage from your Engulfing Darkness.\r\n\
 [Sat Sep 05 10:00:02 2026] Legiteral crushes a frost giant for 81 points of damage.\r\n\
-[Sat Sep 05 10:00:03 2026] You have slain a frost giant!\r\n",
+[Sat Sep 05 10:00:02 2026] a frost giant hits YOU for 90 points of damage.\r\n\
+[Sat Sep 05 10:00:02 2026] a frost giant bashes Legiteral for 60 points of damage.\r\n\
+[Sat Sep 05 10:00:02 2026] Bakamore tells the guild, 'LoF 001 CH - Forsure'\r\n\
+[Sat Sep 05 10:00:12 2026] Clerica tells the guild, 'lof 002 ch - Forsure'\r\n\
+[Sat Sep 05 10:00:13 2026] You have slain a frost giant!\r\n",
         )
         .unwrap();
 
-        assert_eq!(scan_damage_file(&database, &log).unwrap(), 4);
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 8);
         assert_eq!(scan_damage_file(&database, &log).unwrap(), 0);
         let connection = database.connect().unwrap();
         let encounter: (i64, i64, i64, i64, i64, String) = connection
@@ -1711,6 +2082,51 @@ mod tests {
             player_damage,
             vec![("Youngman".into(), 400), ("Legiteral".into(), 81)]
         );
+        let received = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT target_name,SUM(damage) FROM damage_received_events
+                     GROUP BY target_name ORDER BY SUM(damage) DESC",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(
+            received,
+            vec![("Youngman".into(), 90), ("Legiteral".into(), 60)]
+        );
+        let calls = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT cleric_name,call_number,target_name,happened_at
+                     FROM cleric_heal_calls ORDER BY happened_at",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].0, "Bakamore");
+        assert_eq!(calls[0].1, 1);
+        assert_eq!(calls[0].2.as_deref(), Some("Forsure"));
+        assert_eq!(calls[1].0, "Clerica");
+        assert_eq!(calls[1].1, 2);
     }
 
     #[test]
@@ -2015,6 +2431,58 @@ mod tests {
             backfill_cursors, 0,
             "live polling must not start a full history scan"
         );
+    }
+
+    #[test]
+    fn isolated_cleric_call_requests_an_immediate_ui_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 16:40:29 2026] Bakamore tells the guild, 'LoF 001 CH - Forsure'\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        let changed = process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        assert!(changed, "a CH call must request an immediate UI refresh");
+        let connection = database.connect().unwrap();
+        let call: (String, i64, Option<String>) = connection
+            .query_row(
+                "SELECT cleric_name,call_number,target_name FROM cleric_heal_calls",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(call, ("Bakamore".into(), 1, Some("Forsure".into())));
+    }
+
+    #[test]
+    fn isolated_mob_death_requests_ui_refresh_for_chain_shutdown() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 16:40:20 2026] You hit a frost giant for 10 points of damage.\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
+        file.write_all(b"[Sat Sep 05 16:40:30 2026] You have slain a frost giant!\r\n")
+            .unwrap();
+        let changed = process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        assert!(changed, "a mob death must immediately refresh CH state");
+        let connection = database.connect().unwrap();
+        let outcome: String = connection
+            .query_row("SELECT outcome FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(outcome, "slain");
     }
 
     #[test]

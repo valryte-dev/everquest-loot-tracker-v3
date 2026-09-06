@@ -264,6 +264,23 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             }))
         },
     )?;
+    let cleric_heal_calls = query_values(
+        &connection,
+        "SELECT id,happened_at,character_name,cleric_name,call_number,target_name,
+                channel,message,source_file
+         FROM cleric_heal_calls
+         WHERE LOWER(channel)='guild'
+         ORDER BY happened_at DESC,id DESC LIMIT 5000",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"clericName":row.get::<_,String>(3)?,
+                "callNumber":row.get::<_,i64>(4)?,"targetName":row.get::<_,Option<String>>(5)?,
+                "channel":row.get::<_,String>(6)?,"message":row.get::<_,String>(7)?,
+                "sourceFile":row.get::<_,String>(8)?
+            }))
+        },
+    )?;
     let death_reports = query_values(
         &connection,
         "SELECT d.id,d.happened_at,d.character_name,d.killer_name,d.source_file,
@@ -304,6 +321,20 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
                     FROM damage_events de WHERE de.encounter_id=e.id
                     GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
                     ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
+                )),
+                COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
+                COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                (SELECT json_group_array(json_object(
+                    'name',target_name,'totalDamage',total_damage,'hitCount',hit_count,
+                    'maxHit',max_hit,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
+                )) FROM (
+                    SELECT target_name,SUM(damage) AS total_damage,COUNT(*) AS hit_count,
+                           MAX(damage) AS max_hit,MIN(happened_at) AS first_damage_at,
+                           MAX(happened_at) AS last_damage_at
+                    FROM damage_received_events WHERE encounter_id=e.id
+                    GROUP BY target_name COLLATE NOCASE
+                    ORDER BY total_damage DESC,target_name COLLATE NOCASE
                 ))
          FROM damage_encounters e ORDER BY e.started_at DESC,e.id DESC LIMIT 5000",
         |row| {
@@ -317,6 +348,12 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
                 "sourceFile":row.get::<_,String>(12)?,
                 "weapons":names(row.get::<_,Option<String>>(13)?),
                 "players":row.get::<_,Option<String>>(14)?
+                    .and_then(|value|serde_json::from_str::<Value>(&value).ok())
+                    .unwrap_or_else(||json!([])),
+                "incomingDamage":row.get::<_,i64>(15)?,
+                "incomingHitCount":row.get::<_,i64>(16)?,
+                "incomingMaxHit":row.get::<_,i64>(17)?,
+                "damageTargets":row.get::<_,Option<String>>(18)?
                     .and_then(|value|serde_json::from_str::<Value>(&value).ok())
                     .unwrap_or_else(||json!([]))
             }))
@@ -365,6 +402,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
         "deathReports":death_reports,"damageEncounters":damage_encounters,
+        "clericHealCalls":cleric_heal_calls,
         "currentWeaponLoadout":current_weapon_loadout,"compound":compound}),
     )
 }
@@ -503,6 +541,20 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                                         FROM damage_events de WHERE de.encounter_id=e.id
                                         GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
                                         ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
+                                    )),
+                    COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                    COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
+                    COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                    (SELECT json_group_array(json_object(
+                                        'name',target_name,'totalDamage',total_damage,'hitCount',hit_count,
+                                        'maxHit',max_hit,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
+                                    )) FROM (
+                                        SELECT target_name,SUM(damage) AS total_damage,COUNT(*) AS hit_count,
+                                               MAX(damage) AS max_hit,MIN(happened_at) AS first_damage_at,
+                                               MAX(happened_at) AS last_damage_at
+                                        FROM damage_received_events WHERE encounter_id=e.id
+                                        GROUP BY target_name COLLATE NOCASE
+                                        ORDER BY total_damage DESC,target_name COLLATE NOCASE
                                     ))
              FROM damage_encounters e WHERE e.id=?",
             [id],
@@ -518,7 +570,13 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                     "weapons":names(row.get::<_,Option<String>>(13)?),
                     "players":row.get::<_,Option<String>>(14)?
                         .and_then(|value|serde_json::from_str::<Value>(&value).ok())
-                        .unwrap_or_else(||json!([]))
+                        .unwrap_or_else(||json!([])),
+                "incomingDamage":row.get::<_,i64>(15)?,
+                "incomingHitCount":row.get::<_,i64>(16)?,
+                "incomingMaxHit":row.get::<_,i64>(17)?,
+                "damageTargets":row.get::<_,Option<String>>(18)?
+                    .and_then(|value|serde_json::from_str::<Value>(&value).ok())
+                    .unwrap_or_else(||json!([]))
                 }))
             },
         )
@@ -554,11 +612,31 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
             .map_err(err)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(err)?
     };
+    let incoming_events = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id,happened_at,attacker_name,target_name,attack_kind,damage
+                 FROM damage_received_events
+                 WHERE encounter_id=? ORDER BY happened_at,id",
+            )
+            .map_err(err)?;
+        let rows = statement
+            .query_map([id], |row| {
+                Ok(json!({
+                    "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                    "attacker":row.get::<_,String>(2)?,"target":row.get::<_,String>(3)?,
+                    "attack":row.get::<_,String>(4)?,"damage":row.get::<_,i64>(5)?
+                }))
+            })
+            .map_err(err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(err)?
+    };
     let mut value = encounter;
-    value
+    let root = value
         .as_object_mut()
-        .expect("damage encounter query returns an object")
-        .insert("events".into(), Value::Array(events));
+        .expect("damage encounter query returns an object");
+    root.insert("events".into(), Value::Array(events));
+    root.insert("incomingEvents".into(), Value::Array(incoming_events));
     Ok(value)
 }
 
@@ -572,7 +650,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
-        "damage" => &["damageEncounters"],
+        "damage" => &["damageEncounters", "clericHealCalls"],
         "merchant" => &["merchant"],
         "splits" => &["splits", "history", "aliases", "items", "mobs"],
         "compounds" => &["compound", "items", "inventory", "members"],
@@ -593,6 +671,7 @@ pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
         "linkedLoot",
         "deathReports",
         "damageEncounters",
+        "clericHealCalls",
         "history",
         "items",
         "inventory",
@@ -1795,6 +1874,18 @@ mod tests {
                       'eqlog_Youngman_P1999Green.txt',2,'Legiteral')",
             [encounter_id, encounter_id],
         ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO damage_received_events(
+                encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,
+                raw_line,source_file,source_offset
+             ) VALUES(?,'2026-09-05 10:00:01','a frost giant','Youngman','hit',90,
+                      'incoming one','eqlog_Youngman_P1999Green.txt',3),
+                     (?,'2026-09-05 10:00:02','a frost giant','Legiteral','bash',60,
+                      'incoming two','eqlog_Youngman_P1999Green.txt',4)",
+                [encounter_id, encounter_id],
+            )
+            .unwrap();
         drop(connection);
 
         let overview = snapshot(&database).unwrap();
@@ -1811,11 +1902,23 @@ mod tests {
             overview["damageEncounters"][0]["players"][1]["name"],
             "Youngman"
         );
+        assert_eq!(overview["damageEncounters"][0]["incomingDamage"], 150);
+        assert_eq!(
+            overview["damageEncounters"][0]["damageTargets"][0]["name"],
+            "Youngman"
+        );
+        assert_eq!(
+            overview["damageEncounters"][0]["damageTargets"][1]["name"],
+            "Legiteral"
+        );
         let detail = damage_encounter_details(&database, encounter_id).unwrap();
         assert_eq!(detail["mobName"], "a frost giant");
         assert_eq!(detail["events"].as_array().unwrap().len(), 2);
         assert_eq!(detail["events"][1]["damage"], 250);
         assert_eq!(detail["events"][1]["attacker"], "Legiteral");
+        assert_eq!(detail["incomingDamage"], 150);
+        assert_eq!(detail["incomingEvents"].as_array().unwrap().len(), 2);
+        assert_eq!(detail["incomingEvents"][0]["target"], "Youngman");
     }
 
     #[test]

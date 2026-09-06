@@ -1,10 +1,42 @@
 import {describe,expect,it} from "vitest";
-import type {DamageEvent} from "../../shared/contracts";
-import {buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,selectLiveEncounters} from "./model";
+import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,selectLiveEncounters} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
  damageType:"melee",attack:"hit",damage,
+});
+
+describe("cleric CH chain analytics",()=>{
+ const call=(id:number,second:number,clericName:string,callNumber:number):ClericHealCall=>({
+  id,happenedAt:"2026-09-05 16:"+String(Math.floor(second/60)).padStart(2,"0")+":"+String(second%60).padStart(2,"0"),
+  character:"Youngman",clericName,callNumber,targetName:"Forsure",channel:"guild",
+  message:"LoF "+String(callNumber).padStart(3,"0")+" CH - Forsure",sourceFile:"eqlog_Youngman_P1999Green.txt",
+ });
+ it("tracks chain gaps, each cleric cadence, and starts a new session after inactivity",()=>{
+  const rows=buildClericChainTimeline([
+   call(1,0,"Bakamore",1),
+   call(2,10,"Clerica",2),
+   call(3,20,"Bakamore",3),
+   call(4,180,"Clerica",1),
+  ]);
+  expect(rows.map(row=>row.session)).toEqual([0,0,0,1]);
+  expect(rows.map(row=>row.gapSeconds)).toEqual([undefined,10,10,undefined]);
+  expect(rows[2].clericGapSeconds).toBe(20);
+  expect(rows[3].clericGapSeconds).toBeUndefined();
+ });
+ it("uses a 15-second inactivity boundary and the latest slain mob as a hard boundary",()=>{
+  const rows=buildClericChainTimeline([call(1,0,"Bakamore",1),call(2,15,"Clerica",2),call(3,31,"Bakamore",3)]);
+  expect(rows.map(row=>row.session)).toEqual([0,0,1]);
+  const encounter={
+   id:1,character:"Youngman",mobName:"a dragon",startedAt:"2026-09-05 16:00:00",
+   lastDamageAt:"2026-09-05 16:00:20",endedAt:"2026-09-05 16:00:20",
+   totalDamage:1,meleeDamage:1,spellDamage:0,hitCount:1,maxHit:1,
+   outcome:"slain" as const,sourceFile:"eqlog_Youngman_P1999Green.txt",weapons:[],players:[],
+  };
+  expect(latestHealChainBoundary([encounter],"Youngman",undefined)).toBe(Date.parse("2026-09-05T16:00:20"));
+  expect(latestHealChainBoundary([encounter],"Other","2026-09-05T16:00:25")).toBe(Date.parse("2026-09-05T16:00:25"));
+ });
 });
 
 describe("live DPS analytics",()=>{

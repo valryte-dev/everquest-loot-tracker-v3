@@ -1,4 +1,4 @@
-import type {DamageEncounter,DamageEvent} from "../../shared/contracts";
+import type {ClericHealCall,DamageEncounter,DamageEvent} from "../../shared/contracts";
 
 export interface LiveDpsPoint { second:number; group:number; me:number }
 export interface DamageBurstPoint { second:number; group:number; me:number }
@@ -62,3 +62,48 @@ export function selectLiveEncounters(
   .sort((a,b)=>(seenAt.get(b.id)||0)-(seenAt.get(a.id)||0));
 }
 
+export interface TimedClericHealCall extends ClericHealCall {
+ session:number;
+ gapSeconds?:number;
+ clericGapSeconds?:number;
+}
+
+export function buildClericChainTimeline(
+ calls:ClericHealCall[],
+ sessionGapSeconds=15,
+):TimedClericHealCall[]{
+ const ordered=[...calls].sort((a,b)=>timestamp(a.happenedAt)-timestamp(b.happenedAt)||a.id-b.id);
+ let session=0,lastOverall:number|undefined;
+ const lastByCleric=new Map<string,number>();
+ return ordered.map(call=>{
+  const current=timestamp(call.happenedAt);
+  const rawGap=lastOverall===undefined?undefined:Math.max(0,(current-lastOverall)/1000);
+  if(rawGap!==undefined&&rawGap>sessionGapSeconds){
+   session++;
+   lastByCleric.clear();
+  }
+  const clericKey=call.clericName.toLowerCase(),lastCleric=lastByCleric.get(clericKey);
+  const result:TimedClericHealCall={
+   ...call,
+   session,
+   gapSeconds:rawGap!==undefined&&rawGap<=sessionGapSeconds?rawGap:undefined,
+   clericGapSeconds:lastCleric===undefined?undefined:Math.max(0,(current-lastCleric)/1000),
+  };
+  lastOverall=current;
+  lastByCleric.set(clericKey,current);
+  return result;
+ });
+}
+
+export function latestHealChainBoundary(
+ encounters:DamageEncounter[],
+ character:string|undefined,
+ manualClearedAt:string|undefined,
+):number{
+ const manual=manualClearedAt?timestamp(manualClearedAt):Number.NaN;
+ const deaths=encounters
+  .filter(row=>row.outcome==="slain"&&!!row.endedAt&&(!character||row.character.toLowerCase()===character.toLowerCase()))
+  .map(row=>timestamp(row.endedAt!))
+  .filter(Number.isFinite);
+ return Math.max(Number.isFinite(manual)?manual:0,0,...deaths);
+}

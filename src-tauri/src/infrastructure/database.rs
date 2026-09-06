@@ -24,6 +24,10 @@ const DEATH_REPORTS_MIGRATION: &str = include_str!("../migrations/014_death_repo
 const DAMAGE_TRACKER_MIGRATION: &str = include_str!("../migrations/015_damage_tracker.sql");
 const WEAPON_LOADOUTS_MIGRATION: &str = include_str!("../migrations/016_weapon_loadouts.sql");
 const DAMAGE_ATTACKERS_MIGRATION: &str = include_str!("../migrations/017_damage_attackers.sql");
+const INCOMING_DAMAGE_MIGRATION: &str = include_str!("../migrations/018_incoming_damage.sql");
+const CLERIC_HEAL_CALLS_MIGRATION: &str = include_str!("../migrations/019_cleric_heal_calls.sql");
+const GUILD_ONLY_CLERIC_HEAL_CALLS_MIGRATION: &str =
+    include_str!("../migrations/020_guild_only_cleric_heal_calls.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -109,6 +113,15 @@ impl Database {
         if schema_version < 17 {
             transaction.execute_batch(DAMAGE_ATTACKERS_MIGRATION)?;
         }
+        if schema_version < 18 {
+            transaction.execute_batch(INCOMING_DAMAGE_MIGRATION)?;
+        }
+        if schema_version < 19 {
+            transaction.execute_batch(CLERIC_HEAL_CALLS_MIGRATION)?;
+        }
+        if schema_version < 20 {
+            transaction.execute_batch(GUILD_ONLY_CLERIC_HEAL_CALLS_MIGRATION)?;
+        }
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -126,8 +139,42 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 17);
-        assert_eq!(database.migrate().unwrap(), 17);
+        assert_eq!(database.migrate().unwrap(), 20);
+        assert_eq!(database.migrate().unwrap(), 20);
+    }
+
+    #[test]
+    fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
+        assert_eq!(database.migrate().unwrap(), 20);
+        {
+            let connection = database.connect().unwrap();
+            connection
+                .execute_batch(
+                    "DELETE FROM schema_migrations WHERE version=20;
+                     INSERT INTO cleric_heal_calls(
+                         happened_at,character_name,cleric_name,call_number,target_name,
+                         channel,message,raw_line,source_file,source_offset
+                     ) VALUES
+                         ('2026-09-05 16:40:29','Youngman','Bakamore',1,'Forsure',
+                          'group','LoF 001 CH - Forsure','group raw','test.log',1),
+                         ('2026-09-05 16:40:39','Youngman','Clerica',2,'Forsure',
+                          'guild','LoF 002 CH - Forsure','guild raw','test.log',2);",
+                )
+                .unwrap();
+        }
+
+        assert_eq!(database.migrate().unwrap(), 20);
+        let connection = database.connect().unwrap();
+        let channels: Vec<String> = connection
+            .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(channels, vec!["guild"]);
     }
 
     #[test]
@@ -149,7 +196,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 17);
+        assert_eq!(database.migrate().unwrap(), 20);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -181,7 +228,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 17);
+        assert_eq!(database.migrate().unwrap(), 20);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {
