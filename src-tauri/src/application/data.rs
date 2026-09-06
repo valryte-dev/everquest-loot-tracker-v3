@@ -36,7 +36,37 @@ fn payouts(value: Option<String>) -> Vec<Value> {
         .collect()
 }
 
+fn page_fields(page: &str) -> &'static [&'static str] {
+    match page {
+        "live" => &["loot", "items", "mobs"],
+        "linked" => &["linkedLoot"],
+        "tracked" => &["tracked"],
+        "death-reports" => &["deathReports"],
+        "damage" => &["damageEncounters", "clericHealCalls"],
+        "merchant" => &["merchant"],
+        "splits" => &["splits", "history", "aliases", "items", "mobs"],
+        "compounds" => &["compound", "items", "inventory", "members"],
+        "characters" => &["inventory", "spells", "items", "compound"],
+        "spells" => &["spells", "items"],
+        "gems" => &["inventory"],
+        "imports" => &["imports"],
+        "wts" => &["wts", "inventory", "items"],
+        "items" => &["items"],
+        "system" => &["aliases", "imports"],
+        "logs" => &["logs"],
+        _ => &[],
+    }
+}
+
 pub fn snapshot(database: &Database) -> Result<Value, String> {
+    snapshot_selected(database, None)
+}
+
+fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, String> {
+    let wants = |key: &str| {
+        page.map(|value| page_fields(value).contains(&key))
+            .unwrap_or(true)
+    };
     let connection = database.connect().map_err(|error| error.to_string())?;
     let mut settings = Map::new();
     {
@@ -66,7 +96,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
-    let loot = query_values(
+    let loot = query_values_if(wants("loot"),
         &connection,
         "SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
                 rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id,
@@ -87,7 +117,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         })),
     )?;
 
-    let splits = query_values(
+    let splits = query_values_if(wants("splits"),
         &connection,
         "SELECT 'manual:'||s.id,s.item_name,s.added_at,m.name,s.looter_name,s.payout_value_pp,
                 rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),
@@ -112,7 +142,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         })),
     )?;
 
-    let tracked = query_values(
+    let tracked = query_values_if(wants("tracked"),
         &connection,
         "SELECT t.id,t.source_loot_id,t.happened_at,t.item_name,t.mob_name,t.looter_name,
                 COALESCE(rv.value_pp,t.value_pp),t.tracked_at,
@@ -130,7 +160,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         })),
     )?;
 
-    let history = query_values(
+    let history = query_values_if(wants("history"),
         &connection,
         "SELECT h.id,h.item_name,h.mob_name,h.looter_name,h.value_pp,h.disposition,h.note,h.completed_at,h.payout_status,h.paid_at,
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM completed_split_members x WHERE x.completed_split_item_id=h.id),
@@ -145,7 +175,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         })),
     )?;
 
-    let items = query_values(
+    let items = query_values_if(
+        wants("items"),
         &connection,
         "SELECT m.item_id,m.item_name,COALESCE(rv.value_pp,0),COALESCE(rv.sample_count,0),
                 COALESCE(rv.last_seen,m.updated_at),COALESCE(rv.is_manual,0),m.source,rv.value_basis
@@ -160,7 +191,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
-    let inventory = query_values(
+    let inventory = query_values_if(wants("inventory"),
         &connection,
         "SELECT c.name,c.imported_at,i.id,i.location,i.item_name,COALESCE(i.item_id,ni.item_id),i.item_count,i.slots,
                 rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0)
@@ -174,7 +205,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             "valueBasis":row.get::<_,Option<String>>(9)?,"valueSamples":row.get::<_,i64>(10)?})),
     )?;
 
-    let spells = query_values(
+    let spells = query_values_if(wants("spells"),
         &connection,
         "SELECT c.name,c.imported_at,s.slot_number,s.spell_name FROM spellbook_characters c
          JOIN spellbook_spells s ON s.character_id=c.id ORDER BY c.name COLLATE NOCASE,s.sort_order",
@@ -182,7 +213,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             "slot":row.get::<_,Option<i64>>(2)?,"spellName":row.get::<_,String>(3)?})),
     )?;
 
-    let wts = query_values(
+    let wts = query_values_if(wants("wts"),
         &connection,
         "SELECT g.id,g.character_name,g.name,g.created_at,g.updated_at,
                 (SELECT GROUP_CONCAT(item_name,char(31)) FROM wts_group_items i WHERE i.wts_group_id=g.id ORDER BY i.sort_order),
@@ -193,30 +224,31 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             "itemIds":names(row.get::<_,Option<String>>(6)?).iter().map(|v|v.parse::<i64>().ok()).collect::<Vec<_>>()})),
     )?;
 
-    let aliases = query_values(
+    let aliases = query_values_if(wants("aliases"),
         &connection,
         "SELECT alias_name,canonical_name FROM character_aliases ORDER BY canonical_name COLLATE NOCASE,alias_name COLLATE NOCASE",
         |row| Ok(json!({"alias":row.get::<_,String>(0)?,"canonical":row.get::<_,String>(1)?})),
     )?;
-    let mobs = query_values(
+    let mobs = query_values_if(
+        wants("mobs"),
         &connection,
         "SELECT name FROM mobs ORDER BY name COLLATE NOCASE",
         |row| Ok(json!(row.get::<_, String>(0)?)),
     )?;
-    let logs = query_values(
+    let logs = query_values_if(wants("logs"),
         &connection,
         "SELECT id,happened_at,level,area,message FROM application_logs ORDER BY id DESC LIMIT 1000",
         |row| Ok(json!({"id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,"level":row.get::<_,String>(2)?,
             "area":row.get::<_,String>(3)?,"message":row.get::<_,String>(4)?})),
     )?;
-    let imports = query_values(
+    let imports = query_values_if(wants("imports"),
         &connection,
         "SELECT id,happened_at,file_name,status,review_url,detail FROM import_uploads ORDER BY id DESC LIMIT 500",
         |row| Ok(json!({"id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
             "fileName":row.get::<_,String>(2)?,"status":row.get::<_,String>(3)?,
             "reviewUrl":row.get::<_,Option<String>>(4)?,"detail":row.get::<_,Option<String>>(5)?})),
     )?;
-    let merchant_item_values = query_values(
+    let merchant_item_values = query_values_if(wants("merchant"),
         &connection,
         "SELECT i.merchant_message_id,i.id,i.item_name,COALESCE(i.item_id,ni.item_id),i.asking_price_pp,
                 rv.value_pp,COALESCE(rv.sample_count,0),rv.value_basis
@@ -236,7 +268,7 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             merchant_items.entry(message_id).or_default().push(item);
         }
     }
-    let merchant = query_values(
+    let merchant = query_values_if(wants("merchant"),
         &connection,
         "SELECT id,happened_at,kind,speaker_name,message FROM merchant_messages ORDER BY happened_at DESC,id DESC LIMIT 2000",
         |row| {
@@ -246,7 +278,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
                 "items":merchant_items.get(&id).cloned().unwrap_or_default()}))
         },
     )?;
-    let linked_loot = query_values(
+    let linked_loot = query_values_if(
+        wants("linkedLoot"),
         &connection,
         "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,ni.item_id,
                 rv.value_pp,COALESCE(rv.sample_count,0),rv.value_basis
@@ -264,7 +297,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             }))
         },
     )?;
-    let cleric_heal_calls = query_values(
+    let cleric_heal_calls = query_values_if(
+        wants("clericHealCalls"),
         &connection,
         "SELECT id,happened_at,character_name,cleric_name,call_number,target_name,
                 channel,message,source_file
@@ -281,7 +315,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
             }))
         },
     )?;
-    let death_reports = query_values(
+    let death_reports = query_values_if(
+        wants("deathReports"),
         &connection,
         "SELECT d.id,d.happened_at,d.character_name,d.killer_name,d.source_file,
                 COUNT(e.sequence_number)
@@ -298,20 +333,26 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
-    let damage_encounter_count = connection
-        .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| {
-            row.get::<_, i64>(0)
-        })
-        .map_err(|error| error.to_string())?;
-    let damage_distinct_mob_count = connection
-        .query_row(
-            "SELECT COUNT(DISTINCT mob_name COLLATE NOCASE) FROM damage_encounters",
-            [],
-            |row| row.get::<_, i64>(0),
+    let (damage_encounter_count, damage_distinct_mob_count) = if wants("damageEncounters") {
+        (
+            connection
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|error| error.to_string())?,
+            connection
+                .query_row(
+                    "SELECT COUNT(DISTINCT mob_name COLLATE NOCASE) FROM damage_encounters",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| error.to_string())?,
         )
-        .map_err(|error| error.to_string())?;
+    } else {
+        (0, 0)
+    };
 
-    let damage_encounters = query_values(
+    let damage_encounters = query_values_if(wants("damageEncounters"),
         &connection,
         "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
                 e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
@@ -373,42 +414,49 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
-    let current_weapon_loadout = if let Some(character) = settings
-        .get("active_character")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-    {
-        connection
-            .query_row(
-                "SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id
-                 FROM character_weapon_loadouts
-                 WHERE character_name=? COLLATE NOCASE
-                 ORDER BY captured_at DESC,id DESC LIMIT 1",
-                [character],
-                |row| {
-                    Ok(json!({
-                        "character":character,
-                        "capturedAt":row.get::<_,String>(0)?,
-                        "primary":row.get::<_,Option<String>>(1)?,
-                        "primaryItemId":row.get::<_,Option<i64>>(2)?,
-                        "secondary":row.get::<_,Option<String>>(3)?,
-                        "secondaryItemId":row.get::<_,Option<i64>>(4)?
-                    }))
-                },
-            )
-            .optional()
-            .map_err(|error| error.to_string())?
+    let current_weapon_loadout = if wants("damageEncounters") {
+        if let Some(character) = settings
+            .get("active_character")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            connection
+                .query_row(
+                    "SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id
+                     FROM character_weapon_loadouts
+                     WHERE character_name=? COLLATE NOCASE
+                     ORDER BY captured_at DESC,id DESC LIMIT 1",
+                    [character],
+                    |row| {
+                        Ok(json!({
+                            "character":character,
+                            "capturedAt":row.get::<_,String>(0)?,
+                            "primary":row.get::<_,Option<String>>(1)?,
+                            "primaryItemId":row.get::<_,Option<i64>>(2)?,
+                            "secondary":row.get::<_,Option<String>>(3)?,
+                            "secondaryItemId":row.get::<_,Option<i64>>(4)?
+                        }))
+                    },
+                )
+                .optional()
+                .map_err(|error| error.to_string())?
+        } else {
+            None
+        }
     } else {
         None
     };
-
-    let compound = normalize_compound(
-        settings
-            .get("compound_workspace")
-            .and_then(Value::as_str)
-            .and_then(|raw| serde_json::from_str(raw).ok())
-            .unwrap_or_else(|| json!({"projects":[],"templates":[],"activeId":null})),
-    );
+    let compound = if wants("compound") {
+        normalize_compound(
+            settings
+                .get("compound_workspace")
+                .and_then(Value::as_str)
+                .and_then(|raw| serde_json::from_str(raw).ok())
+                .unwrap_or_else(|| json!({"projects":[],"templates":[],"activeId":null})),
+        )
+    } else {
+        json!({"projects":[],"templates":[],"activeId":null})
+    };
 
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
@@ -698,59 +746,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
 }
 
 pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
-    let mut value = snapshot(database)?;
-    let Some(root) = value.as_object_mut() else {
-        return Ok(value);
-    };
-    let keep: &[&str] = match page {
-        "live" => &["loot", "items", "mobs"],
-        "linked" => &["linkedLoot"],
-        "tracked" => &["tracked"],
-        "death-reports" => &["deathReports"],
-        "damage" => &["damageEncounters", "clericHealCalls"],
-        "merchant" => &["merchant"],
-        "splits" => &["splits", "history", "aliases", "items", "mobs"],
-        "compounds" => &["compound", "items", "inventory", "members"],
-        "characters" => &["inventory", "spells", "items", "compound"],
-        "spells" => &["spells", "items"],
-        "gems" => &["inventory"],
-        "imports" => &["imports"],
-        "wts" => &["wts", "inventory", "items"],
-        "items" => &["items"],
-        "system" => &["aliases", "imports"],
-        "logs" => &["logs"],
-        _ => &[],
-    };
-    for key in [
-        "loot",
-        "splits",
-        "tracked",
-        "linkedLoot",
-        "deathReports",
-        "damageEncounters",
-        "clericHealCalls",
-        "history",
-        "items",
-        "inventory",
-        "spells",
-        "wts",
-        "aliases",
-        "mobs",
-        "logs",
-        "imports",
-        "merchant",
-    ] {
-        if key != "members" && !keep.contains(&key) {
-            root.insert(key.into(), json!([]));
-        }
-    }
-    if !keep.contains(&"compound") {
-        root.insert(
-            "compound".into(),
-            json!({"projects":[],"templates":[],"activeId":null}),
-        );
-    }
-    Ok(value)
+    snapshot_selected(database, Some(page))
 }
 
 fn normalize_compound(mut workspace: Value) -> Value {
@@ -831,6 +827,21 @@ fn normalize_compound(mut workspace: Value) -> Value {
     workspace
 }
 
+fn query_values_if<F>(
+    enabled: bool,
+    connection: &rusqlite::Connection,
+    sql: &str,
+    mapper: F,
+) -> Result<Vec<Value>, String>
+where
+    F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<Value>,
+{
+    if enabled {
+        query_values(connection, sql, mapper)
+    } else {
+        Ok(Vec::new())
+    }
+}
 fn query_values<F>(
     connection: &rusqlite::Connection,
     sql: &str,
@@ -1876,7 +1887,8 @@ fn err(error: rusqlite::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_history_snapshot, damage_encounter_details, mutate, normalize_compound, snapshot,
+        activity_history_snapshot, damage_encounter_details, mutate, normalize_compound,
+        page_snapshot, snapshot,
     };
     use crate::infrastructure::database::Database;
     use rusqlite::params;
@@ -2584,5 +2596,39 @@ mod tests {
         assert_eq!(value["loot"][0]["valueSamples"], 0);
         assert_eq!(value["splits"][0]["marketValueSamples"], 0);
         assert_eq!(value["inventory"][0]["valueSamples"], 0);
+    }
+    #[test]
+    fn page_snapshot_only_queries_the_requested_feature_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO loot_drops(happened_at,item_name,raw_line,source_file,source_offset)
+             VALUES('2026-09-06 12:00:00','A White Throne','loot','eqlog_Test_P1999Green.txt',1)",
+                [],
+            )
+            .unwrap();
+        connection.execute(
+            "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,max_hit,outcome,source_file,first_source_offset,last_source_offset)
+             VALUES('Test','a test mob','2026-09-06 12:00:00','2026-09-06 12:00:01',10,10,0,1,10,'slain','eqlog_Test_P1999Green.txt',2,2)",
+            [],
+        ).unwrap();
+        drop(connection);
+
+        let live = page_snapshot(&database, "live").unwrap();
+        assert_eq!(live["loot"].as_array().unwrap().len(), 1);
+        assert!(live["damageEncounters"].as_array().unwrap().is_empty());
+        assert_eq!(live["damageEncounterCount"], 0);
+
+        let damage = page_snapshot(&database, "damage").unwrap();
+        assert!(damage["loot"].as_array().unwrap().is_empty());
+        assert_eq!(damage["damageEncounters"].as_array().unwrap().len(), 1);
+        assert_eq!(damage["damageEncounterCount"], 1);
+
+        let complete = snapshot(&database).unwrap();
+        assert_eq!(complete["loot"].as_array().unwrap().len(), 1);
+        assert_eq!(complete["damageEncounters"].as_array().unwrap().len(), 1);
     }
 }
