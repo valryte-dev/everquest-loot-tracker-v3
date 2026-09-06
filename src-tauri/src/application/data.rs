@@ -99,13 +99,13 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
     let loot = query_values_if(wants("loot"),
         &connection,
         "SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
-                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id,
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),COALESCE(d.item_id,rv.item_id),
                 EXISTS(SELECT 1 FROM split_loot_items s WHERE s.loot_drop_id=d.id),
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM loot_drop_members lm WHERE lm.loot_drop_id=d.id)
          FROM loot_drops d
          LEFT JOIN mobs m ON m.id=d.mob_id
          LEFT JOIN item_name_resolutions ni ON ni.item_name=d.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(d.item_id,ni.item_id)
          ORDER BY d.happened_at DESC,d.id DESC LIMIT 1000",
         |row| Ok(json!({
             "id": row.get::<_, i64>(0)?, "happenedAt": row.get::<_, String>(1)?,
@@ -124,14 +124,14 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM manual_split_list_members x WHERE x.split_list_item_id=s.id)
          FROM manual_split_list_items s LEFT JOIN mobs m ON m.id=s.mob_id
          LEFT JOIN item_name_resolutions ni ON ni.item_name=s.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(s.item_id,ni.item_id)
          UNION ALL
          SELECT 'loot:'||s.loot_drop_id,s.item_name,s.added_at,s.mob_name,s.looter_name,s.payout_value_pp,
                 rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM split_loot_members x WHERE x.split_loot_item_id=s.id)
          FROM split_loot_items s
          LEFT JOIN item_name_resolutions ni ON ni.item_name=s.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(s.item_id,ni.item_id)
          ORDER BY 3 DESC",
         |row| Ok(json!({
             "key": row.get::<_, String>(0)?, "itemName": row.get::<_, String>(1)?, "addedAt": row.get::<_, String>(2)?,
@@ -149,7 +149,7 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                 (SELECT GROUP_CONCAT(member_name,char(31)) FROM tracked_loot_members x WHERE x.tracked_loot_item_id=t.id),
                 COALESCE(rv.value_basis,CASE WHEN t.value_pp>0 THEN 'saved estimate' END),COALESCE(rv.sample_count,0)
          FROM tracked_loot_items t LEFT JOIN item_name_resolutions ni ON ni.item_name=t.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(t.item_id,ni.item_id)
          ORDER BY t.happened_at DESC,t.id DESC LIMIT 2000",
         |row| Ok(json!({
             "id":row.get::<_,i64>(0)?,"sourceLootId":row.get::<_,Option<i64>>(1)?,"happenedAt":row.get::<_,String>(2)?,
@@ -281,11 +281,11 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
     let linked_loot = query_values_if(
         wants("linkedLoot"),
         &connection,
-        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,ni.item_id,
+        "SELECT l.id,l.happened_at,l.channel,l.speaker_name,l.item_name,COALESCE(l.item_id,ni.item_id),
                 rv.value_pp,COALESCE(rv.sample_count,0),rv.value_basis
          FROM linked_loot_items l
          LEFT JOIN item_name_resolutions ni ON ni.item_name=l.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(l.item_id,ni.item_id)
          ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
         |row| {
             Ok(json!({
@@ -479,10 +479,10 @@ pub fn activity_history_snapshot(database: &Database) -> Result<Value, String> {
     let loot = query_values(
         &connection,
         "SELECT h.id,h.happened_at,h.character_name,h.item_name,h.looter_name,h.source_file,
-                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),COALESCE(h.item_id,rv.item_id)
          FROM activity_loot_history h
          LEFT JOIN item_name_resolutions ni ON ni.item_name=h.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(h.item_id,ni.item_id)
          ORDER BY h.happened_at DESC,h.id DESC",
         |row| {
             Ok(json!({
@@ -509,10 +509,10 @@ pub fn activity_history_snapshot(database: &Database) -> Result<Value, String> {
     let offers = query_values(
         &connection,
         "SELECT h.id,h.happened_at,h.character_name,h.offerer_name,h.item_name,h.source_file,
-                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),rv.item_id
+                rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),COALESCE(h.item_id,rv.item_id)
          FROM activity_offer_history h
          LEFT JOIN item_name_resolutions ni ON ni.item_name=h.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(h.item_id,ni.item_id)
          ORDER BY h.happened_at DESC,h.id DESC",
         |row| {
             Ok(json!({
@@ -1205,7 +1205,7 @@ fn set_loot_split(
     listed: bool,
 ) -> Result<(), String> {
     if listed {
-        connection.execute("INSERT OR IGNORE INTO split_loot_items(loot_drop_id,item_name,mob_name,looter_name) SELECT id,item_name,mob_name,looter_name FROM loot_drops WHERE id=?",[id]).map_err(err)?;
+        connection.execute("INSERT OR IGNORE INTO split_loot_items(loot_drop_id,item_name,mob_name,looter_name,item_id) SELECT id,item_name,mob_name,looter_name,item_id FROM loot_drops WHERE id=?",[id]).map_err(err)?;
         connection.execute("INSERT OR IGNORE INTO split_loot_members(split_loot_item_id,member_name) SELECT s.id,m.member_name FROM split_loot_items s JOIN loot_drop_members m ON m.loot_drop_id=s.loot_drop_id WHERE s.loot_drop_id=?",[id]).map_err(err)?;
     } else {
         connection
@@ -1217,11 +1217,11 @@ fn set_loot_split(
 
 fn track_loot(connection: &mut rusqlite::Connection, loot_id: i64) -> Result<(), String> {
     connection.execute(
-        "INSERT OR IGNORE INTO tracked_loot_items(source_loot_id,happened_at,item_name,mob_name,looter_name,value_pp)
-         SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,rv.value_pp
+        "INSERT OR IGNORE INTO tracked_loot_items(source_loot_id,happened_at,item_name,mob_name,looter_name,value_pp,item_id)
+         SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,rv.value_pp,COALESCE(d.item_id,ni.item_id)
          FROM loot_drops d LEFT JOIN mobs m ON m.id=d.mob_id
          LEFT JOIN item_name_resolutions ni ON ni.item_name=d.item_name COLLATE NOCASE
-         LEFT JOIN resolved_item_values rv ON rv.item_id=ni.item_id
+         LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(d.item_id,ni.item_id)
          WHERE d.id=?",
         [loot_id],
     ).map_err(err)?;
@@ -2256,6 +2256,14 @@ mod tests {
         Database::refresh_item_values(&connection).unwrap();
         drop(connection);
 
+        let stored_item_id: i64 = database
+            .connect()
+            .unwrap()
+            .query_row("SELECT item_id FROM linked_loot_items LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(stored_item_id, 20819);
         let value = snapshot(&database).unwrap();
         let linked = &value["linkedLoot"][0];
         assert_eq!(linked["itemId"], 20819);
