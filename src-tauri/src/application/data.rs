@@ -739,7 +739,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
                 COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
                 COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0)
          FROM damage_encounters e
-         WHERE (e.outcome='active' AND datetime(e.last_damage_at)>=datetime('now','-120 seconds')) OR datetime(e.last_damage_at)>=datetime('now','-45 seconds')
+         WHERE e.outcome='active' OR datetime(e.last_damage_at)>=datetime('now','localtime','-45 seconds')
          ORDER BY e.last_damage_at DESC,e.id DESC LIMIT 8",
         |row|Ok(json!({"id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,"mobName":row.get::<_,String>(2)?,
             "startedAt":row.get::<_,String>(3)?,"endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,
@@ -2111,8 +2111,8 @@ fn err(error: rusqlite::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_history_snapshot, damage_encounter_details, mutate, normalize_compound,
-        page_snapshot, snapshot,
+        activity_history_snapshot, damage_encounter_details, global_combat_snapshot, mutate,
+        normalize_compound, page_snapshot, snapshot,
     };
     use crate::infrastructure::database::Database;
     use rusqlite::params;
@@ -2862,6 +2862,23 @@ mod tests {
         let complete = snapshot(&database).unwrap();
         assert_eq!(complete["loot"].as_array().unwrap().len(), 1);
         assert_eq!(complete["damageEncounters"].as_array().unwrap().len(), 1);
+    }
+    #[test]
+    fn global_combat_snapshot_returns_active_encounters_without_utc_age_filtering() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,max_hit,outcome,source_file,first_source_offset,last_source_offset)
+             VALUES('Test','a test mob','2026-09-06 12:00:00','2026-09-06 12:00:01',10,10,0,1,10,'active','eqlog_Test_P1999Green.txt',2,2)",
+            [],
+        ).unwrap();
+        drop(connection);
+
+        let status = global_combat_snapshot(&database).unwrap();
+        assert_eq!(status["damageEncounters"].as_array().unwrap().len(), 1);
+        assert_eq!(status["damageEncounters"][0]["mobName"], "a test mob");
     }
     #[test]
     fn compound_save_appends_an_idempotent_normalized_snapshot() {
