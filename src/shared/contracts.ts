@@ -13,6 +13,8 @@ export interface DeathReport { id:number; happenedAt:string; character:string; k
 export interface DeathReportEntry { sequenceNumber:number; rawLine:string }
 export interface DeathReportDetail extends DeathReport { rawLine:string; sourceOffset:number; entries:DeathReportEntry[] }
 export interface ClericHealCall { id:number; happenedAt:string; character:string; clericName:string; callNumber:number; targetName?:string; channel:"group"|"guild"; message:string; sourceFile:string }
+export interface SystemTaskStatus { id:string; label:string; state:"running"|"completed"|"failed"; detail:string; completed?:number; total?:number; startedAt:string; finishedAt?:string }
+export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; activeCharacter?:string; currentWeaponLoadout?:CurrentWeaponLoadout; damageEncounters:DamageEncounter[] }
 export interface DamageParticipant { name:string; totalDamage:number; hitCount:number; firstDamageAt:string; lastDamageAt:string }
 export interface DamageTarget extends DamageParticipant { maxHit:number }
 export interface DamageEncounter { id:number; character:string; mobName:string; startedAt:string; endedAt?:string; lastDamageAt:string; totalDamage:number; meleeDamage:number; spellDamage:number; hitCount:number; maxHit:number; incomingDamage?:number; incomingHitCount?:number; incomingMaxHit?:number; outcome:"active"|"slain"|"playerDeath"|"disengaged"; sourceFile:string; weapons:string[]; players:DamageParticipant[]; damageTargets?:DamageTarget[] }

@@ -1,6 +1,7 @@
 mod data;
 mod runtime;
 mod services;
+mod system_tasks;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -31,6 +32,7 @@ pub struct AppState {
     legacy_database: bool,
     spell_catalog: SpellCatalog,
     revision: Arc<AtomicU64>,
+    tasks: system_tasks::TaskRegistry,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,6 +62,7 @@ impl AppState {
             legacy_database,
             spell_catalog,
             revision: Arc::new(AtomicU64::new(1)),
+            tasks: system_tasks::TaskRegistry::default(),
         })
     }
 
@@ -69,6 +72,7 @@ impl AppState {
             self.database_path.clone(),
             app_handle.clone(),
             self.revision.clone(),
+            self.tasks.clone(),
         );
         services::start_update_check(
             self.database_path.clone(),
@@ -135,6 +139,14 @@ pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
 }
 
 #[tauri::command]
+pub fn global_status_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    let mut status = data::global_combat_snapshot(&state.database)?;
+    status["tasks"] =
+        serde_json::to_value(state.tasks.snapshot()).map_err(|error| error.to_string())?;
+    Ok(status)
+}
+
+#[tauri::command]
 pub async fn mutate_app(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
@@ -145,20 +157,58 @@ pub async fn mutate_app(
         "market.refresh" => services::refresh_market(&state.database),
         "activityHistory.scan" => {
             let database = state.database.clone();
-            tauri::async_runtime::spawn_blocking(move || runtime::scan_history(&database))
-                .await
-                .map_err(|error| error.to_string())?
+            state.tasks.start(
+                "history-scan",
+                "Scanning log history",
+                "Reading configured log files",
+                None,
+            );
+            let _ = app_handle.emit("system-task-changed", "history-scan");
+            let result =
+                tauri::async_runtime::spawn_blocking(move || runtime::scan_history(&database))
+                    .await
+                    .map_err(|error| error.to_string())?;
+            state
+                .tasks
+                .finish("history-scan", &result, "Log history scan complete");
+            let _ = app_handle.emit("system-task-changed", "history-scan");
+            result
         }
         "damageTracker.rescan" => {
             let database = state.database.clone();
             let progress_handle = app_handle.clone();
-            tauri::async_runtime::spawn_blocking(move || {
+            let progress_tasks = state.tasks.clone();
+            progress_tasks.start(
+                "damage-rescan",
+                "Rebuilding damage history",
+                "Discovering log files",
+                None,
+            );
+            let _ = app_handle.emit("system-task-changed", "damage-rescan");
+            let result = tauri::async_runtime::spawn_blocking(move || {
                 runtime::rescan_damage(&database, |progress| {
-                    let _ = progress_handle.emit("damage-rescan-progress", progress);
+                    let detail = if progress.current_file.is_empty() {
+                        "Discovering log files"
+                    } else {
+                        progress.current_file.as_str()
+                    };
+                    progress_tasks.progress(
+                        "damage-rescan",
+                        detail,
+                        Some(progress.completed as u64),
+                        Some(progress.total as u64),
+                    );
+                    let _ = progress_handle.emit("damage-rescan-progress", &progress);
+                    let _ = progress_handle.emit("system-task-changed", "damage-rescan");
                 })
             })
             .await
-            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+            state
+                .tasks
+                .finish("damage-rescan", &result, "Damage history rebuilt");
+            let _ = app_handle.emit("system-task-changed", "damage-rescan");
+            result
         }
         "planner.upload" => services::upload_exports(&state.database),
         "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),

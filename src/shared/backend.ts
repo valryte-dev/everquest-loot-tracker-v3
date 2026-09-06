@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DeathReportDetail, SpellCatalogStatus, SpellInfo } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
 const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,compound:{projects:[],templates:[],activeId:null}};
@@ -9,6 +9,7 @@ export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promi
 export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_page_snapshot",{page}):Promise.resolve(previewSnapshot);
 export const getActivityHistorySnapshot=()=>desktop()?invoke<ActivityHistorySnapshot>("activity_history_snapshot"):Promise.resolve({loot:[],mobs:[],offers:[],levels:[]});
 export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
+export const getGlobalStatus=()=>desktop()?invoke<GlobalStatusSnapshot>("global_status_snapshot"):Promise.resolve({tasks:[],damageEncounters:[]});
 export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDetail>("death_report_details",{id}):Promise.reject(new Error("Death reports are available in the desktop app."));
 export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;

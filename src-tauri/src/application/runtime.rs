@@ -1,5 +1,5 @@
 use crate::{
-    application::{data, services},
+    application::{data, services, system_tasks::TaskRegistry},
     domain::log_events::{parse_log_event, ChatChannel, GroupChangeKind, LogEvent},
     domain::merchant::{parse_listing_items, CatalogItem},
     infrastructure::database::Database,
@@ -23,14 +23,99 @@ use std::{
 };
 use tauri::Emitter;
 
-pub fn start(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<AtomicU64>) {
+pub fn start(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+    tasks: TaskRegistry,
+) {
+    let backlog_database_path = database_path.clone();
+    let backlog_app_handle = app_handle.clone();
+    let backlog_revision = revision.clone();
+    let watcher_tasks = tasks.clone();
     thread::Builder::new()
         .name("eq-runtime-watcher".into())
-        .spawn(move || watch(database_path, app_handle, revision))
+        .spawn(move || watch(database_path, app_handle, revision, watcher_tasks))
         .expect("runtime watcher thread must start");
+    thread::Builder::new()
+        .name("eq-log-backlog-scanner".into())
+        .spawn(move || {
+            scan_log_backlog(
+                backlog_database_path,
+                backlog_app_handle,
+                backlog_revision,
+                tasks,
+            )
+        })
+        .expect("log backlog scanner thread must start");
 }
 
-fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<AtomicU64>) {
+fn scan_log_backlog(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+    tasks: TaskRegistry,
+) {
+    let database = match Database::open(database_path) {
+        Ok(database) => database,
+        Err(_) => return,
+    };
+    let mut configured_root: Option<PathBuf> = None;
+    let mut last_scan = SystemTime::UNIX_EPOCH;
+    loop {
+        let configured = configured_log_directory(&database);
+        let directory_changed = configured != configured_root;
+        let scan_due = last_scan
+            .elapsed()
+            .map_or(true, |elapsed| elapsed >= Duration::from_secs(30));
+        if configured.as_ref().is_some_and(|path| path.is_dir()) && (directory_changed || scan_due)
+        {
+            tasks.start(
+                "log-backlog",
+                "Checking log backlog",
+                "Scanning all character log segments",
+                None,
+            );
+            let _ = app_handle.emit("system-task-changed", "log-backlog");
+            let result = scan_history(&database);
+            match &result {
+                Ok(summary) => {
+                    let inserted = summary
+                        .get("inserted")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    if inserted > 0 {
+                        revision.fetch_add(1, Ordering::Relaxed);
+                        let _ = app_handle.emit("data-changed", "log-backlog");
+                    }
+                }
+                Err(error) => log(&database, "error", "history", error),
+            }
+            let inserted = result
+                .as_ref()
+                .ok()
+                .and_then(|value| value.get("inserted"))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            tasks.finish(
+                "log-backlog",
+                &result,
+                &format!("Backlog current - {inserted} new events"),
+            );
+            let _ = app_handle.emit("system-task-changed", "log-backlog");
+            last_scan = SystemTime::now();
+        }
+        configured_root = configured;
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+fn watch(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+    tasks: TaskRegistry,
+) {
     let database = match Database::open(database_path) {
         Ok(database) => database,
         Err(_) => return,
@@ -89,7 +174,7 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
         } else {
             match event_rx.recv_timeout(Duration::from_secs(2)) {
                 Ok(Ok(event)) => {
-                    changed_log = event.paths.into_iter().find(|path| is_log(path));
+                    changed_log = event.paths.into_iter().find(|path| is_active_log(path));
                     true
                 }
                 Ok(Err(error)) => {
@@ -110,13 +195,22 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
             thread::sleep(Duration::from_millis(60));
             while let Ok(event) = event_rx.try_recv() {
                 if let Ok(event) = event {
-                    if let Some(path) = event.paths.into_iter().find(|path| is_log(path)) {
+                    if let Some(path) = event.paths.into_iter().find(|path| is_active_log(path)) {
                         changed_log = Some(path);
                     }
                 }
             }
         }
-        let poll_changed = match poll(
+        if force_poll {
+            tasks.start(
+                "folder-reconcile",
+                "Reconciling configured folders",
+                "Checking logs, inventory, and spellbook outputs",
+                None,
+            );
+            let _ = app_handle.emit("system-task-changed", "folder-reconcile");
+        }
+        let poll_result = poll(
             &database,
             &mut active_log,
             &mut offsets,
@@ -124,13 +218,25 @@ fn watch(database_path: PathBuf, app_handle: tauri::AppHandle, revision: Arc<Ato
             &mut export_signatures,
             &mut export_directory,
             changed_log.as_deref(),
-        ) {
-            Ok(changed) => changed,
+        );
+        let poll_changed = match &poll_result {
+            Ok(changed) => *changed,
             Err(error) => {
-                log(&database, "error", "watcher", &error);
+                log(&database, "error", "watcher", error);
                 false
             }
         };
+        if force_poll {
+            let task_result = poll_result
+                .map(|changed| json!({"changed":changed}))
+                .map_err(|error| error.to_string());
+            tasks.finish(
+                "folder-reconcile",
+                &task_result,
+                "Logs and output files are current",
+            );
+            let _ = app_handle.emit("system-task-changed", "folder-reconcile");
+        }
         last_safety_poll = SystemTime::now();
         if poll_changed {
             revision.fetch_add(1, Ordering::Relaxed);
@@ -180,7 +286,7 @@ fn poll(
     }
 
     let preferred = preferred_log
-        .filter(|path| path.parent() == Some(directory.as_path()) && is_log(path))
+        .filter(|path| path.parent() == Some(directory.as_path()) && is_active_log(path))
         .map(Path::to_path_buf);
     let newest = if preferred.is_some() {
         preferred
@@ -189,7 +295,7 @@ fn poll(
             .map_err(|error| error.to_string())?
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| is_log(path))
+            .filter(|path| is_active_log(path))
             .collect::<Vec<_>>();
         logs.sort_by_key(|path| {
             fs::metadata(path)
@@ -251,7 +357,7 @@ fn poll(
     let output = services::output_directory(&directory);
     if watched_export_directory.as_ref() != Some(&output) {
         exports.clear();
-        baseline_exports(&output, exports)?;
+        reconcile_exports(database, &output, exports)?;
         *watched_export_directory = Some(output.clone());
         let connection = database.connect().map_err(|error| error.to_string())?;
         connection.execute("INSERT INTO app_settings(key,value) VALUES('export_directory',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[output.display().to_string()]).map_err(|error|error.to_string())?;
@@ -271,7 +377,7 @@ fn poll(
 #[derive(Debug, Default, Clone, Copy)]
 struct HistoryScanSummary {
     files: usize,
-    inserted: usize,
+    pub inserted: usize,
 }
 
 pub fn scan_history(database: &Database) -> Result<serde_json::Value, String> {
@@ -290,11 +396,11 @@ pub fn scan_history(database: &Database) -> Result<serde_json::Value, String> {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DamageScanProgress {
-    completed: usize,
-    total: usize,
-    current_file: String,
+    pub completed: usize,
+    pub total: usize,
+    pub current_file: String,
     inserted: usize,
-    done: bool,
+    pub done: bool,
 }
 
 pub fn rescan_damage(
@@ -1951,7 +2057,6 @@ fn process_exports(
         );
         match seen.get(&path) {
             None | Some(_) if seen.get(&path) != Some(&signature) => {
-                seen.insert(path.clone(), signature);
                 changed = true;
                 match data::mutate(
                     database,
@@ -1959,6 +2064,8 @@ fn process_exports(
                     &json!({"path":path.display().to_string()}),
                 ) {
                     Ok(_) => {
+                        record_export_import(database, &path, signature)?;
+                        seen.insert(path.clone(), signature);
                         if let Ok(connection) = database.connect() {
                             let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_export_file',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[path.display().to_string()]);
                             let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_export_import_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
@@ -2026,19 +2133,100 @@ fn baseline_exports(
     Ok(())
 }
 
-fn is_log(path: &Path) -> bool {
-    let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
-    name.to_ascii_lowercase().starts_with("eqlog_")
-        && name.to_ascii_lowercase().ends_with("_p1999green.txt")
+fn reconcile_exports(
+    database: &Database,
+    directory: &Path,
+    seen: &mut HashMap<PathBuf, (u64, SystemTime)>,
+) -> Result<bool, String> {
+    if !directory.is_dir() {
+        return Ok(false);
+    }
+    baseline_exports(directory, seen)?;
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    seen.retain(|path, signature| {
+        let stored = connection
+            .query_row(
+                "SELECT file_size,modified_unix_ns FROM export_import_state WHERE source_file=?",
+                [path.display().to_string()],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()
+            .ok()
+            .flatten();
+        stored == Some((signature.0 as i64, system_time_unix_ns(signature.1)))
+    });
+    drop(connection);
+    process_exports(database, directory, seen)
 }
-fn character_from_log(path: &Path) -> Option<String> {
+
+fn record_export_import(
+    database: &Database,
+    path: &Path,
+    signature: (u64, SystemTime),
+) -> Result<(), String> {
+    database
+        .connect()
+        .map_err(|error| error.to_string())?
+        .execute(
+            "INSERT INTO export_import_state(source_file,file_size,modified_unix_ns,imported_at)              VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(source_file) DO UPDATE SET              file_size=excluded.file_size,modified_unix_ns=excluded.modified_unix_ns,imported_at=CURRENT_TIMESTAMP",
+            params![
+                path.display().to_string(),
+                signature.0 as i64,
+                system_time_unix_ns(signature.1)
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn system_time_unix_ns(value: SystemTime) -> i64 {
+    value
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or(0)
+}
+
+fn is_log(path: &Path) -> bool {
+    log_file_identity(path).is_some()
+}
+
+fn is_active_log(path: &Path) -> bool {
+    log_file_identity(path).is_some_and(|(_, active)| active)
+}
+
+fn log_file_identity(path: &Path) -> Option<(String, bool)> {
     let name = path.file_name()?.to_str()?;
-    if !name.get(..6)?.eq_ignore_ascii_case("eqlog_") {
+    let lower = name.to_ascii_lowercase();
+    let rest = lower.strip_prefix("eqlog_")?;
+    let marker = rest.rfind("_p1999green")?;
+    let character = &name[6..6 + marker];
+    if character.is_empty() {
         return None;
     }
-    let rest = &name[6..];
-    let marker = rest.to_ascii_lowercase().rfind("_p1999green.txt")?;
-    Some(rest[..marker].to_owned())
+    let suffix = &rest[marker + "_p1999green".len()..];
+    let active = suffix == ".txt";
+    let rotated_after = suffix
+        .strip_prefix(".txt.")
+        .is_some_and(valid_rotation_token);
+    let rotated_before = suffix.strip_suffix(".txt").is_some_and(|value| {
+        let mut characters = value.chars();
+        matches!(characters.next(), Some('.' | '_' | '-'))
+            && valid_rotation_token(characters.as_str())
+    });
+    (active || rotated_after || rotated_before).then(|| (character.to_owned(), active))
+}
+
+fn valid_rotation_token(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().any(|character| character.is_ascii_digit())
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '.' | '_' | '-' | '(' | ')' | '[' | ']')
+        })
+}
+
+fn character_from_log(path: &Path) -> Option<String> {
+    log_file_identity(path).map(|(character, _)| character)
 }
 fn log(database: &Database, level: &str, area: &str, message: &str) {
     if let Ok(c) = database.connect() {
@@ -2055,11 +2243,168 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        poll, process_log, resolve_linked_items, scan_damage_file, scan_death_report_file,
-        scan_history_directory,
+        character_from_log, is_active_log, is_log, poll, process_log, reconcile_exports,
+        resolve_linked_items, scan_damage_file, scan_death_report_file, scan_history_directory,
     };
     use crate::infrastructure::database::Database;
     use std::{collections::HashMap, fs, io::Write};
+
+    #[test]
+    fn recognizes_common_split_log_names_without_treating_them_as_live() {
+        for name in [
+            "eqlog_Youngman_P1999Green.txt.1",
+            "eqlog_Youngman_P1999Green_2.txt",
+            "eqlog_Youngman_P1999Green-2026-09-06.txt",
+            "eqlog_Youngman_P1999Green.20260906.140000.txt",
+        ] {
+            let path = std::path::Path::new(name);
+            assert!(is_log(path), "{name} should be a recognized segment");
+            assert!(!is_active_log(path), "{name} must never become live");
+            assert_eq!(character_from_log(path).as_deref(), Some("Youngman"));
+        }
+        assert!(is_active_log(std::path::Path::new(
+            "eqlog_Youngman_P1999Green.txt"
+        )));
+        assert!(!is_log(std::path::Path::new(
+            "eqlog_Youngman_P1999Green.txt.bak"
+        )));
+    }
+
+    #[test]
+    fn history_reconciliation_reads_every_split_segment_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let first = directory.path().join("eqlog_Youngman_P1999Green.txt.1");
+        let second = directory.path().join("eqlog_Youngman_P1999Green_2.txt");
+        fs::write(
+            first,
+            b"[Mon Aug 03 07:09:18 2026] --You have looted A Blue Throne.--\r\n",
+        )
+        .unwrap();
+        fs::write(
+            second,
+            b"[Mon Aug 03 07:10:18 2026] --You have looted A White Throne.--\r\n",
+        )
+        .unwrap();
+        let first_scan = scan_history_directory(&database, directory.path()).unwrap();
+        let second_scan = scan_history_directory(&database, directory.path()).unwrap();
+        assert_eq!(first_scan.files, 2);
+        assert_eq!(first_scan.inserted, 2);
+        assert_eq!(second_scan.inserted, 0);
+        let count: i64 = database
+            .connect()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM activity_loot_history", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn rotated_segment_cannot_override_the_live_character() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+        let live = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let rotated = directory.path().join("eqlog_Other_P1999Green.txt.1");
+        fs::write(&live, b"").unwrap();
+        fs::write(&rotated, b"").unwrap();
+        let mut active = None;
+        poll(
+            &database,
+            &mut active,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            Some(&rotated),
+        )
+        .unwrap();
+        assert_eq!(active.as_deref(), Some(live.as_path()));
+    }
+
+    #[test]
+    fn initial_folder_poll_imports_existing_exports() {
+        let directory = tempfile::tempdir().unwrap();
+        let logs = directory.path().join("Logs");
+        fs::create_dir(&logs).unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [logs.display().to_string()],
+            )
+            .unwrap();
+        let export = directory.path().join("Youngman-Inventory.txt");
+        fs::write(&export, b"Primary\tA Blue Crown\t12345\t1\r\n").unwrap();
+        let changed = poll(
+            &database,
+            &mut None,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut None,
+            None,
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let imported: i64 = connection
+            .query_row("SELECT COUNT(*) FROM inventory_items", [], |row| row.get(0))
+            .unwrap();
+        let states: i64 = connection
+            .query_row("SELECT COUNT(*) FROM export_import_state", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(changed);
+        assert_eq!(imported, 1);
+        assert_eq!(states, 1);
+    }
+
+    #[test]
+    fn startup_reconciliation_skips_unchanged_exports_and_imports_offline_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let export = directory.path().join("Youngman-Inventory.txt");
+        fs::write(&export, b"Primary\tFirst Weapon\t1001\t1\r\n").unwrap();
+        assert!(reconcile_exports(&database, directory.path(), &mut HashMap::new()).unwrap());
+        assert!(!reconcile_exports(&database, directory.path(), &mut HashMap::new()).unwrap());
+        fs::write(
+            &export,
+            b"Primary\tReplacement Weapon With Longer Name\t1002\t1\r\n",
+        )
+        .unwrap();
+        assert!(reconcile_exports(&database, directory.path(), &mut HashMap::new()).unwrap());
+        let connection = database.connect().unwrap();
+        let imports: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM import_uploads WHERE status='auto import'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let item: String = connection
+            .query_row("SELECT item_name FROM inventory_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(imports, 2);
+        assert_eq!(item, "Replacement Weapon With Longer Name");
+    }
 
     #[test]
     fn damage_scan_aggregates_encounters_and_closes_on_kill() {

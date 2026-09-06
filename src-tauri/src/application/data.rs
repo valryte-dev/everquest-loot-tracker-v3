@@ -655,6 +655,48 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
     Ok(value)
 }
 
+pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let active_character = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='active_character'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let encounters=query_values(&connection,
+        "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
+                e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
+                (SELECT GROUP_CONCAT(name,char(31)) FROM (
+                    SELECT w.primary_weapon_name name FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id WHERE de.encounter_id=e.id AND COALESCE(w.primary_weapon_name,'')<>''
+                    UNION SELECT w.secondary_weapon_name name FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id WHERE de.encounter_id=e.id AND COALESCE(w.secondary_weapon_name,'')<>''
+                )),
+                (SELECT json_group_array(json_object('name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at))
+                 FROM (SELECT COALESCE(NULLIF(attacker_name,''),'Unknown') attacker_name,SUM(damage) total_damage,COUNT(*) hit_count,MIN(happened_at) first_damage_at,MAX(happened_at) last_damage_at
+                       FROM damage_events WHERE encounter_id=e.id GROUP BY attacker_name COLLATE NOCASE ORDER BY total_damage DESC)),
+                COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
+                COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0)
+         FROM damage_encounters e
+         WHERE e.outcome='active' OR datetime(e.last_damage_at)>=datetime('now','-45 seconds')
+         ORDER BY e.last_damage_at DESC,e.id DESC LIMIT 8",
+        |row|Ok(json!({"id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,"mobName":row.get::<_,String>(2)?,
+            "startedAt":row.get::<_,String>(3)?,"endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,
+            "totalDamage":row.get::<_,i64>(6)?,"meleeDamage":row.get::<_,i64>(7)?,"spellDamage":row.get::<_,i64>(8)?,
+            "hitCount":row.get::<_,i64>(9)?,"maxHit":row.get::<_,i64>(10)?,"outcome":row.get::<_,String>(11)?,
+            "sourceFile":row.get::<_,String>(12)?,"weapons":names(row.get::<_,Option<String>>(13)?),
+            "players":row.get::<_,Option<String>>(14)?.and_then(|v|serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(||json!([])),
+            "incomingDamage":row.get::<_,i64>(15)?,"incomingHitCount":row.get::<_,i64>(16)?,
+            "incomingMaxHit":row.get::<_,i64>(17)?,"damageTargets":[] })))?;
+    let loadout=active_character.as_deref().filter(|value|!value.is_empty()).and_then(|character|
+        connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
+            [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
+    Ok(
+        json!({"activeCharacter":active_character,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
+    )
+}
+
 pub fn page_snapshot(database: &Database, page: &str) -> Result<Value, String> {
     let mut value = snapshot(database)?;
     let Some(root) = value.as_object_mut() else {

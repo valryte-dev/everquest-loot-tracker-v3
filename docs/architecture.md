@@ -32,3 +32,7 @@ The core intentionally retains the V2 product directory name so the same databas
 ## Build policy
 
 Windows artifacts build on Windows, `.app`/`.dmg` on macOS, and AppImage/deb/rpm on Linux. The application code is shared; operating-system signing and bundling remain native.
+
+## Detailed review
+
+See [Architecture and Performance Review](./architecture-review.md) for measured findings, normalization recommendations, rollout phases, rollback controls, and verification criteria.

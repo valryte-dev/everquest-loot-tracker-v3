@@ -4,8 +4,9 @@ mod infrastructure;
 
 use application::{
     activity_history_snapshot, app_page_snapshot, app_revision, app_snapshot, bootstrap_status,
-    damage_encounter_details, death_report_details, mutate_app, parse_inventory_preview,
-    parse_log_preview, reload_spell_catalog, spell_catalog_status, spell_info, AppState,
+    damage_encounter_details, death_report_details, global_status_snapshot, mutate_app,
+    parse_inventory_preview, parse_log_preview, reload_spell_catalog, spell_catalog_status,
+    spell_info, AppState,
 };
 use tauri::Manager;
 
@@ -23,6 +24,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bootstrap_status,
             app_revision,
+            global_status_snapshot,
             app_page_snapshot,
             app_snapshot,
             activity_history_snapshot,
