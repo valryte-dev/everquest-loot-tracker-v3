@@ -54,7 +54,7 @@ Attribution method is persisted as `item_glow`, `next_attack`, or `unknown` and 
 
 ## Persistence and read model
 
-The main database migration `027_dot_damage_tracking.sql` adds `dot_applications`. It is additive and references existing `damage_encounters`. Inferred ticks are written into `damage_events`; existing participant summaries, totals, charts, and DPS calculations therefore include them without parallel aggregation logic.
+The main database migration `027_dot_damage_tracking.sql` adds `dot_applications`. Migration `028_repair_dot_event_timestamps.sql` repairs the timestamp-column defect present in the first local preview build and rebuilds only affected participant summaries. It is additive and references existing `damage_encounters`. Inferred ticks are written into `damage_events`; existing participant summaries, totals, charts, and DPS calculations therefore include them without parallel aggregation logic.
 
 Damage page, global combat, and encounter-detail snapshots attach only active DoTs as `activeDots`. The UI shows spell, caster, target, damage per tick, ticks remaining, next-tick countdown, and remaining-duration progress.
 

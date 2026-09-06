@@ -434,6 +434,11 @@ mod tests {
             })
             .unwrap();
         assert_eq!(total, 125);
+        let event: (String, String) = connection.query_row(
+            "SELECT happened_at,damage_type FROM damage_events WHERE source_file LIKE 'dot://%'",
+            [], |row| Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        assert_eq!(event, ("2026-09-06 10:53:10".into(), "spell".into()));
         tracker.process_line(&connection, "eqlog_Asquatii.txt", 30,
             "[Sun Sep 06 10:53:12 2026] Hexbone skeleton staggers as the light of dawn washes over it.",
             "Asquatii", None).unwrap();

@@ -7,7 +7,7 @@ import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMo
 import {DamageMeterPanel,openDamageMeterWidget} from "./DamageMeterWindow";
 import {formatCombatClock} from "./meterModel";
 
-const time=(v:string)=>Date.parse(v.includes("T")?v:v.replace(" ","T"));
+const time=(v:string)=>{const parsed=Date.parse(v.includes("T")?v:v.replace(" ","T"));return Number.isFinite(parsed)?parsed:0};
 const seconds=(r:DamageEncounter)=>Math.max(0,Math.round((time(r.lastDamageAt)-time(r.startedAt))/1000));
 const dps=(r:DamageEncounter)=>r.totalDamage/Math.max(1,seconds(r));
 const own=(r:DamageEncounter)=>(r.players||[]).find(player=>player.name.toLowerCase()===r.character.toLowerCase());

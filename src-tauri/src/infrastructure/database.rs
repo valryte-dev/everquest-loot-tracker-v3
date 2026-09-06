@@ -42,6 +42,8 @@ const NORMALIZED_COMPOUNDS_MIGRATION: &str =
 const SPLIT_LIFECYCLE_MIGRATION: &str = include_str!("../migrations/026_split_lifecycle.sql");
 const DOT_DAMAGE_TRACKING_MIGRATION: &str =
     include_str!("../migrations/027_dot_damage_tracking.sql");
+const REPAIR_DOT_EVENT_TIMESTAMPS_MIGRATION: &str =
+    include_str!("../migrations/028_repair_dot_event_timestamps.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -209,6 +211,9 @@ impl Database {
         if schema_version < 27 {
             transaction.execute_batch(DOT_DAMAGE_TRACKING_MIGRATION)?;
         }
+        if schema_version < 28 {
+            transaction.execute_batch(REPAIR_DOT_EVENT_TIMESTAMPS_MIGRATION)?;
+        }
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -246,15 +251,54 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 27);
-        assert_eq!(database.migrate().unwrap(), 27);
+        assert_eq!(database.migrate().unwrap(), 28);
+        assert_eq!(database.migrate().unwrap(), 28);
+    }
+
+    #[test]
+    fn repairs_misordered_inferred_dot_event_timestamps() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
+        assert_eq!(database.migrate().unwrap(), 28);
+        {
+            let connection = database.connect().unwrap();
+            connection.execute(
+                "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,source_file,first_source_offset,last_source_offset) VALUES('Utrido','Ran Walker','2026-09-06 10:53:04','2026-09-06 10:53:10','test.log',10,20)",
+                [],
+            ).unwrap();
+            let encounter_id = connection.last_insert_rowid();
+            connection.execute(
+                "INSERT INTO dot_applications(encounter_id,spell_name,target_name,caster_name,attribution_method,landed_at,expires_at,damage_per_tick,tick_interval_seconds,total_ticks,ticks_applied,source_file,source_offset) VALUES(?,'Dawncall','Ran Walker','Utrido','next_attack','2026-09-06 10:53:04','2026-09-06 10:53:40',125,6,6,1,'test.log',10)",
+                [encounter_id],
+            ).unwrap();
+            let application_id = connection.last_insert_rowid();
+            connection.execute(
+                "INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'spell','2026-09-06 10:53:10','Dawncall',125,'bad',?,1,'Utrido')",
+                rusqlite::params![encounter_id,format!("dot://{application_id}")],
+            ).unwrap();
+            connection
+                .execute("DELETE FROM schema_migrations WHERE version=28", [])
+                .unwrap();
+        }
+        assert_eq!(database.migrate().unwrap(), 28);
+        let connection = database.connect().unwrap();
+        let repaired: (String, String) = connection.query_row(
+            "SELECT happened_at,damage_type FROM damage_events WHERE source_file LIKE 'dot://%'",
+            [], |row| Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        let summary_time: String = connection.query_row(
+            "SELECT last_damage_at FROM damage_participant_summaries WHERE attacker_name='Utrido'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(repaired, ("2026-09-06 10:53:10".into(), "spell".into()));
+        assert_eq!(summary_time, "2026-09-06 10:53:10");
     }
 
     #[test]
     fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 27);
+        assert_eq!(database.migrate().unwrap(), 28);
         {
             let connection = database.connect().unwrap();
             connection
@@ -272,7 +316,7 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(database.migrate().unwrap(), 27);
+        assert_eq!(database.migrate().unwrap(), 28);
         let connection = database.connect().unwrap();
         let channels: Vec<String> = connection
             .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
@@ -303,7 +347,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 27);
+        assert_eq!(database.migrate().unwrap(), 28);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -335,7 +379,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 27);
+        assert_eq!(database.migrate().unwrap(), 28);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {

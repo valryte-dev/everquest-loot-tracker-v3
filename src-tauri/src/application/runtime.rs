@@ -1670,7 +1670,7 @@ pub(super) fn record_inferred_dot_tick(
             "INSERT OR IGNORE INTO damage_events(
             encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,
             source_offset,weapon_loadout_id,attacker_name
-         ) VALUES(?,'spell',?,?,?, ?,?, ?,NULL,?)",
+         ) VALUES(?,?,'spell',?,?,?,?,?,NULL,?)",
             params![
                 encounter_id,
                 happened_at.to_string(),
