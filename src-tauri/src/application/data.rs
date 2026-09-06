@@ -369,10 +369,12 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                     'name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,
                     'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
                 )) FROM (
-                    SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown') AS attacker_name,
-                           SUM(de.damage) AS total_damage,COUNT(*) AS hit_count,
-                           MIN(de.happened_at) AS first_damage_at,MAX(de.happened_at) AS last_damage_at
-                    FROM damage_events de WHERE de.encounter_id=e.id
+                    SELECT attacker_name,total_damage,hit_count,first_damage_at,last_damage_at
+                    FROM damage_participant_summaries WHERE encounter_id=e.id
+                    UNION ALL
+                    SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown'),SUM(de.damage),COUNT(*),MIN(de.happened_at),MAX(de.happened_at)
+                    FROM damage_events de
+                    WHERE de.encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_participant_summaries WHERE encounter_id=e.id)
                     GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
                     ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
                 )),
@@ -383,10 +385,12 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                     'name',target_name,'totalDamage',total_damage,'hitCount',hit_count,
                     'maxHit',max_hit,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
                 )) FROM (
-                    SELECT target_name,SUM(damage) AS total_damage,COUNT(*) AS hit_count,
-                           MAX(damage) AS max_hit,MIN(happened_at) AS first_damage_at,
-                           MAX(happened_at) AS last_damage_at
-                    FROM damage_received_events WHERE encounter_id=e.id
+                    SELECT target_name,total_damage,hit_count,max_hit,first_damage_at,last_damage_at
+                    FROM damage_target_summaries WHERE encounter_id=e.id
+                    UNION ALL
+                    SELECT target_name,SUM(damage),COUNT(*),MAX(damage),MIN(happened_at),MAX(happened_at)
+                    FROM damage_received_events
+                    WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_target_summaries WHERE encounter_id=e.id)
                     GROUP BY target_name COLLATE NOCASE
                     ORDER BY total_damage DESC,target_name COLLATE NOCASE
                 ))
@@ -598,12 +602,14 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                                         'name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,
                                         'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
                                     )) FROM (
-                                        SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown') AS attacker_name,
-                                               SUM(de.damage) AS total_damage,COUNT(*) AS hit_count,
-                                               MIN(de.happened_at) AS first_damage_at,MAX(de.happened_at) AS last_damage_at
-                                        FROM damage_events de WHERE de.encounter_id=e.id
-                                        GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
-                                        ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
+                                        SELECT attacker_name,total_damage,hit_count,first_damage_at,last_damage_at
+                    FROM damage_participant_summaries WHERE encounter_id=e.id
+                    UNION ALL
+                    SELECT COALESCE(NULLIF(de.attacker_name,''),'Unknown'),SUM(de.damage),COUNT(*),MIN(de.happened_at),MAX(de.happened_at)
+                    FROM damage_events de
+                    WHERE de.encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_participant_summaries WHERE encounter_id=e.id)
+                    GROUP BY COALESCE(NULLIF(de.attacker_name,''),'Unknown') COLLATE NOCASE
+                    ORDER BY total_damage DESC,attacker_name COLLATE NOCASE
                                     )),
                     COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
                     COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
@@ -612,12 +618,14 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                                         'name',target_name,'totalDamage',total_damage,'hitCount',hit_count,
                                         'maxHit',max_hit,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
                                     )) FROM (
-                                        SELECT target_name,SUM(damage) AS total_damage,COUNT(*) AS hit_count,
-                                               MAX(damage) AS max_hit,MIN(happened_at) AS first_damage_at,
-                                               MAX(happened_at) AS last_damage_at
-                                        FROM damage_received_events WHERE encounter_id=e.id
-                                        GROUP BY target_name COLLATE NOCASE
-                                        ORDER BY total_damage DESC,target_name COLLATE NOCASE
+                                        SELECT target_name,total_damage,hit_count,max_hit,first_damage_at,last_damage_at
+                    FROM damage_target_summaries WHERE encounter_id=e.id
+                    UNION ALL
+                    SELECT target_name,SUM(damage),COUNT(*),MAX(damage),MIN(happened_at),MAX(happened_at)
+                    FROM damage_received_events
+                    WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_target_summaries WHERE encounter_id=e.id)
+                    GROUP BY target_name COLLATE NOCASE
+                    ORDER BY total_damage DESC,target_name COLLATE NOCASE
                                     ))
              FROM damage_encounters e WHERE e.id=?",
             [id],
@@ -721,13 +729,17 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
                     UNION SELECT w.secondary_weapon_name name FROM damage_events de JOIN character_weapon_loadouts w ON w.id=de.weapon_loadout_id WHERE de.encounter_id=e.id AND COALESCE(w.secondary_weapon_name,'')<>''
                 )),
                 (SELECT json_group_array(json_object('name',attacker_name,'totalDamage',total_damage,'hitCount',hit_count,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at))
-                 FROM (SELECT COALESCE(NULLIF(attacker_name,''),'Unknown') attacker_name,SUM(damage) total_damage,COUNT(*) hit_count,MIN(happened_at) first_damage_at,MAX(happened_at) last_damage_at
-                       FROM damage_events WHERE encounter_id=e.id GROUP BY attacker_name COLLATE NOCASE ORDER BY total_damage DESC)),
+                 FROM (SELECT attacker_name,total_damage,hit_count,first_damage_at,last_damage_at
+                       FROM damage_participant_summaries WHERE encounter_id=e.id
+                       UNION ALL
+                       SELECT COALESCE(NULLIF(attacker_name,''),'Unknown'),SUM(damage),COUNT(*),MIN(happened_at),MAX(happened_at)
+                       FROM damage_events WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_participant_summaries WHERE encounter_id=e.id)
+                       GROUP BY attacker_name COLLATE NOCASE ORDER BY total_damage DESC)),
                 COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
                 COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
                 COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0)
          FROM damage_encounters e
-         WHERE e.outcome='active' OR datetime(e.last_damage_at)>=datetime('now','-45 seconds')
+         WHERE (e.outcome='active' AND datetime(e.last_damage_at)>=datetime('now','-120 seconds')) OR datetime(e.last_damage_at)>=datetime('now','-45 seconds')
          ORDER BY e.last_damage_at DESC,e.id DESC LIMIT 8",
         |row|Ok(json!({"id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,"mobName":row.get::<_,String>(2)?,
             "startedAt":row.get::<_,String>(3)?,"endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,
