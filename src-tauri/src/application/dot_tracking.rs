@@ -10,6 +10,7 @@ use std::time::{Duration as StdDuration, Instant};
 
 const GLOW_WINDOW_SECONDS: i64 = 3;
 const CAST_WINDOW_SECONDS: i64 = 15;
+const PROC_WINDOW_SECONDS: i64 = 3;
 
 struct CompiledProfile {
     profile: DotSpellProfile,
@@ -26,6 +27,11 @@ struct RecentCast {
     happened_at: NaiveDateTime,
     spell_name: String,
 }
+#[derive(Clone)]
+struct RecentMelee {
+    happened_at: NaiveDateTime,
+    target_name: String,
+}
 
 pub struct DotTracker {
     catalog: SpellCatalog,
@@ -33,6 +39,7 @@ pub struct DotTracker {
     loaded_at: Option<Instant>,
     recent_glow: Option<RecentGlow>,
     recent_cast: Option<RecentCast>,
+    recent_melee: Option<RecentMelee>,
 }
 
 impl DotTracker {
@@ -43,6 +50,7 @@ impl DotTracker {
             loaded_at: None,
             recent_glow: None,
             recent_cast: None,
+            recent_melee: None,
         }
     }
 
@@ -103,6 +111,32 @@ impl DotTracker {
                 spell_name: spell_name.clone(),
             });
         }
+        match event {
+            Some(LogEvent::Damage {
+                attacker_name,
+                mob_name,
+                damage_type,
+                ..
+            }) if attacker_name.eq_ignore_ascii_case(character)
+                && damage_type.as_str() == "melee" =>
+            {
+                self.recent_melee = Some(RecentMelee {
+                    happened_at,
+                    target_name: mob_name.clone(),
+                });
+            }
+            Some(LogEvent::ObservedMelee {
+                subject_name,
+                target_name,
+                ..
+            }) if subject_name.eq_ignore_ascii_case(character) => {
+                self.recent_melee = Some(RecentMelee {
+                    happened_at,
+                    target_name: target_name.clone(),
+                });
+            }
+            _ => {}
+        }
 
         let matches = self
             .profiles
@@ -124,7 +158,7 @@ impl DotTracker {
                         .num_seconds(),
                 )
             });
-            let direct_cast = self.recent_cast.as_ref().filter(|cast| {
+            let direct_cast = self.recent_cast.as_ref().is_some_and(|cast| {
                 cast.spell_name.eq_ignore_ascii_case(&profile.spell_name)
                     && (0..=CAST_WINDOW_SECONDS).contains(
                         &happened_at
@@ -132,10 +166,20 @@ impl DotTracker {
                             .num_seconds(),
                     )
             });
+            let weapon_proc = self.recent_melee.as_ref().is_some_and(|melee| {
+                melee.target_name.eq_ignore_ascii_case(target)
+                    && (0..=PROC_WINDOW_SECONDS).contains(
+                        &happened_at
+                            .signed_duration_since(melee.happened_at)
+                            .num_seconds(),
+                    )
+            });
             let (caster, attribution_method) = if let Some(glow) = glow_caster {
                 (glow.owner_name.as_str(), "item_glow")
-            } else if direct_cast.is_some() {
+            } else if direct_cast {
                 (character, "direct_cast")
+            } else if weapon_proc {
+                (character, "proc")
             } else {
                 ("Unknown", "unknown")
             };
@@ -151,8 +195,11 @@ impl DotTracker {
                 profile,
             )?;
             self.recent_glow = None;
-            if direct_cast.is_some() {
+            if direct_cast {
                 self.recent_cast = None;
+            }
+            if weapon_proc {
+                self.recent_melee = None;
             }
         }
 
@@ -435,6 +482,87 @@ mod tests {
     }
 
     #[test]
+    fn recent_melee_on_the_same_target_classifies_an_unannounced_landing_as_a_proc() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_melee: None,
+        };
+        let connection = database.connect().unwrap();
+        let attack =
+            "[Sun Sep 06 10:53:03 2026] You crush Hexbone skeleton for 79 points of damage.";
+        let attack_event = crate::domain::log_events::parse_log_event(attack, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                1,
+                attack,
+                "Asquatii",
+                attack_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                2,
+                "[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.",
+                "Asquatii",
+                None,
+            )
+            .unwrap();
+        let attribution: (String, String) = connection
+            .query_row(
+                "SELECT caster_name,attribution_method FROM dot_applications",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(attribution, ("Asquatii".into(), "proc".into()));
+
+        let other_attack =
+            "[Sun Sep 06 10:54:00 2026] You crush a snow cougar for 80 points of damage.";
+        let other_event = crate::domain::log_events::parse_log_event(other_attack, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                3,
+                other_attack,
+                "Asquatii",
+                other_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                4,
+                "[Sun Sep 06 10:54:01 2026] A frost giant staggers as the light of dawn washes over it.",
+                "Asquatii",
+                None,
+            )
+            .unwrap();
+        let unrelated: (String, String) = connection
+            .query_row(
+                "SELECT caster_name,attribution_method FROM dot_applications WHERE target_name='A frost giant'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(unrelated, ("Unknown".into(), "unknown".into()));
+    }
+
+    #[test]
     fn direct_cast_attributes_the_matching_landing_to_the_active_character() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
@@ -447,6 +575,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_melee: None,
         };
         let connection = database.connect().unwrap();
         let cast = "[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.";
@@ -493,6 +622,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_melee: None,
         };
         let connection = database.connect().unwrap();
         tracker.process_line(&connection, "eqlog_Asquatii.txt", 10,

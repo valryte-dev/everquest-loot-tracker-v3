@@ -362,7 +362,26 @@ fn interpret_lines(
             decisions.push(format!("Stored {spell_name} as an exact local-cast clue for a matching DoT landing within the next 15 seconds."));
         }
         if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored as a caster clue for a DoT landing within the next 3 seconds.".into()); }
-        if matches!(parsed, Some(LogEvent::CombatAttempt { .. })) { decisions.push("Eligible to attribute an unknown DoT on the same target if it occurred within 5 seconds after landing.".into()); }
+        match parsed.as_ref() {
+            Some(LogEvent::Damage {
+                attacker_name,
+                mob_name,
+                damage_type,
+                ..
+            }) if attacker_name.eq_ignore_ascii_case(character)
+                && damage_type.as_str() == "melee" =>
+            {
+                decisions.push(format!("Stored the local melee hit on {mob_name} as a possible weapon-proc clue for the next 3 seconds."));
+            }
+            Some(LogEvent::ObservedMelee {
+                subject_name,
+                target_name,
+                ..
+            }) if subject_name.eq_ignore_ascii_case(character) => {
+                decisions.push(format!("Stored the local melee hit on {target_name} as a possible weapon-proc clue for the next 3 seconds."));
+            }
+            _ => {}
+        }        if matches!(parsed, Some(LogEvent::CombatAttempt { .. })) { decisions.push("Eligible to attribute an unknown DoT on the same target if it occurred within 5 seconds after landing.".into()); }
         for event in direct { decisions.push(format!("Recorded explicit {} damage: {} used {} for {}.", event.damage_type, event.attacker, event.attack, event.damage)); }
         let (parser_event, summary) = parsed.as_ref().map(describe_event).unwrap_or_else(|| ("none".into(), if envelope.is_some() { "No standard combat event recognized.".into() } else { "Invalid or missing EverQuest timestamp envelope.".into() }));
         let status = if !landed.is_empty() { "dot" } else if parsed.is_some() { "recognized" } else if envelope.is_none() { "invalid" } else { "ignored" };
@@ -374,6 +393,7 @@ fn attribution_label(value: &str) -> &str {
     match value {
         "item_glow" => "item glow",
         "direct_cast" => "direct spell cast",
+        "proc" => "weapon proc",
         "next_attack" => "next attack/riposte",
         _ => "no reliable clue",
     }
