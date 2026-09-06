@@ -502,6 +502,7 @@ The non-destructive refactor phases are implemented and checkpointed:
 - Shared TypeScript contracts now define compound models and mutation runners; untrusted legacy JSON is normalized from `unknown` values.
 - Database backup/restore uses SQLite's online backup API, integrity checks, and an automatic pre-restore recovery copy.
 - The System page displays the actual runtime schema version.
+- Startup database writers are ordered (live folder reconciliation, backlog scan, then damage-summary backfill), and long runtime transactions share a writer coordinator to prevent SQLite lock failures.
 
 Deliberately deferred destructive work:
 

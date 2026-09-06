@@ -71,7 +71,7 @@ impl AppState {
     pub fn start_runtime(&self, app_handle: tauri::AppHandle) {
         self.spell_catalog.start_if_needed();
         runtime::start(
-            self.database_path.clone(),
+            self.database.clone(),
             app_handle.clone(),
             self.revision.clone(),
             self.tasks.clone(),

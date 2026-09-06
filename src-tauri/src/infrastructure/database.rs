@@ -1,5 +1,8 @@
 use rusqlite::{Connection, OpenFlags};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
+};
 use thiserror::Error;
 
 const COMPATIBILITY_SCHEMA: &str = include_str!("../migrations/000_v2_compatibility.sql");
@@ -47,6 +50,7 @@ pub enum DatabaseError {
 #[derive(Clone)]
 pub struct Database {
     path: PathBuf,
+    writer_gate: Arc<Mutex<()>>,
 }
 
 impl Database {
@@ -57,7 +61,10 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.busy_timeout(std::time::Duration::from_secs(10))?;
         drop(connection);
-        Ok(Self { path })
+        Ok(Self {
+            path,
+            writer_gate: Arc::new(Mutex::new(())),
+        })
     }
 
     fn connection_at(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -75,6 +82,17 @@ impl Database {
         connection.busy_timeout(std::time::Duration::from_secs(10))?;
         Ok(connection)
     }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn writer_guard(&self) -> MutexGuard<'_, ()> {
+        self.writer_gate
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     pub fn refresh_item_values(connection: &Connection) -> Result<(), DatabaseError> {
         connection.execute_batch(UNIFIED_ITEM_VALUES_MIGRATION)?;
         for table in [
@@ -198,6 +216,26 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn database_clones_serialize_coordinated_writers() {
+        use std::{sync::mpsc, thread, time::Duration};
+
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
+        let first_writer = database.writer_guard();
+        let second_database = database.clone();
+        let (acquired_tx, acquired_rx) = mpsc::sync_channel(1);
+        let waiting_writer = thread::spawn(move || {
+            let _second_writer = second_database.writer_guard();
+            acquired_tx.send(()).unwrap();
+        });
+
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        drop(first_writer);
+        acquired_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        waiting_writer.join().unwrap();
+    }
 
     #[test]
     fn migration_is_additive_and_repeatable() {

@@ -24,35 +24,47 @@ use std::{
 use tauri::Emitter;
 
 pub fn start(
-    database_path: PathBuf,
+    database: Database,
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
 ) {
-    let backlog_database_path = database_path.clone();
+    let backlog_database = database.clone();
     let backlog_app_handle = app_handle.clone();
     let backlog_revision = revision.clone();
-    let upload_database_path = database_path.clone();
+    let upload_database_path = database.path().to_owned();
     let upload_app_handle = app_handle.clone();
     let upload_revision = revision.clone();
     let upload_tasks = tasks.clone();
-    let summary_database_path = database_path.clone();
+    let summary_database = database.clone();
     let summary_app_handle = app_handle.clone();
     let summary_revision = revision.clone();
     let summary_tasks = tasks.clone();
     let watcher_tasks = tasks.clone();
+    let (watcher_ready_tx, watcher_ready_rx) = mpsc::sync_channel(1);
+    let (backlog_ready_tx, backlog_ready_rx) = mpsc::sync_channel(1);
     thread::Builder::new()
         .name("eq-runtime-watcher".into())
-        .spawn(move || watch(database_path, app_handle, revision, watcher_tasks))
+        .spawn(move || {
+            watch(
+                database,
+                app_handle,
+                revision,
+                watcher_tasks,
+                Some(watcher_ready_tx),
+            )
+        })
         .expect("runtime watcher thread must start");
     thread::Builder::new()
         .name("eq-log-backlog-scanner".into())
         .spawn(move || {
             scan_log_backlog(
-                backlog_database_path,
+                backlog_database,
                 backlog_app_handle,
                 backlog_revision,
                 tasks,
+                watcher_ready_rx,
+                backlog_ready_tx,
             )
         })
         .expect("log backlog scanner thread must start");
@@ -71,24 +83,25 @@ pub fn start(
         .name("damage-summary-backfill".into())
         .spawn(move || {
             damage_summary_backfill_worker(
-                summary_database_path,
+                summary_database,
                 summary_app_handle,
                 summary_revision,
                 summary_tasks,
+                backlog_ready_rx,
             )
         })
         .expect("damage summary backfill thread must start");
 }
 
 fn damage_summary_backfill_worker(
-    database_path: PathBuf,
+    database: Database,
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
+    startup_ready: mpsc::Receiver<()>,
 ) {
-    let Ok(database) = Database::open(database_path) else {
-        return;
-    };
+    let _ = startup_ready.recv();
+    let writer_guard = database.writer_guard();
     let Ok(connection) = database.connect() else {
         return;
     };
@@ -116,6 +129,7 @@ fn damage_summary_backfill_worker(
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
     drop(connection);
+    drop(writer_guard);
     if cursor >= total {
         return;
     }
@@ -128,6 +142,7 @@ fn damage_summary_backfill_worker(
     let _ = app_handle.emit("system-task-changed", "damage-summary-backfill");
     let result = (|| -> Result<serde_json::Value, String> {
         while cursor < total {
+            let _writer_guard = database.writer_guard();
             let mut connection = database.connect().map_err(|error| error.to_string())?;
             let next=connection.query_row(
                 "SELECT COALESCE(MAX(id),?) FROM (SELECT id FROM damage_encounters WHERE id>? ORDER BY id LIMIT 250)",
@@ -287,15 +302,15 @@ fn planner_upload_worker(
     }
 }
 fn scan_log_backlog(
-    database_path: PathBuf,
+    database: Database,
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
+    startup_ready: mpsc::Receiver<()>,
+    startup_complete: mpsc::SyncSender<()>,
 ) {
-    let database = match Database::open(database_path) {
-        Ok(database) => database,
-        Err(_) => return,
-    };
+    let _ = startup_ready.recv();
+    let mut startup_complete = Some(startup_complete);
     let mut configured_root: Option<PathBuf> = None;
     let mut last_scan = SystemTime::UNIX_EPOCH;
     loop {
@@ -341,21 +356,21 @@ fn scan_log_backlog(
             let _ = app_handle.emit("system-task-changed", "log-backlog");
             last_scan = SystemTime::now();
         }
+        if let Some(sender) = startup_complete.take() {
+            let _ = sender.send(());
+        }
         configured_root = configured;
         thread::sleep(Duration::from_secs(2));
     }
 }
 
 fn watch(
-    database_path: PathBuf,
+    database: Database,
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
+    mut startup_complete: Option<mpsc::SyncSender<()>>,
 ) {
-    let database = match Database::open(database_path) {
-        Ok(database) => database,
-        Err(_) => return,
-    };
     let (event_tx, event_rx) = mpsc::channel();
     let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |event| {
         let _ = event_tx.send(event);
@@ -473,6 +488,9 @@ fn watch(
             );
             let _ = app_handle.emit("system-task-changed", "folder-reconcile");
         }
+        if let Some(sender) = startup_complete.take() {
+            let _ = sender.send(());
+        }
         last_safety_poll = SystemTime::now();
         if poll_changed {
             revision.fetch_add(1, Ordering::Relaxed);
@@ -543,6 +561,7 @@ fn poll(
     if let Some(newest) = newest {
         let mut character_changed = false;
         if active_log.as_ref() != Some(&newest) {
+            let _writer_guard = database.writer_guard();
             let character = character_from_log(&newest).unwrap_or_else(|| "Unknown".into());
             let connection = database.connect().map_err(|error| error.to_string())?;
             let previous: Option<String> = connection
@@ -595,6 +614,7 @@ fn poll(
         exports.clear();
         reconcile_exports(database, &output, exports)?;
         *watched_export_directory = Some(output.clone());
+        let _writer_guard = database.writer_guard();
         let connection = database.connect().map_err(|error| error.to_string())?;
         connection.execute("INSERT INTO app_settings(key,value) VALUES('export_directory',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[output.display().to_string()]).map_err(|error|error.to_string())?;
         log_with(
@@ -814,6 +834,7 @@ fn scan_history_file(database: &Database, path: &Path) -> Result<usize, String> 
     let source = path.display().to_string();
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let _writer_guard = database.writer_guard();
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let saved_offset = connection
         .query_row(
@@ -882,6 +903,7 @@ fn scan_death_report_file(database: &Database, path: &Path) -> Result<usize, Str
     let source = path.display().to_string();
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let _writer_guard = database.writer_guard();
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let saved = connection
         .query_row(
@@ -990,6 +1012,7 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
     let source = path.display().to_string();
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let _writer_guard = database.writer_guard();
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let saved_offset = connection
         .query_row(
@@ -1661,6 +1684,7 @@ fn process_log(
     file.read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
+    let _writer_guard = database.writer_guard();
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let transaction = connection
         .transaction()
@@ -2327,6 +2351,7 @@ fn process_exports(
         match seen.get(&path) {
             None | Some(_) if seen.get(&path) != Some(&signature) => {
                 changed = true;
+                let _writer_guard = database.writer_guard();
                 match data::mutate(
                     database,
                     "inventory.import",

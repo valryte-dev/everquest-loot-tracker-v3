@@ -13,6 +13,8 @@ The architecture work was delivered as additive, independently tagged checkpoint
 | `architecture-phase-4-items` | Canonical item IDs and shared market-value resolution |
 | `architecture-phase-5-6-models` | Additive compound snapshots and unified split lifecycle snapshots |
 | `architecture-phase-7-contracts` | Typed frontend contracts and safe online database backup/restore |
+| database-management-preview | Read-only database statistics and cleanup previews |
+| pre-folder-reconcile-lock-fix-2026-09-06 | Rollback point before startup writer sequencing and runtime transaction coordination |
 
 ## Safest rollback workflow
 
