@@ -488,6 +488,28 @@ Before completing any phase:
 - Old and new data paths produce matching results.
 - Performance is compared with the Phase 0 baseline.
 
+## Implementation status — 2026-09-06
+
+The non-destructive refactor phases are implemented and checkpointed:
+
+- Page requests now execute selective database queries instead of building and pruning a global snapshot.
+- Frontend refreshes are single-flight and coalesce overlapping requests; shell task/combat status uses a lightweight global status query.
+- Log append batches and cursor advancement commit atomically on one connection.
+- Inventory exports persist locally first, then enter a durable Planner upload queue with bounded retry and visible task progress.
+- Damage encounter, participant, and target summaries are maintained incrementally; historical reads prefer summaries and fall back to raw events during backfill.
+- Canonical item IDs were added additively to item-bearing records and all value reads share the same resolver with a name fallback.
+- Compound projects/templates and split lifecycle phases are shadowed into normalized relational snapshots while legacy storage remains the active rollback path.
+- Shared TypeScript contracts now define compound models and mutation runners; untrusted legacy JSON is normalized from `unknown` values.
+- Database backup/restore uses SQLite's online backup API, integrity checks, and an automatic pre-restore recovery copy.
+- The System page displays the actual runtime schema version.
+
+Deliberately deferred destructive work:
+
+- Raw combat/log retention is unchanged because deleting diagnostic history requires an explicit opt-in policy.
+- Legacy compound and split tables remain in place until at least one public release validates the normalized shadow models.
+- Source-path deduplication is not applied to existing high-volume history because rewriting the approximately 2 GB database would add migration and startup risk without improving the live hot path.
+
+See [architecture-rollback.md](architecture-rollback.md) for checkpoint tags and the recovery procedure.
 ## Immediate next step
 
 The first implementation slice should include:
