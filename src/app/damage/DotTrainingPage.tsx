@@ -3,7 +3,7 @@ import {getDotTrainingPreview} from "../../shared/backend";
 import type {DotTrainingEncounter,DotTrainingEvent,DotTrainingLine,DotTrainingReport} from "../../shared/contracts";
 import {DataTable,type Column} from "../ui";
 
-const SAMPLE=`[Sun Sep 06 10:53:03 2026] Glowing wand begins to glow.
+const SAMPLE=`[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.
 [Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.
 [Sun Sep 06 10:53:06 2026] You crush Hexbone skeleton for 79 points of damage.
 [Sun Sep 06 10:53:10 2026] Legiteral crushes Hexbone skeleton for 81 points of damage.`;

@@ -119,6 +119,10 @@ pub enum LogEvent {
         owner_name: Option<String>,
         item_name: String,
     },
+    SpellCastStarted {
+        happened_at: NaiveDateTime,
+        spell_name: String,
+    },
     CombatAttempt {
         happened_at: NaiveDateTime,
         attacker_name: String,
@@ -306,6 +310,12 @@ fn healing_message() -> &'static Regex {
     })
 }
 
+fn spell_cast_started() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You begin casting (?<spell>.+)\.$").expect("valid spell cast regex")
+    })
+}
 fn item_glow() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -425,6 +435,12 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     }
     if healing_message().is_match(body) {
         return None;
+    }
+    if let Some(value) = spell_cast_started().captures(body) {
+        return Some(LogEvent::SpellCastStarted {
+            happened_at,
+            spell_name: value["spell"].trim().to_owned(),
+        });
     }
     if let Some(value) = item_glow().captures(body) {
         let owner = value
@@ -1097,7 +1113,15 @@ mod tests {
     }
 
     #[test]
+
     fn parses_dot_attribution_clues() {
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 12:59:54 2026] You begin casting Dawncall.",
+                "Asquatii"
+            ),
+            Some(LogEvent::SpellCastStarted { ref spell_name, .. }) if spell_name == "Dawncall"
+        ));
         assert!(matches!(
             parse_log_event(
                 "[Sun Sep 06 12:59:59 2026] Your Dawncall begins to glow.",

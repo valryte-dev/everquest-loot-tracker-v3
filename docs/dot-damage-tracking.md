@@ -38,10 +38,11 @@ If no profile matches, or more than one profile matches the same line, no DoT is
 Caster attribution is conservative:
 
 1. An item-glow message within three seconds attributes the landing to the glow owner. A local or ownerless glow uses the active log character.
-2. Otherwise, the first player attack or riposte attempt against the same target within five seconds supplies the caster.
-3. If neither clue exists, the caster remains `Unknown`.
+2. Otherwise, an exact `You begin casting <Spell Name>.` match within the preceding 15 seconds attributes the landing to the active log character.
+3. Otherwise, the first player attack or riposte attempt against the same target within five seconds supplies the caster.
+4. If none of these clues exists, the caster remains `Unknown`.
 
-Attribution method is persisted as `item_glow`, `next_attack`, or `unknown` and shown in the live data contract.
+Attribution method is persisted as `item_glow`, `direct_cast`, `next_attack`, or `unknown` and shown in the live data contract. Item glow retains priority because it explicitly identifies the owner; direct casting requires an exact spell-name match, preventing an unrelated cast from claiming the landing.
 
 ## Tick and refresh behavior
 

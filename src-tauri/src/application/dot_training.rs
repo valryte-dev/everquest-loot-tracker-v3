@@ -358,6 +358,9 @@ fn interpret_lines(
             if !dot.inference_enabled { decisions.push("Explicit spell damage was observed, so calculated ticks were disabled to prevent double counting.".into()); }
             if dot.status == "refreshed" { decisions.push("A later landing refreshed this application; remaining ticks from this instance were stopped instead of stacked.".into()); }
         }
+        if let Some(LogEvent::SpellCastStarted { spell_name, .. }) = parsed.as_ref() {
+            decisions.push(format!("Stored {spell_name} as an exact local-cast clue for a matching DoT landing within the next 15 seconds."));
+        }
         if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored as a caster clue for a DoT landing within the next 3 seconds.".into()); }
         if matches!(parsed, Some(LogEvent::CombatAttempt { .. })) { decisions.push("Eligible to attribute an unknown DoT on the same target if it occurred within 5 seconds after landing.".into()); }
         for event in direct { decisions.push(format!("Recorded explicit {} damage: {} used {} for {}.", event.damage_type, event.attacker, event.attack, event.damage)); }
@@ -370,6 +373,7 @@ fn interpret_lines(
 fn attribution_label(value: &str) -> &str {
     match value {
         "item_glow" => "item glow",
+        "direct_cast" => "direct spell cast",
         "next_attack" => "next attack/riposte",
         _ => "no reliable clue",
     }
@@ -467,6 +471,7 @@ fn event_kind(event: &LogEvent) -> &'static str {
         LogEvent::GroupChange { .. } => "groupChange",
         LogEvent::GroupCleared { .. } => "groupCleared",
         LogEvent::ItemGlow { .. } => "itemGlow",
+        LogEvent::SpellCastStarted { .. } => "spellCastStarted",
         LogEvent::CombatAttempt { .. } => "combatAttempt",
         LogEvent::MerchantListing { .. } => "merchantListing",
         LogEvent::DirectTell { .. } => "directTell",
@@ -520,11 +525,14 @@ mod tests {
                 stale: false,
             })
             .unwrap();
-        let report=analyze(&catalog,"[Sun Sep 06 10:53:03 2026] Glowing wand begins to glow.\n[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.","Asquatii",true).unwrap();
+        let report=analyze(&catalog,"[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.\n[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.","Asquatii",true).unwrap();
         assert_eq!(report.encounters.len(), 1);
         assert_eq!(report.encounters[0].spell_damage, 750);
         assert_eq!(report.encounters[0].dots[0].caster_name, "Asquatii");
-        assert_eq!(report.encounters[0].dots[0].attribution_method, "item_glow");
+        assert_eq!(
+            report.encounters[0].dots[0].attribution_method,
+            "direct_cast"
+        );
         assert_eq!(report.lines[1].status, "dot");
     }
 }

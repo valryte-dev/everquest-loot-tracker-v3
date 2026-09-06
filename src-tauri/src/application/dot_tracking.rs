@@ -9,6 +9,7 @@ use rusqlite::{params, OptionalExtension};
 use std::time::{Duration as StdDuration, Instant};
 
 const GLOW_WINDOW_SECONDS: i64 = 3;
+const CAST_WINDOW_SECONDS: i64 = 15;
 
 struct CompiledProfile {
     profile: DotSpellProfile,
@@ -20,12 +21,18 @@ struct RecentGlow {
     happened_at: NaiveDateTime,
     owner_name: String,
 }
+#[derive(Clone)]
+struct RecentCast {
+    happened_at: NaiveDateTime,
+    spell_name: String,
+}
 
 pub struct DotTracker {
     catalog: SpellCatalog,
     profiles: Vec<CompiledProfile>,
     loaded_at: Option<Instant>,
     recent_glow: Option<RecentGlow>,
+    recent_cast: Option<RecentCast>,
 }
 
 impl DotTracker {
@@ -35,6 +42,7 @@ impl DotTracker {
             profiles: Vec::new(),
             loaded_at: None,
             recent_glow: None,
+            recent_cast: None,
         }
     }
 
@@ -89,6 +97,12 @@ impl DotTracker {
                 owner_name: owner_name.clone().unwrap_or_else(|| character.to_owned()),
             });
         }
+        if let Some(LogEvent::SpellCastStarted { spell_name, .. }) = event {
+            self.recent_cast = Some(RecentCast {
+                happened_at,
+                spell_name: spell_name.clone(),
+            });
+        }
 
         let matches = self
             .profiles
@@ -103,18 +117,28 @@ impl DotTracker {
             .collect::<Vec<_>>();
         if matches.len() == 1 {
             let (profile, target) = &matches[0];
-            let caster = self
-                .recent_glow
-                .as_ref()
-                .filter(|glow| {
-                    (0..=GLOW_WINDOW_SECONDS).contains(
+            let glow_caster = self.recent_glow.as_ref().filter(|glow| {
+                (0..=GLOW_WINDOW_SECONDS).contains(
+                    &happened_at
+                        .signed_duration_since(glow.happened_at)
+                        .num_seconds(),
+                )
+            });
+            let direct_cast = self.recent_cast.as_ref().filter(|cast| {
+                cast.spell_name.eq_ignore_ascii_case(&profile.spell_name)
+                    && (0..=CAST_WINDOW_SECONDS).contains(
                         &happened_at
-                            .signed_duration_since(glow.happened_at)
+                            .signed_duration_since(cast.happened_at)
                             .num_seconds(),
                     )
-                })
-                .map(|glow| glow.owner_name.as_str())
-                .unwrap_or("Unknown");
+            });
+            let (caster, attribution_method) = if let Some(glow) = glow_caster {
+                (glow.owner_name.as_str(), "item_glow")
+            } else if direct_cast.is_some() {
+                (character, "direct_cast")
+            } else {
+                ("Unknown", "unknown")
+            };
             changed += land_dot(
                 connection,
                 source,
@@ -123,9 +147,13 @@ impl DotTracker {
                 happened_at,
                 target,
                 caster,
+                attribution_method,
                 profile,
             )?;
             self.recent_glow = None;
+            if direct_cast.is_some() {
+                self.recent_cast = None;
+            }
         }
 
         match event {
@@ -260,6 +288,7 @@ fn land_dot(
     happened_at: NaiveDateTime,
     target: &str,
     caster: &str,
+    attribution_method: &str,
     profile: &DotSpellProfile,
 ) -> Result<usize, String> {
     let encounter_id = ensure_encounter(
@@ -290,11 +319,7 @@ fn land_dot(
                 profile.spell_name,
                 target,
                 caster,
-                if caster == "Unknown" {
-                    "unknown"
-                } else {
-                    "item_glow"
-                },
+                attribution_method,
                 happened_at.to_string(),
                 expires_at.to_string(),
                 profile.damage_per_tick,
@@ -410,6 +435,52 @@ mod tests {
     }
 
     #[test]
+    fn direct_cast_attributes_the_matching_landing_to_the_active_character() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+        };
+        let connection = database.connect().unwrap();
+        let cast = "[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.";
+        let cast_event = crate::domain::log_events::parse_log_event(cast, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                1,
+                cast,
+                "Asquatii",
+                cast_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                2,
+                "[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.",
+                "Asquatii",
+                None,
+            )
+            .unwrap();
+        let attribution: (String, String) = connection
+            .query_row(
+                "SELECT caster_name,attribution_method FROM dot_applications",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(attribution, ("Asquatii".into(), "direct_cast".into()));
+    }
+    #[test]
     fn landing_ticks_and_refresh_are_persisted_without_stacking() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
@@ -421,6 +492,7 @@ mod tests {
             profiles: vec![compile_profile(dawncall_profile()).unwrap()],
             loaded_at: Some(Instant::now()),
             recent_glow: None,
+            recent_cast: None,
         };
         let connection = database.connect().unwrap();
         tracker.process_line(&connection, "eqlog_Asquatii.txt", 10,

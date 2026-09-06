@@ -2305,7 +2305,9 @@ fn apply_event(
                 );
             }
         }
-        LogEvent::ItemGlow { .. } | LogEvent::CombatAttempt { .. } => {}
+        LogEvent::ItemGlow { .. }
+        | LogEvent::SpellCastStarted { .. }
+        | LogEvent::CombatAttempt { .. } => {}
     }
     Ok(())
 }
