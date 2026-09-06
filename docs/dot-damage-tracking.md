@@ -58,6 +58,11 @@ The main database migration `027_dot_damage_tracking.sql` adds `dot_applications
 
 Damage page, global combat, and encounter-detail snapshots attach only active DoTs as `activeDots`. The UI shows spell, caster, target, damage per tick, ticks remaining, next-tick countdown, and remaining-duration progress.
 
+## Training lab
+
+The Combat navigation includes a **DoT Training Lab**. It accepts pasted, complete EverQuest log lines plus the character represented by `You`, then runs the production envelope parser, combat event parser, spell landing matcher, caster attribution, encounter writer, and tick inference against a disposable temporary database.
+
+The lab never writes to the real loot-tracker database. It displays line-by-line parser decisions, ignored and invalid lines, matched spell profiles, target and caster attribution, refresh state, inferred versus explicit events, cumulative damage, and damage grouped by caster. Optional projection advances recognized active DoTs through their scheduled expiration solely for visualization. Review markers and notes remain local to the page.
 ## Rescans
 
 The manual Damage Tracker rescan rebuilds derived damage, incoming damage, CH calls, encounters, and DoT applications from configured logs. Source loot, history, splits, inventory, spell catalog, and market data are not changed.

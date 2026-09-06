@@ -5,8 +5,9 @@ mod infrastructure;
 use application::{
     activity_history_snapshot, app_page_snapshot, app_revision, app_snapshot, bootstrap_status,
     damage_encounter_details, database_cleanup_preview, database_stats, death_report_details,
-    global_status_snapshot, mutate_app, parse_inventory_preview, parse_log_preview,
-    reload_spell_catalog, spell_catalog_entries, spell_catalog_status, spell_info, AppState,
+    dot_training_preview, global_status_snapshot, mutate_app, parse_inventory_preview,
+    parse_log_preview, reload_spell_catalog, spell_catalog_entries, spell_catalog_status,
+    spell_info, AppState,
 };
 use tauri::Manager;
 
@@ -32,6 +33,7 @@ pub fn run() {
             activity_history_snapshot,
             death_report_details,
             damage_encounter_details,
+            dot_training_preview,
             mutate_app,
             parse_log_preview,
             parse_inventory_preview,

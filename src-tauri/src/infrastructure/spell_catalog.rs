@@ -295,6 +295,11 @@ impl SpellCatalog {
             .map_err(|e| e.to_string())
     }
 
+    #[cfg(test)]
+    pub(crate) fn save_for_test(&self, info: &SpellInfo) -> Result<(), String> {
+        self.save(info)
+    }
+
     fn save(&self, i: &SpellInfo) -> Result<(), String> {
         save_on(&connect(&self.path)?, i)
     }

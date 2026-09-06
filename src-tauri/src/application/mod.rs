@@ -1,6 +1,7 @@
 mod data;
 mod database_management;
 mod dot_tracking;
+mod dot_training;
 mod runtime;
 mod services;
 mod system_tasks;
@@ -135,6 +136,20 @@ pub fn damage_encounter_details(
     id: i64,
 ) -> Result<Value, String> {
     data::damage_encounter_details(&state.database, id)
+}
+#[tauri::command]
+pub async fn dot_training_preview(
+    state: tauri::State<'_, AppState>,
+    text: String,
+    active_character: String,
+    project_all_ticks: bool,
+) -> Result<dot_training::DotTrainingReport, String> {
+    let spell_catalog = state.spell_catalog.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        dot_training::analyze(&spell_catalog, &text, &active_character, project_all_ticks)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

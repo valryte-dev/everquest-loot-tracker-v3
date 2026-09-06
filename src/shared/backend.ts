@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo, DotTrainingReport } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
 const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,compound:{projects:[],templates:[],activeId:null}};
@@ -19,3 +19,4 @@ export const getSpellCatalogEntries=()=>desktop()?invoke<SpellInfo[]>("spell_cat
 const previewSpellCatalog:SpellCatalogStatus={cachedCount:0,processed:0,saved:0,failed:0,refreshing:false};
 export const getSpellCatalogStatus=()=>desktop()?invoke<SpellCatalogStatus>("spell_catalog_status"):Promise.resolve(previewSpellCatalog);
 export const reloadSpellCatalog=()=>desktop()?invoke<SpellCatalogStatus>("reload_spell_catalog"):Promise.resolve(previewSpellCatalog);
+export const getDotTrainingPreview=(text:string,activeCharacter:string,projectAllTicks:boolean)=>desktop()?invoke<DotTrainingReport>("dot_training_preview",{text,activeCharacter,projectAllTicks}):Promise.reject(new Error("DoT training is available in the desktop app."));

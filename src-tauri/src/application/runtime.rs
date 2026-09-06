@@ -1083,7 +1083,7 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
     scan_damage_file_internal(database, path, None)
 }
 
-fn scan_damage_file_with_dots(
+pub(super) fn scan_damage_file_with_dots(
     database: &Database,
     path: &Path,
     dot_tracker: &mut DotTracker,

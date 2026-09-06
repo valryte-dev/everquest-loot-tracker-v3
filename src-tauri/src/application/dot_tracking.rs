@@ -168,6 +168,14 @@ impl DotTracker {
         self.refresh_profiles();
         self.flush_due(connection, Local::now().naive_local())
     }
+    pub(super) fn flush_through(
+        &mut self,
+        connection: &rusqlite::Connection,
+        through: NaiveDateTime,
+    ) -> Result<usize, String> {
+        self.refresh_profiles();
+        self.flush_due(connection, through)
+    }
 
     fn flush_due(
         &self,
