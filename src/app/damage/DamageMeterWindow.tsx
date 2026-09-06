@@ -4,16 +4,12 @@ import {getCurrentWindow} from "@tauri-apps/api/window";
 import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import type {AppSnapshot,DamageEncounter,DamageEncounterDetail} from "../../shared/contracts";
 import {getDamageEncounterDetails,getPageSnapshot,getRevision} from "../../shared/backend";
-import {buildMeterTrend,rankMeterPlayers} from "./meterModel";
+import {buildMeterTrend,formatCombatClock,participantCombatSeconds,rankMeterPlayers} from "./meterModel";
 import {sortLiveEncountersByPlayerTarget} from "./model";
 
 const isDesktop=()=>"__TAURI_INTERNALS__" in window;
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 const formatNumber=(value:number)=>Math.round(value).toLocaleString();
-const formatElapsed=(seconds:number)=>{
- const value=Math.max(0,Math.floor(seconds));
- return [Math.floor(value/3600),Math.floor(value%3600/60),value%60].map(part=>String(part).padStart(2,"0")).join(":");
-};
 
 export async function openDamageMeterWidget(){
  if(!isDesktop()){window.open("?widget=damage-meter","damage-meter","width=480,height=720");return}
@@ -107,7 +103,8 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
   void getDamageEncounterDetails(row.id).then(value=>{if(active)setDetail(value)}).catch(()=>{});
   return()=>{active=false};
  },[row.id,row.hitCount,row.lastDamageAt]);
- const duration=Math.max(1,Math.floor(((row.outcome==="active"?now:stamp(row.lastDamageAt))-stamp(row.startedAt))/1000));
+ const encounterEnd=row.outcome==="active"?now:stamp(row.lastDamageAt);
+ const duration=Math.max(1,Math.floor((encounterEnd-stamp(row.startedAt))/1000));
  const players=rankMeterPlayers(row.players,row.totalDamage,duration);
  const maxDamage=Math.max(1,...players.map(player=>player.totalDamage));
  const shares=new Map(previousShares.current);
@@ -120,7 +117,7 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
  const points=(name:string)=>trend.map(point=>(point.second/maxSecond*260)+","+(76-(point.totals[name]||0)/maxTrend*68)).join(" ");
  return <article className={"meter-fight"+(embedded?" is-embedded":"")}>
   {!embedded&&<header>
-   <div><span className="meter-pulse"><i/>{row.outcome==="active"?"Live":"Recent"}</span><h2 title={row.mobName}>{row.mobName}</h2><small>{formatElapsed(duration)} | {row.character}{row.weapons.length?" | "+row.weapons.join(" / "):""}</small></div>
+   <div><span className="meter-pulse"><i/>{row.outcome==="active"?"Live":"Recent"}</span><h2 title={row.mobName}>{row.mobName}</h2><small>Combat {formatCombatClock(duration)} | {row.character}{row.weapons.length?" | "+row.weapons.join(" / "):""}</small></div>
    <div className="meter-group-totals"><span>{(row.totalDamage/duration).toFixed(1)}</span><small>Group DPS</small><strong>{formatNumber(row.totalDamage)} DMG</strong></div>
   </header>}
   <div className="meter-players">{players.map((player,index)=>{
@@ -128,10 +125,11 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
    const prior=shares.get(player.name);
    const delta=prior===undefined?0:player.contribution-prior;
    const taken=row.damageTargets?.find(target=>target.name.toLowerCase()===player.name.toLowerCase())?.totalDamage||0;
+   const fighterSeconds=participantCombatSeconds(player,encounterEnd);
    return <div key={player.name} className={"meter-player"+(mine?" is-me":"")} style={{"--meter-color":colors[index%colors.length]} as CSSProperties}>
     <div className="meter-contribution" style={{width:(player.totalDamage/maxDamage*100)+"%"}}/>
     <span className="meter-rank">#{player.rank}</span>
-    <div className="meter-name"><strong title={player.name}>{player.name}{mine&&<em>ME</em>}</strong><small>{mine&&row.weapons.length?row.weapons.join(" / "):taken?formatNumber(taken)+" damage taken":player.hitCount+" events"}</small></div>
+    <div className="meter-name"><strong><span title={player.name}>{player.name}</span>{mine&&<em>ME</em>}<time title={`In combat since first hit at ${player.firstDamageAt}`}>{formatCombatClock(fighterSeconds)}</time></strong><small>{formatNumber(taken)} damage taken</small></div>
     <div className="meter-share"><span>{delta>.05?"+":delta<-.05?"-":""} {player.contribution.toFixed(1)}%</span><small>share</small></div>
     <div className="meter-stat"><span>{player.dps.toFixed(1)}<small>DPS</small></span><strong>{formatNumber(player.totalDamage)}<small>DMG</small></strong></div>
    </div>;

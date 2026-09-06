@@ -13,6 +13,15 @@ export interface MeterTrendPoint {
  totals:Record<string,number>;
 }
 
+export function formatCombatClock(seconds:number):string{
+ const value=Math.max(0,Math.floor(seconds));
+ return [Math.floor(value/3600),Math.floor(value%3600/60),value%60].map(part=>String(part).padStart(2,"0")).join(":");
+}
+
+export function participantCombatSeconds(player:DamageParticipant,encounterEndMs:number):number{
+ return Math.max(0,Math.floor((encounterEndMs-stamp(player.firstDamageAt))/1000));
+}
+
 export function rankMeterPlayers(players:DamageParticipant[],totalDamage:number,durationSeconds:number):MeterPlayer[]{
  return [...players]
   .sort((a,b)=>b.totalDamage-a.totalDamage||a.name.localeCompare(b.name))

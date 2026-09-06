@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {DamageEvent,DamageParticipant} from "../../shared/contracts";
-import {buildMeterTrend,rankMeterPlayers} from "./meterModel";
+import {buildMeterTrend,formatCombatClock,participantCombatSeconds,rankMeterPlayers} from "./meterModel";
 
 const player=(name:string,totalDamage:number):DamageParticipant=>({
  name,totalDamage,hitCount:2,firstDamageAt:"2026-09-05 10:00:00",lastDamageAt:"2026-09-05 10:00:10",
@@ -11,6 +11,15 @@ const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=
 });
 
 describe("damage meter model",()=>{
+ it("formats combat timers as stable clocks",()=>{
+  expect(formatCombatClock(0)).toBe("00:00:00");
+  expect(formatCombatClock(3661.9)).toBe("01:01:01");
+ });
+ it("measures each fighter from their first recorded hit",()=>{
+  const row=player("One",100);
+  expect(participantCombatSeconds(row,Date.parse("2026-09-05T10:00:25"))).toBe(25);
+  expect(participantCombatSeconds(row,Date.parse("2026-09-05T09:59:59"))).toBe(0);
+ });
  it("ranks players and uses the shared encounter duration for DPS",()=>{
   const rows=rankMeterPlayers([player("Two",250),player("One",750)],1000,10);
   expect(rows.map(row=>[row.rank,row.name,row.contribution,row.dps])).toEqual([
