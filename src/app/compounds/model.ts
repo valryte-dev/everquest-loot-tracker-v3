@@ -1,51 +1,6 @@
-import type {Alias,MasterItem} from "../../shared/contracts";
-
-export type CompoundSource="personal"|"split"|"shared";
-
-export interface CompoundComponent {
- id:string;
- itemId:number|null;
- itemName:string;
- required:number;
- received:number;
- valuePp:number;
- source:CompoundSource;
- sourceRef:string|null;
- contributors:string[];
- note:string;
-}
-
-export interface CompoundTemplateComponent {
- itemId:number|null;
- itemName:string;
- required:number;
- valuePp:number;
-}
-
-export interface CompoundTemplate {
- id:string;
- name:string;
- itemId:number|null;
- builtIn?:boolean;
- components:CompoundTemplateComponent[];
-}
-
-export interface CompoundProject {
- id:string;
- itemId:number|null;
- name:string;
- note:string;
- status:"building"|"ready"|"hold";
- templates:string[];
- components:CompoundComponent[];
-}
-
-export interface CompoundWorkspaceModel {
- projects:CompoundProject[];
- templates:CompoundTemplate[];
- activeId:string|null;
-}
-
+import type {Alias,CompoundComponent,CompoundProject,CompoundSource,CompoundTemplate,CompoundTemplateComponent,CompoundWorkspace,MasterItem} from "../../shared/contracts";
+export type {CompoundComponent,CompoundProject,CompoundSource,CompoundTemplate,CompoundTemplateComponent,CompoundWorkspace};
+export type CompoundWorkspaceModel=CompoundWorkspace;
 export interface CompoundOwner {
  name:string;
  valuePp:number;
@@ -54,56 +9,62 @@ export interface CompoundOwner {
 }
 
 export const newId=()=>crypto.randomUUID();
+const record=(value:unknown):Record<string,unknown>=>typeof value==="object"&&value!==null&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const text=(value:unknown,fallback="")=>typeof value==="string"?value:fallback;
 const number=(value:unknown,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
 const names=(value:unknown)=>Array.isArray(value)?value.map(item=>text(item).trim()).filter(Boolean):[];
 
 const masterFor=(itemName:string,items:MasterItem[])=>items.find(item=>item.name.localeCompare(itemName,undefined,{sensitivity:"accent"})===0);
 
-export function normalizeComponent(raw:any,items:MasterItem[]):CompoundComponent {
- const itemName=text(raw?.itemName,text(raw?.name)).trim();
+export function normalizeComponent(raw:unknown,items:MasterItem[]):CompoundComponent {
+ const value=record(raw);
+ const itemName=text(value.itemName,text(value.name)).trim();
  const master=masterFor(itemName,items);
- const source=["split","shared"].includes(raw?.source)?raw.source:"personal";
+ const source:CompoundSource=value.source==="split"||value.source==="shared"?value.source:"personal";
  return {
-  id:text(raw?.id)||newId(),
-  itemId:number(raw?.itemId,master?.id||0)||null,
+  id:text(value.id)||newId(),
+  itemId:number(value.itemId,master?.id||0)||null,
   itemName:master?.name||itemName,
-  required:Math.max(1,number(raw?.required,1)),
-  received:Math.max(0,number(raw?.received,0)),
-  valuePp:Math.max(0,number(raw?.valuePp,number(raw?.value,master?.valuePp||0))),
+  required:Math.max(1,number(value.required,1)),
+  received:Math.max(0,number(value.received,0)),
+  valuePp:Math.max(0,number(value.valuePp,number(value.value,master?.valuePp||0))),
   source,
-  sourceRef:text(raw?.sourceRef)||null,
-  contributors:names(raw?.contributors??raw?.owners),
-  note:text(raw?.note),
+  sourceRef:text(value.sourceRef)||null,
+  contributors:names(value.contributors??value.owners),
+  note:text(value.note),
  };
 }
 
-export function normalizeTemplate(raw:any,items:MasterItem[]):CompoundTemplate {
- const name=text(raw?.name).trim();
+export function normalizeTemplate(raw:unknown,items:MasterItem[]):CompoundTemplate {
+ const value=record(raw);
+ const name=text(value.name).trim();
  const output=masterFor(name,items);
- const components=(Array.isArray(raw?.components)?raw.components:[]).map((part:any)=>{
-  const itemName=(typeof part==="string"?part:text(part?.itemName,text(part?.name))).trim();
+ const components:CompoundTemplateComponent[]=(Array.isArray(value.components)?value.components:[]).map(part=>{
+  const component=record(part);
+  const itemName=(typeof part==="string"?part:text(component.itemName,text(component.name))).trim();
   const master=masterFor(itemName,items);
-  return {itemId:number(part?.itemId,master?.id||0)||null,itemName:master?.name||itemName,required:Math.max(1,number(part?.required,1)),valuePp:Math.max(0,number(part?.valuePp,number(part?.value,master?.valuePp||0)))};
- }).filter((part:CompoundTemplateComponent)=>part.itemName);
- return {id:text(raw?.id)||newId(),name,itemId:number(raw?.itemId,output?.id||0)||null,builtIn:Boolean(raw?.builtIn),components};
+  return {itemId:number(component.itemId,master?.id||0)||null,itemName:master?.name||itemName,required:Math.max(1,number(component.required,1)),valuePp:Math.max(0,number(component.valuePp,number(component.value,master?.valuePp||0)))};
+ }).filter(part=>Boolean(part.itemName));
+ return {id:text(value.id)||newId(),name,itemId:number(value.itemId,output?.id||0)||null,builtIn:Boolean(value.builtIn),components};
 }
 
-export function normalizeWorkspace(raw:any,items:MasterItem[]):CompoundWorkspaceModel {
- const templates:CompoundTemplate[]=(Array.isArray(raw?.templates)?raw.templates:[]).map((template:any)=>normalizeTemplate(template,items)).filter((template:CompoundTemplate)=>template.name);
- const projects:CompoundProject[]=(Array.isArray(raw?.projects)?raw.projects:[]).map((rawProject:any):CompoundProject=>{
-  const name=text(rawProject?.name).trim();
+export function normalizeWorkspace(raw:unknown,items:MasterItem[]):CompoundWorkspaceModel {
+ const value=record(raw);
+ const templates:CompoundTemplate[]=(Array.isArray(value.templates)?value.templates:[]).map(template=>normalizeTemplate(template,items)).filter(template=>Boolean(template.name));
+ const projects:CompoundProject[]=(Array.isArray(value.projects)?value.projects:[]).map((project):CompoundProject=>{
+  const rawProject=record(project);
+  const name=text(rawProject.name).trim();
   const output=masterFor(name,items);
+  const status:CompoundProject["status"]=rawProject.status==="ready"||rawProject.status==="hold"?rawProject.status:"building";
   return {
-   id:text(rawProject?.id)||newId(),itemId:number(rawProject?.itemId,output?.id||0)||null,name:output?.name||name,
-   note:text(rawProject?.note),status:["ready","hold"].includes(rawProject?.status)?rawProject.status:"building",
-   templates:names(rawProject?.templates),components:(Array.isArray(rawProject?.components)?rawProject.components:[]).map((part:any)=>normalizeComponent(part,items)).filter((part:CompoundComponent)=>part.itemName),
+   id:text(rawProject.id)||newId(),itemId:number(rawProject.itemId,output?.id||0)||null,name:output?.name||name,
+   note:text(rawProject.note),status,
+   templates:names(rawProject.templates),components:(Array.isArray(rawProject.components)?rawProject.components:[]).map(part=>normalizeComponent(part,items)).filter(part=>Boolean(part.itemName)),
   };
  });
- const activeId=text(raw?.activeId)||projects[0]?.id||null;
+ const activeId=text(value.activeId)||projects[0]?.id||null;
  return {projects,templates,activeId:projects.some(project=>project.id===activeId)?activeId:projects[0]?.id||null};
 }
-
 export function mergeTemplateComponents(templates:CompoundTemplate[],items:MasterItem[]):CompoundComponent[] {
  const merged=new Map<string,CompoundComponent>();
  for(const template of templates)for(const source of template.components){

@@ -37,6 +37,12 @@ export interface AppLog { id:number; happenedAt:string; level:string; area:strin
 export interface ImportRecord { id:number; happenedAt:string; fileName:string; status:string; reviewUrl?:string; detail?:string }
 export interface MerchantListingItem { id:number; itemName:string; itemId?:number; askingPricePp?:number; marketValuePp?:number; marketValueBasis?:string; marketCount30d:number }
 export interface MerchantMessage { id:number; happenedAt:string; kind:"wts"|"wtb"|"tell"; speakerName:string; message:string; items:MerchantListingItem[] }
-export interface CompoundWorkspace { projects:any[]; templates:any[]; activeId?:string|null }
+export type CompoundSource="personal"|"split"|"shared";
+export interface CompoundComponent { id:string; itemId:number|null; itemName:string; required:number; received:number; valuePp:number; source:CompoundSource; sourceRef:string|null; contributors:string[]; note:string }
+export interface CompoundTemplateComponent { itemId:number|null; itemName:string; required:number; valuePp:number }
+export interface CompoundTemplate { id:string; name:string; itemId:number|null; builtIn?:boolean; components:CompoundTemplateComponent[] }
+export interface CompoundProject { id:string; itemId:number|null; name:string; note:string; status:"building"|"ready"|"hold"; templates:string[]; components:CompoundComponent[] }
+export interface CompoundWorkspace { projects:CompoundProject[]; templates:CompoundTemplate[]; activeId:string|null }
+export type Runner=(action:string,payload?:Record<string,unknown>)=>Promise<unknown>;
 export interface AppSnapshot { settings:Record<string,string>; members:Member[]; loot:Loot[]; splits:Split[]; tracked:TrackedLoot[]; linkedLoot:LinkedLoot[]; history:History[]; items:MasterItem[]; inventory:InventoryItem[]; spells:Spell[]; wts:WtsGroup[]; aliases:Alias[]; mobs:string[]; logs:AppLog[]; imports:ImportRecord[]; merchant:MerchantMessage[]; deathReports:DeathReport[]; damageEncounters:DamageEncounter[]; damageEncounterCount:number; damageDistinctMobCount:number; clericHealCalls?:ClericHealCall[]; currentWeaponLoadout?:CurrentWeaponLoadout; compound:CompoundWorkspace }
 export type LoadingState<T>={kind:"loading"}|{kind:"ready";value:T}|{kind:"error";message:string};

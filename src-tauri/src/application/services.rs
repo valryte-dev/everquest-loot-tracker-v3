@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local, Utc};
 use encoding_rs::WINDOWS_1252;
 use reqwest::blocking::Client;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{backup::Backup, params, Connection, OptionalExtension};
 use semver::Version;
 use serde_json::{json, Value};
 use std::{
@@ -435,39 +435,73 @@ pub fn export_wts(database: &Database, group_id: i64) -> Result<Value, String> {
     )
 }
 
+fn online_backup(source: &Connection, destination_path: &Path) -> Result<(), String> {
+    let mut destination = Connection::open(destination_path).map_err(sql)?;
+    let backup = Backup::new(source, &mut destination).map_err(sql)?;
+    backup
+        .run_to_completion(256, Duration::from_millis(5), None)
+        .map_err(sql)
+}
+
+fn validate_database(connection: &Connection) -> Result<(), String> {
+    let result: String = connection
+        .query_row("PRAGMA quick_check", [], |row| row.get(0))
+        .map_err(sql)?;
+    if result.eq_ignore_ascii_case("ok") {
+        Ok(())
+    } else {
+        Err(format!("SQLite integrity check failed: {result}"))
+    }
+}
+
 pub fn backup(database: &Database) -> Result<Value, String> {
-    let source = database_path(database)?;
-    let backup = source.with_file_name(format!(
+    let source_path = database_path(database)?;
+    let backup_path = source_path.with_file_name(format!(
         "loot-tracker-backup-{}.db",
         Local::now().format("%Y%m%d-%H%M%S")
     ));
-    let c = database.connect().map_err(|e| e.to_string())?;
-    let _ = c.execute_batch("PRAGMA wal_checkpoint(FULL);");
-    fs::copy(&source, &backup).map_err(err)?;
-    Ok(json!({"path":backup.display().to_string()}))
+    let source = database.connect().map_err(|error| error.to_string())?;
+    online_backup(&source, &backup_path)?;
+    let completed = Connection::open(&backup_path).map_err(sql)?;
+    validate_database(&completed)?;
+    Ok(json!({"path":backup_path.display().to_string()}))
 }
 
 pub fn restore(database: &Database, backup_path: &str) -> Result<Value, String> {
-    let backup = PathBuf::from(backup_path);
-    if !backup.is_file() {
+    let backup_path = PathBuf::from(backup_path);
+    if !backup_path.is_file() {
         return Err("The selected backup file does not exist".into());
     }
-    let header = fs::read(&backup).map_err(err)?;
-    if !header.starts_with(b"SQLite format 3\0") {
-        return Err("The selected file is not a SQLite database".into());
-    }
-    let target = database_path(database)?;
-    if backup == target {
+    let target_path = database_path(database)?;
+    if backup_path == target_path {
         return Err("Choose a backup file, not the active database".into());
     }
-    {
-        let c = database.connect().map_err(|e| e.to_string())?;
-        c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-            .map_err(sql)?;
-    }
-    fs::copy(&backup, &target).map_err(err)?;
-    database.migrate().map_err(|e| e.to_string())?;
-    Ok(json!({"path":target.display().to_string(),"restoredFrom":backup.display().to_string()}))
+
+    let backup_source = Connection::open(&backup_path).map_err(sql)?;
+    validate_database(&backup_source)?;
+
+    let recovery_path = target_path.with_file_name(format!(
+        "loot-tracker-pre-restore-{}.db",
+        Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    let current = database.connect().map_err(|error| error.to_string())?;
+    online_backup(&current, &recovery_path)?;
+    drop(current);
+
+    let mut target = database.connect().map_err(|error| error.to_string())?;
+    let restore = Backup::new(&backup_source, &mut target).map_err(sql)?;
+    restore
+        .run_to_completion(256, Duration::from_millis(5), None)
+        .map_err(sql)?;
+    drop(restore);
+    validate_database(&target)?;
+    drop(target);
+    database.migrate().map_err(|error| error.to_string())?;
+    Ok(json!({
+        "path":target_path.display().to_string(),
+        "restoredFrom":backup_path.display().to_string(),
+        "recoveryBackup":recovery_path.display().to_string()
+    }))
 }
 fn database_path(database: &Database) -> Result<PathBuf, String> {
     let c = database.connect().map_err(|e| e.to_string())?;
@@ -657,9 +691,48 @@ fn sql(e: rusqlite::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auction_bytes, output_directory, version_is_newer, write_social};
+    use super::{auction_bytes, backup, output_directory, restore, version_is_newer, write_social};
+    use crate::infrastructure::database::Database;
     use std::path::Path;
 
+    #[test]
+    fn online_backup_and_restore_preserve_a_recovery_copy() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('backup_test','before')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let backup_result = backup(&database).unwrap();
+        let backup_path = backup_result["path"].as_str().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "UPDATE app_settings SET value='after' WHERE key='backup_test'",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let restore_result = restore(&database, backup_path).unwrap();
+        let recovery_path = restore_result["recoveryBackup"].as_str().unwrap();
+        assert!(Path::new(recovery_path).is_file());
+        let connection = database.connect().unwrap();
+        let restored: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='backup_test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored, "before");
+    }
     #[test]
     fn release_versions_are_compared_semantically() {
         assert!(version_is_newer("3.8.0", "3.7.0").unwrap());

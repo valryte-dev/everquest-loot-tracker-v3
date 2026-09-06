@@ -1,10 +1,10 @@
 import {useEffect,useMemo,useState} from "react";
-import type {AppSnapshot,MasterItem} from "../../shared/contracts";
+import type {AppSnapshot,MasterItem,Runner} from "../../shared/contracts";
 import {Modal,money} from "../ui";
 import {BUILTIN_COMPOUND_TEMPLATES} from "./recipes";
 import {componentCredit,compoundOwners,discordContributionSummary,mergeTemplateComponents,newId,normalizeTemplate,normalizeWorkspace,projectProgress,projectValue,projectWarnings,type CompoundComponent,type CompoundProject,type CompoundSource,type CompoundTemplate,type CompoundWorkspaceModel} from "./model";
 
-type Runner=(action:string,payload?:Record<string,unknown>)=>Promise<unknown>;
+
 type TemplateScope="all"|"builtIn"|"saved";
 type ComponentSort="recipe"|"missing"|"name"|"value";
 
