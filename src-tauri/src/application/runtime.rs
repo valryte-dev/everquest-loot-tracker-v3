@@ -32,6 +32,10 @@ pub fn start(
     let backlog_database_path = database_path.clone();
     let backlog_app_handle = app_handle.clone();
     let backlog_revision = revision.clone();
+    let upload_database_path = database_path.clone();
+    let upload_app_handle = app_handle.clone();
+    let upload_revision = revision.clone();
+    let upload_tasks = tasks.clone();
     let watcher_tasks = tasks.clone();
     thread::Builder::new()
         .name("eq-runtime-watcher".into())
@@ -48,8 +52,123 @@ pub fn start(
             )
         })
         .expect("log backlog scanner thread must start");
+    thread::Builder::new()
+        .name("planner-upload-worker".into())
+        .spawn(move || {
+            planner_upload_worker(
+                upload_database_path,
+                upload_app_handle,
+                upload_revision,
+                upload_tasks,
+            )
+        })
+        .expect("planner upload worker thread must start");
 }
 
+fn planner_upload_worker(
+    database_path: PathBuf,
+    app_handle: tauri::AppHandle,
+    revision: Arc<AtomicU64>,
+    tasks: TaskRegistry,
+) {
+    let Ok(database) = Database::open(database_path) else {
+        return;
+    };
+    if let Ok(connection) = database.connect() {
+        let _ = connection.execute(
+            "UPDATE planner_upload_jobs SET status='pending', updated_at=CURRENT_TIMESTAMP WHERE status='running'",
+            [],
+        );
+    }
+    loop {
+        let job = database.connect().ok().and_then(|connection| {
+            connection
+                .query_row(
+                    "SELECT id,file_name,payload_text,attempts FROM planner_upload_jobs
+                 WHERE status='pending' AND datetime(next_attempt_at)<=datetime('now')
+                 ORDER BY id LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .optional()
+                .ok()
+                .flatten()
+        });
+        let Some((id, file_name, text, attempts)) = job else {
+            thread::sleep(Duration::from_secs(2));
+            continue;
+        };
+        let claimed = database.connect().ok().and_then(|connection| {
+            connection.execute(
+                "UPDATE planner_upload_jobs SET status='running',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+                [id],
+            ).ok()
+        }).unwrap_or(0) == 1;
+        if !claimed {
+            continue;
+        }
+
+        tasks.start(
+            "planner-upload",
+            "Uploading to P99 Planner",
+            &file_name,
+            Some(1),
+        );
+        let _ = app_handle.emit("system-task-changed", "planner-upload");
+        let result = services::upload_file_payloads(
+            &database,
+            &json!({"files":[{"name":file_name,"text":text}]}),
+        );
+        if let Ok(connection) = database.connect() {
+            match &result {
+                Ok(value) => {
+                    let url = value
+                        .get("url")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("");
+                    let _=connection.execute(
+                        "UPDATE planner_upload_jobs
+                         SET status='completed',payload_text='',attempts=attempts+1,last_error='',review_url=?,updated_at=CURRENT_TIMESTAMP
+                         WHERE id=?",
+                        params![url,id],
+                    );
+                    let _=connection.execute(
+                        "DELETE FROM planner_upload_jobs WHERE status='completed' AND datetime(updated_at)<datetime('now','-30 days')",
+                        [],
+                    );
+                    log(&database,"info","planner","Uploaded export; the private review link is available on Import and System");
+                }
+                Err(error) => {
+                    let delay = (5_i64.saturating_mul(1_i64 << attempts.min(6) as u32)).min(300);
+                    let modifier = format!("+{delay} seconds");
+                    let _=connection.execute(
+                        "UPDATE planner_upload_jobs
+                         SET status='pending',attempts=attempts+1,last_error=?,next_attempt_at=datetime('now',?),updated_at=CURRENT_TIMESTAMP
+                         WHERE id=?",
+                        params![error,modifier,id],
+                    );
+                    log(
+                        &database,
+                        "error",
+                        "planner",
+                        &format!("Inventory upload failed; retrying automatically: {error}"),
+                    );
+                }
+            }
+        }
+        tasks.finish("planner-upload", &result, "Planner upload complete");
+        revision.fetch_add(1, Ordering::Relaxed);
+        let _ = app_handle.emit("system-task-changed", "planner-upload");
+        let _ = app_handle.emit("data-changed", "planner.upload");
+    }
+}
 fn scan_log_backlog(
     database_path: PathBuf,
     app_handle: tauri::AppHandle,
@@ -1409,21 +1528,26 @@ fn process_log(
     last_mob: &mut HashMap<PathBuf, String>,
 ) -> Result<bool, String> {
     let before = log_data_signature(database)?;
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let size = file.metadata().map_err(|e| e.to_string())?.len();
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
     let offset = offsets.entry(path.to_owned()).or_insert(size);
     if size < *offset {
-        *offset = 0;
+        *offset = 0
     }
     if size == *offset {
         return Ok(false);
     }
     let mut line_offset = *offset;
     file.seek(SeekFrom::Start(line_offset))
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    file.read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
     for line_bytes in bytes.split_inclusive(|byte| *byte == b'\n') {
         if !line_bytes.ends_with(b"\n") {
             break;
@@ -1431,10 +1555,17 @@ fn process_log(
         let text = String::from_utf8_lossy(line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
         if let Some(event) = parse_log_event(line, &character) {
-            apply_event(database, path, line_offset as i64, line, &event, last_mob)?;
+            apply_event(
+                &transaction,
+                path,
+                line_offset as i64,
+                line,
+                &event,
+                last_mob,
+            )?;
         } else if line.to_ascii_lowercase().contains(" looted ") {
-            log(
-                database,
+            log_with(
+                &transaction,
                 "warning",
                 "parser",
                 &format!("Unrecognized loot line in {}: {line}", path.display()),
@@ -1442,24 +1573,29 @@ fn process_log(
         }
         line_offset += line_bytes.len() as u64;
     }
+    transaction.execute(
+        "INSERT INTO live_log_cursors(source_file,byte_offset,file_size,updated_at)
+         VALUES(?,?,?,CURRENT_TIMESTAMP)
+         ON CONFLICT(source_file) DO UPDATE SET
+             byte_offset=excluded.byte_offset,file_size=excluded.file_size,updated_at=CURRENT_TIMESTAMP",
+        params![path.display().to_string(),line_offset as i64,size as i64],
+    ).map_err(|error|error.to_string())?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('active_log_path',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [path.display().to_string()],
+    ).map_err(|error|error.to_string())?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('active_log_offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [line_offset.to_string()],
+    ).map_err(|error|error.to_string())?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('last_log_read_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    ).map_err(|error|error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
     *offset = line_offset;
-    if let Ok(connection) = database.connect() {
-        let _ = connection.execute(
-            "INSERT INTO live_log_cursors(source_file,byte_offset,file_size,updated_at)
-             VALUES(?,?,?,CURRENT_TIMESTAMP)
-             ON CONFLICT(source_file) DO UPDATE SET
-                 byte_offset=excluded.byte_offset,
-                 file_size=excluded.file_size,
-                 updated_at=CURRENT_TIMESTAMP",
-            params![path.display().to_string(), line_offset as i64, size as i64],
-        );
-        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_path',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[path.display().to_string()]);
-        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('active_log_offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[line_offset.to_string()]);
-        let _=connection.execute("INSERT INTO app_settings(key,value) VALUES('last_log_read_at',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
-    }
     Ok(before != log_data_signature(database)?)
 }
-
 fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u64, String> {
     let source_file = path.display().to_string();
     let connection = database.connect().map_err(|error| error.to_string())?;
@@ -1531,16 +1667,16 @@ fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
 }
 
 fn apply_event(
-    database: &Database,
+    connection: &rusqlite::Connection,
     path: &Path,
     source_offset: i64,
     raw: &str,
     event: &LogEvent,
     last_mob: &mut HashMap<PathBuf, String>,
 ) -> Result<(), String> {
-    let c = database.connect().map_err(|e| e.to_string())?;
+    let c = connection;
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
-    record_activity_event(&c, path, source_offset, raw, &character, event)?;
+    record_activity_event(c, path, source_offset, raw, &character, event)?;
     match event {
         LogEvent::MobSlain {
             happened_at,
@@ -1601,7 +1737,7 @@ fn apply_event(
             c.execute("DELETE FROM current_group", [])
                 .map_err(|e| e.to_string())?;
             log_with(
-                &c,
+                c,
                 "info",
                 "group",
                 "Local player was removed; current group cleared",
@@ -1617,7 +1753,7 @@ fn apply_event(
             if inserted > 0 {
                 let id = c.last_insert_rowid();
                 c.execute("INSERT OR IGNORE INTO loot_drop_members(loot_drop_id,member_name) SELECT ?,m.name FROM current_group g JOIN known_members m ON m.id=g.member_id",[id]).map_err(|e|e.to_string())?;
-                log_with(&c, "info", "loot", &format!("{looter} looted {item_name}"));
+                log_with(c, "info", "loot", &format!("{looter} looted {item_name}"));
             }
         }
         LogEvent::MerchantListing {
@@ -1626,7 +1762,7 @@ fn apply_event(
             action,
             message,
         } => {
-            if !merchant_mode_enabled(&c) {
+            if !merchant_mode_enabled(c) {
                 return Ok(());
             }
             let source = path.display().to_string();
@@ -1638,7 +1774,7 @@ fn apply_event(
                 .map_err(|error| error.to_string())?;
             if inserted > 0 {
                 let message_id = c.last_insert_rowid();
-                let catalog = merchant_catalog(&c)?;
+                let catalog = merchant_catalog(c)?;
                 for (order, item) in parse_listing_items(message, &catalog).iter().enumerate() {
                     c.execute(
                         "INSERT INTO merchant_message_items(merchant_message_id,item_name,item_id,asking_price_pp,sort_order) VALUES(?,?,?,?,?)",
@@ -1646,7 +1782,7 @@ fn apply_event(
                     )
                     .map_err(|error| error.to_string())?;
                 }
-                finish_merchant_capture(&c)?;
+                finish_merchant_capture(c)?;
             }
         }
         LogEvent::DirectTell {
@@ -1654,7 +1790,7 @@ fn apply_event(
             speaker,
             message,
         } => {
-            if !merchant_mode_enabled(&c) {
+            if !merchant_mode_enabled(c) {
                 return Ok(());
             }
             let source = path.display().to_string();
@@ -1665,7 +1801,7 @@ fn apply_event(
                 )
                 .map_err(|error| error.to_string())?;
             if inserted > 0 {
-                finish_merchant_capture(&c)?;
+                finish_merchant_capture(c)?;
             }
         }
         LogEvent::Damage {
@@ -1677,7 +1813,7 @@ fn apply_event(
             damage_type,
         } => {
             record_damage_event(
-                &c,
+                c,
                 &path.display().to_string(),
                 source_offset,
                 raw,
@@ -1698,7 +1834,7 @@ fn apply_event(
             amount,
         } => {
             record_observed_melee_event(
-                &c,
+                c,
                 &path.display().to_string(),
                 source_offset,
                 raw,
@@ -1718,7 +1854,7 @@ fn apply_event(
             amount,
         } => {
             record_incoming_damage_event(
-                &c,
+                c,
                 &path.display().to_string(),
                 source_offset,
                 raw,
@@ -1739,7 +1875,7 @@ fn apply_event(
             message,
         } => {
             record_cleric_heal_call(
-                &c,
+                c,
                 &path.display().to_string(),
                 source_offset,
                 raw,
@@ -1812,7 +1948,7 @@ fn apply_event(
                 }
             }
             let source = path.display().to_string();
-            let resolved_items = resolve_linked_items(&c, message, item_names)?;
+            let resolved_items = resolve_linked_items(c, message, item_names)?;
             let mut inserted = 0;
             for (link_index, item_name) in resolved_items.iter().enumerate() {
                 inserted += c
@@ -1834,7 +1970,7 @@ fn apply_event(
             }
             if inserted > 0 {
                 log_with(
-                    &c,
+                    c,
                     "info",
                     "linked-loot",
                     &format!(
@@ -1890,14 +2026,14 @@ pub(crate) fn resolve_linked_items(
         .prepare(
             "SELECT item_name FROM master_items
              WHERE item_name<>'' AND instr(
-               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'’',''),'‘',''),'´',''),
-               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'’',''),'‘',''),'´','')
+               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¹Ãƒâ€¦Ã¢â‚¬Å“',''),'ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´',''),
+               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¹Ãƒâ€¦Ã¢â‚¬Å“',''),'ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´','')
              )>0
              UNION
              SELECT item_name FROM item_market_values
              WHERE item_name<>'' AND instr(
-               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'’',''),'‘',''),'´',''),
-               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'’',''),'‘',''),'´','')
+               replace(replace(replace(replace(replace(lower(?),char(39),''),'`',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¹Ãƒâ€¦Ã¢â‚¬Å“',''),'ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´',''),
+               replace(replace(replace(replace(replace(lower(item_name),char(39),''),'`',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢',''),'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¹Ãƒâ€¦Ã¢â‚¬Å“',''),'ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´','')
              )>0",
         )
         .map_err(|error| error.to_string())?;
@@ -2031,6 +2167,22 @@ fn finish_merchant_capture(connection: &rusqlite::Connection) -> Result<(), Stri
     Ok(())
 }
 
+fn enqueue_planner_upload(database: &Database, path: &Path) -> Result<(), String> {
+    let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("export.txt");
+    database
+        .connect()
+        .map_err(|error| error.to_string())?
+        .execute(
+            "INSERT INTO planner_upload_jobs(file_name,payload_text) VALUES(?,?)",
+            params![file_name, text],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
 fn process_exports(
     database: &Database,
     directory: &Path,
@@ -2076,20 +2228,13 @@ fn process_exports(
                             "inventory",
                             &format!("Imported {}", path.display()),
                         );
-                        let upload = fs::read_to_string(&path).map(|text| json!({"files":[{"name":path.file_name().and_then(|value|value.to_str()).unwrap_or(""),"text":text}]})).map_err(|error|error.to_string()).and_then(|payload|services::upload_file_payloads(database,&payload));
-                        match upload {
-                            Ok(_) => log(
-                                database,
-                                "info",
-                                "planner",
-                                "Uploaded exports; the private review link is available on System",
-                            ),
-                            Err(error) => log(
+                        if let Err(error) = enqueue_planner_upload(database, &path) {
+                            log(
                                 database,
                                 "error",
                                 "planner",
-                                &format!("Inventory upload failed: {error}"),
-                            ),
+                                &format!("Could not queue inventory upload: {error}"),
+                            );
                         }
                     }
                     Err(e) => log(database, "error", "inventory", &e),
@@ -2369,9 +2514,13 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
+        let queued: i64 = connection
+            .query_row("SELECT COUNT(*) FROM planner_upload_jobs WHERE status='pending' AND payload_text<>''", [], |row| row.get(0))
+            .unwrap();
         assert!(changed);
         assert_eq!(imported, 1);
         assert_eq!(states, 1);
+        assert_eq!(queued, 1);
     }
 
     #[test]
@@ -2402,7 +2551,15 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
+        let queued: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM planner_upload_jobs WHERE status='pending'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(imports, 2);
+        assert_eq!(queued, 2);
         assert_eq!(item, "Replacement Weapon With Longer Name");
     }
 

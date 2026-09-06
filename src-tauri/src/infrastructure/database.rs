@@ -30,6 +30,8 @@ const GUILD_ONLY_CLERIC_HEAL_CALLS_MIGRATION: &str =
     include_str!("../migrations/020_guild_only_cleric_heal_calls.sql");
 const EXPORT_IMPORT_STATE_MIGRATION: &str =
     include_str!("../migrations/021_export_import_state.sql");
+const PLANNER_UPLOAD_JOBS_MIGRATION: &str =
+    include_str!("../migrations/022_planner_upload_jobs.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -128,6 +130,9 @@ impl Database {
         if schema_version < 21 {
             transaction.execute_batch(EXPORT_IMPORT_STATE_MIGRATION)?;
         }
+        if schema_version < 22 {
+            transaction.execute_batch(PLANNER_UPLOAD_JOBS_MIGRATION)?;
+        }
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -145,15 +150,15 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 21);
-        assert_eq!(database.migrate().unwrap(), 21);
+        assert_eq!(database.migrate().unwrap(), 22);
+        assert_eq!(database.migrate().unwrap(), 22);
     }
 
     #[test]
     fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 21);
+        assert_eq!(database.migrate().unwrap(), 22);
         {
             let connection = database.connect().unwrap();
             connection
@@ -171,7 +176,7 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(database.migrate().unwrap(), 21);
+        assert_eq!(database.migrate().unwrap(), 22);
         let connection = database.connect().unwrap();
         let channels: Vec<String> = connection
             .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
@@ -202,7 +207,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 21);
+        assert_eq!(database.migrate().unwrap(), 22);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -234,7 +239,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 21);
+        assert_eq!(database.migrate().unwrap(), 22);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {
