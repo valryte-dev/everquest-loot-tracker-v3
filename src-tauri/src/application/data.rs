@@ -839,6 +839,203 @@ fn normalize_compound(mut workspace: Value) -> Value {
     workspace
 }
 
+fn existing_master_item_id(connection: &rusqlite::Connection, value: &Value) -> Option<i64> {
+    let id = value.as_i64()?;
+    connection
+        .query_row(
+            "SELECT item_id FROM master_items WHERE item_id=?",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+}
+
+fn sync_compound_snapshot(
+    connection: &rusqlite::Connection,
+    workspace: &Value,
+) -> Result<(), String> {
+    let normalized = normalize_compound(workspace.clone());
+    let raw = serde_json::to_string(&normalized).map_err(|error| error.to_string())?;
+    let active_id = normalized.get("activeId").and_then(Value::as_str);
+    let inserted=connection.execute(
+        "INSERT OR IGNORE INTO compound_workspace_snapshots(source_json,active_project_id) VALUES(?,?)",
+        params![raw,active_id],
+    ).map_err(err)?;
+    if inserted == 0 {
+        return Ok(());
+    }
+    let snapshot_id = connection.last_insert_rowid();
+    if let Some(projects) = normalized.get("projects").and_then(Value::as_array) {
+        for (project_order, project) in projects.iter().enumerate() {
+            let project_id = project.get("id").and_then(Value::as_str).unwrap_or("");
+            let name = project.get("name").and_then(Value::as_str).unwrap_or("");
+            if project_id.is_empty() || name.is_empty() {
+                continue;
+            }
+            let item_id = existing_master_item_id(connection, &project["itemId"]);
+            connection.execute(
+                "INSERT INTO compound_workspace_projects(snapshot_id,project_id,item_id,item_name,note,status,sort_order) VALUES(?,?,?,?,?,?,?)",
+                params![snapshot_id,project_id,item_id,name,project.get("note").and_then(Value::as_str).unwrap_or(""),project.get("status").and_then(Value::as_str).unwrap_or("building"),project_order as i64],
+            ).map_err(err)?;
+            if let Some(templates) = project.get("templates").and_then(Value::as_array) {
+                for (order, template) in templates.iter().filter_map(Value::as_str).enumerate() {
+                    connection.execute(
+                        "INSERT OR IGNORE INTO compound_workspace_project_templates(snapshot_id,project_id,template_name,sort_order) VALUES(?,?,?,?)",
+                        params![snapshot_id,project_id,template,order as i64],
+                    ).map_err(err)?;
+                }
+            }
+            if let Some(components) = project.get("components").and_then(Value::as_array) {
+                for (order, component) in components.iter().enumerate() {
+                    let component_id = component
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("{project_id}:{order}"));
+                    let item_name = component
+                        .get("itemName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    if item_name.is_empty() {
+                        continue;
+                    }
+                    let component_item_id =
+                        existing_master_item_id(connection, &component["itemId"]);
+                    connection.execute(
+                        "INSERT INTO compound_workspace_components(snapshot_id,project_id,component_id,item_id,item_name,required_count,received_count,unit_value_pp,source_kind,source_reference,note,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        params![snapshot_id,project_id,component_id,component_item_id,item_name,component.get("required").and_then(Value::as_i64).unwrap_or(1),component.get("received").and_then(Value::as_i64).unwrap_or(0),component.get("valuePp").and_then(Value::as_i64).unwrap_or(0),component.get("source").and_then(Value::as_str).unwrap_or("personal"),component.get("sourceRef").and_then(Value::as_str),component.get("note").and_then(Value::as_str).unwrap_or(""),order as i64],
+                    ).map_err(err)?;
+                    if let Some(contributors) =
+                        component.get("contributors").and_then(Value::as_array)
+                    {
+                        for member in contributors.iter().filter_map(Value::as_str) {
+                            connection.execute(
+                                "INSERT OR IGNORE INTO compound_workspace_contributors(snapshot_id,project_id,component_id,member_name) VALUES(?,?,?,?)",
+                                params![snapshot_id,project_id,component_id,member],
+                            ).map_err(err)?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(templates) = normalized.get("templates").and_then(Value::as_array) {
+        for (template_order, template) in templates.iter().enumerate() {
+            let template_id = template.get("id").and_then(Value::as_str).unwrap_or("");
+            let name = template.get("name").and_then(Value::as_str).unwrap_or("");
+            if template_id.is_empty() || name.is_empty() {
+                continue;
+            }
+            let item_id = existing_master_item_id(connection, &template["itemId"]);
+            connection.execute(
+                "INSERT INTO compound_workspace_templates(snapshot_id,template_id,item_id,name,is_builtin,sort_order) VALUES(?,?,?,?,?,?)",
+                params![snapshot_id,template_id,item_id,name,template.get("builtIn").and_then(Value::as_bool).unwrap_or(false),template_order as i64],
+            ).map_err(err)?;
+            if let Some(components) = template.get("components").and_then(Value::as_array) {
+                for (order, component) in components.iter().enumerate() {
+                    let item_name = component
+                        .get("itemName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    if item_name.is_empty() {
+                        continue;
+                    }
+                    let component_item_id =
+                        existing_master_item_id(connection, &component["itemId"]);
+                    connection.execute(
+                        "INSERT INTO compound_workspace_template_components(snapshot_id,template_id,item_id,item_name,required_count,unit_value_pp,sort_order) VALUES(?,?,?,?,?,?,?)",
+                        params![snapshot_id,template_id,component_item_id,item_name,component.get("required").and_then(Value::as_i64).unwrap_or(1),component.get("valuePp").and_then(Value::as_i64).unwrap_or(0),order as i64],
+                    ).map_err(err)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn save_compound_workspace(
+    connection: &mut rusqlite::Connection,
+    workspace: &Value,
+) -> Result<(), String> {
+    let normalized = normalize_compound(workspace.clone());
+    let raw = serde_json::to_string(&normalized).map_err(|error| error.to_string())?;
+    let transaction = connection.transaction().map_err(err)?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('compound_workspace',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [raw],
+    ).map_err(err)?;
+    sync_compound_snapshot(&transaction, &normalized)?;
+    transaction.commit().map_err(err)?;
+    Ok(())
+}
+
+pub fn sync_normalized_models(database: &Database) -> Result<(), String> {
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let raw = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='compound_workspace'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(err)?;
+    if let Some(raw) = raw {
+        let workspace = serde_json::from_str::<Value>(&raw).map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(err)?;
+        sync_compound_snapshot(&transaction, &workspace)?;
+        transaction.commit().map_err(err)?;
+    }
+    sync_split_lifecycle_snapshot(&connection)?;
+    Ok(())
+}
+fn sync_split_lifecycle_snapshot(connection: &rusqlite::Connection) -> Result<(), String> {
+    let records=query_values(connection,
+        "SELECT 'manual:'||s.id,'looted',s.item_id,s.item_name,m.name,s.looter_name,s.looter_name,COALESCE(s.payout_value_pp,0),'',s.added_at,NULL
+         FROM manual_split_list_items s LEFT JOIN mobs m ON m.id=s.mob_id
+         UNION ALL
+         SELECT 'loot:'||s.loot_drop_id,'looted',s.item_id,s.item_name,s.mob_name,s.looter_name,s.looter_name,COALESCE(s.payout_value_pp,0),'',s.added_at,NULL
+         FROM split_loot_items s
+         UNION ALL
+         SELECT 'history:'||h.id,CASE WHEN h.disposition='consumed' THEN 'consumed' WHEN h.payout_status='completed' THEN 'paid' ELSE 'sold_pending' END,h.item_id,h.item_name,h.mob_name,h.looter_name,h.looter_name,h.value_pp,h.note,h.completed_at,h.paid_at
+         FROM completed_split_items h ORDER BY 1",
+        |row|Ok(json!({"key":row.get::<_,String>(0)?,"phase":row.get::<_,String>(1)?,"itemId":row.get::<_,Option<i64>>(2)?,"itemName":row.get::<_,String>(3)?,"mobName":row.get::<_,Option<String>>(4)?,"lootedBy":row.get::<_,Option<String>>(5)?,"heldBy":row.get::<_,Option<String>>(6)?,"valuePp":row.get::<_,i64>(7)?,"note":row.get::<_,String>(8)?,"happenedAt":row.get::<_,String>(9)?,"paidAt":row.get::<_,Option<String>>(10)?})),
+    )?;
+    let participants=query_values(connection,
+        "SELECT 'manual:'||s.id,m.member_name,NULL FROM manual_split_list_items s JOIN manual_split_list_members m ON m.split_list_item_id=s.id
+         UNION ALL
+         SELECT 'loot:'||s.loot_drop_id,m.member_name,NULL FROM split_loot_items s JOIN split_loot_members m ON m.split_loot_item_id=s.id
+         UNION ALL
+         SELECT 'history:'||h.id,m.member_name,p.paid_at FROM completed_split_items h JOIN completed_split_members m ON m.completed_split_item_id=h.id LEFT JOIN completed_split_payouts p ON p.completed_split_item_id=h.id AND p.member_name=m.member_name COLLATE NOCASE
+         ORDER BY 1,2 COLLATE NOCASE",
+        |row|Ok(json!({"key":row.get::<_,String>(0)?,"name":row.get::<_,String>(1)?,"paidAt":row.get::<_,Option<String>>(2)?})),
+    )?;
+    let source = json!({"records":records,"participants":participants}).to_string();
+    let inserted = connection
+        .execute(
+            "INSERT OR IGNORE INTO split_lifecycle_snapshots(source_json) VALUES(?)",
+            [&source],
+        )
+        .map_err(err)?;
+    if inserted == 0 {
+        return Ok(());
+    }
+    let snapshot_id = connection.last_insert_rowid();
+    for record in &records {
+        connection.execute(
+            "INSERT INTO split_lifecycle_records(snapshot_id,legacy_key,phase,item_id,item_name,mob_name,looted_by,held_or_sold_by,value_pp,note,happened_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![snapshot_id,record["key"].as_str(),record["phase"].as_str(),record["itemId"].as_i64(),record["itemName"].as_str(),record["mobName"].as_str(),record["lootedBy"].as_str(),record["heldBy"].as_str(),record["valuePp"].as_i64().unwrap_or(0),record["note"].as_str().unwrap_or(""),record["happenedAt"].as_str(),record["paidAt"].as_str()],
+        ).map_err(err)?;
+    }
+    for participant in &participants {
+        connection.execute(
+            "INSERT INTO split_lifecycle_participants(snapshot_id,legacy_key,member_name,paid_at) VALUES(?,?,?,?)",
+            params![snapshot_id,participant["key"].as_str(),participant["name"].as_str(),participant["paidAt"].as_str()],
+        ).map_err(err)?;
+    }
+    Ok(())
+}
 fn query_values_if<F>(
     enabled: bool,
     connection: &rusqlite::Connection,
@@ -988,9 +1185,10 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         }
         "aliases.save" => save_aliases(&mut connection, payload)?,
         "compound.save" => {
-            let raw = serde_json::to_string(payload.get("workspace").unwrap_or(&json!({})))
-                .map_err(|e| e.to_string())?;
-            connection.execute("INSERT INTO app_settings(key,value) VALUES('compound_workspace',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[raw]).map_err(err)?;
+            save_compound_workspace(
+                &mut connection,
+                payload.get("workspace").unwrap_or(&json!({})),
+            )?;
         }
         "wts.save" => save_wts(&mut connection, payload)?,
         "wts.delete" => {
@@ -1078,6 +1276,20 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         "item.save" | "item.delete" | "inventory.import" | "inventory.importFiles"
     ) {
         Database::refresh_item_values(&connection).map_err(|error| error.to_string())?;
+    }
+    if matches!(
+        action,
+        "loot.split"
+            | "split.add"
+            | "split.save"
+            | "split.delete"
+            | "split.complete"
+            | "history.save"
+            | "history.payout.member.complete"
+            | "history.payout.member.reopen"
+            | "history.delete"
+    ) {
+        sync_split_lifecycle_snapshot(&connection)?;
     }
     connection
         .execute(
@@ -2650,5 +2862,162 @@ mod tests {
         let complete = snapshot(&database).unwrap();
         assert_eq!(complete["loot"].as_array().unwrap().len(), 1);
         assert_eq!(complete["damageEncounters"].as_array().unwrap().len(), 1);
+    }
+    #[test]
+    fn compound_save_appends_an_idempotent_normalized_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO master_items(item_id,item_name,source) VALUES(100,'Cloak of Confusion','test'),(101,'A Blue Throne','test')",[]).unwrap();
+        drop(connection);
+        let workspace = json!({
+            "projects":[{"id":"project-1","itemId":100,"name":"Cloak of Confusion","note":"raid","status":"building","templates":["Cloak recipe"],"components":[{"id":"component-1","itemId":101,"itemName":"A Blue Throne","required":2,"received":1,"valuePp":12000,"source":"shared","sourceRef":null,"contributors":["Youngman","Vinkledoo"],"note":"first"}]}],
+            "templates":[{"id":"template-1","name":"Cloak recipe","itemId":100,"builtIn":false,"components":[{"itemId":101,"itemName":"A Blue Throne","required":2,"valuePp":12000}]}],
+            "activeId":"project-1"
+        });
+        mutate(&database, "compound.save", &json!({"workspace":workspace})).unwrap();
+        super::sync_normalized_models(&database).unwrap();
+        let connection = database.connect().unwrap();
+        let counts:(i64,i64,i64,i64,i64)=connection.query_row(
+            "SELECT (SELECT COUNT(*) FROM compound_workspace_snapshots),(SELECT COUNT(*) FROM compound_workspace_projects),(SELECT COUNT(*) FROM compound_workspace_components),(SELECT COUNT(*) FROM compound_workspace_contributors),(SELECT COUNT(*) FROM compound_workspace_templates)",[],
+            |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+        ).unwrap();
+        assert_eq!(counts, (1, 1, 1, 2, 1));
+        let component: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT item_id,required_count,received_count FROM compound_workspace_components",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(component, (101, 2, 1));
+    }
+    #[test]
+    fn split_lifecycle_snapshots_preserve_each_transition_and_individual_payouts() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO master_items(item_id,item_name,source) VALUES(202,'A White Throne','test')",
+                [],
+            )
+            .unwrap();
+        Database::refresh_item_values(&connection).unwrap();
+        drop(connection);
+
+        mutate(
+            &database,
+            "split.add",
+            &json!({
+                "itemName":"A White Throne",
+                "mobName":"a test golem",
+                "looterName":"Youngman",
+                "payoutValuePp":900,
+                "attendees":["Youngman","Posed"]
+            }),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let key: String = connection
+            .query_row(
+                "SELECT legacy_key FROM split_lifecycle_records ORDER BY snapshot_id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let looted: (String, Option<i64>, i64) = connection
+            .query_row(
+                "SELECT phase,item_id,value_pp FROM split_lifecycle_records ORDER BY snapshot_id DESC LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(looted, ("looted".to_owned(), Some(202), 900));
+        drop(connection);
+
+        mutate(
+            &database,
+            "split.complete",
+            &json!({"key":key,"valuePp":900,"disposition":"sold","note":"sold in tunnel"}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let history_id: i64 = connection
+            .query_row("SELECT id FROM completed_split_items", [], |row| row.get(0))
+            .unwrap();
+        let pending: String = connection
+            .query_row(
+                "SELECT phase FROM split_lifecycle_records ORDER BY snapshot_id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(pending, "sold_pending");
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.payout.member.complete",
+            &json!({"id":history_id,"memberName":"Youngman"}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let latest_snapshot: i64 = connection
+            .query_row("SELECT MAX(id) FROM split_lifecycle_snapshots", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let paid_members: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM split_lifecycle_participants WHERE snapshot_id=? AND paid_at IS NOT NULL",
+                [latest_snapshot],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let still_pending: String = connection
+            .query_row(
+                "SELECT phase FROM split_lifecycle_records WHERE snapshot_id=?",
+                [latest_snapshot],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            (paid_members, still_pending),
+            (1, "sold_pending".to_owned())
+        );
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.payout.member.complete",
+            &json!({"id":history_id,"memberName":"Posed"}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let snapshot_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM split_lifecycle_snapshots",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let final_phase: String = connection
+            .query_row(
+                "SELECT phase FROM split_lifecycle_records ORDER BY snapshot_id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let legacy_history_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM completed_split_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(snapshot_count, 4);
+        assert_eq!(final_phase, "paid");
+        assert_eq!(legacy_history_count, 1);
     }
 }

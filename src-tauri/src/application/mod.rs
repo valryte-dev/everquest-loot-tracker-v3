@@ -52,6 +52,7 @@ impl AppState {
         let legacy_database = database_path.exists();
         let database = Database::open(&database_path).map_err(|error| error.to_string())?;
         let schema_version = database.migrate().map_err(|error| error.to_string())?;
+        data::sync_normalized_models(&database)?;
         let spell_catalog =
             SpellCatalog::open(paths::spell_database_path().map_err(|error| error.to_string())?)?;
         clear_current_group(&database)?;
