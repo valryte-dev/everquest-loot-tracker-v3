@@ -62,6 +62,22 @@ export function selectLiveEncounters(
   .sort((a,b)=>(seenAt.get(b.id)||0)-(seenAt.get(a.id)||0));
 }
 
+export function sortLiveEncountersByPlayerTarget(
+ rows:DamageEncounter[],
+ activeCharacter?:string,
+):DamageEncounter[]{
+ const outgoingAt=(row:DamageEncounter)=>{
+  const character=(activeCharacter||row.character).toLowerCase();
+  const participant=row.players.find(player=>player.name.toLowerCase()===character);
+  return participant?timestamp(participant.lastDamageAt):0;
+ };
+ return [...rows].sort((a,b)=>{
+  const aOutgoing=outgoingAt(a),bOutgoing=outgoingAt(b);
+  if(Boolean(aOutgoing)!==Boolean(bOutgoing))return bOutgoing?1:-1;
+  return bOutgoing-aOutgoing||timestamp(b.lastDamageAt)-timestamp(a.lastDamageAt)||b.id-a.id;
+ });
+}
+
 export interface TimedClericHealCall extends ClericHealCall {
  session:number;
  gapSeconds?:number;

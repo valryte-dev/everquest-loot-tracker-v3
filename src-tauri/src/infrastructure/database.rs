@@ -35,6 +35,7 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
 }
 
+#[derive(Clone)]
 pub struct Database {
     path: PathBuf,
 }

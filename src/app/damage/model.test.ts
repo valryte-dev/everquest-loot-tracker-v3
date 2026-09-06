@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,selectLiveEncounters} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,selectLiveEncounters,sortLiveEncountersByPlayerTarget} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
@@ -75,6 +75,17 @@ describe("live DPS analytics",()=>{
   const seen=new Map([[1,99000],[2,99500],[3,99900]]);
   expect(selectLiveEncounters(rows,"Youngman",seen,100000,[]).map(row=>row.id)).toEqual([2,1]);
   expect(selectLiveEncounters(rows,"Youngman",seen,100000,[2]).map(row=>row.id)).toEqual([1]);
+ });
+
+ it("keeps the mob the active character most recently attacked ahead of newer incoming damage",()=>{
+  const encounter=(id:number,mobName:string,lastDamageAt:string,ownLast?:string)=>({
+   id,character:"Youngman",mobName,startedAt:"2026-09-05 10:00:00",lastDamageAt,
+   totalDamage:100,meleeDamage:100,spellDamage:0,hitCount:1,maxHit:100,outcome:"active" as const,
+   sourceFile:"eqlog_Youngman.txt",weapons:[],players:ownLast?[{name:"Youngman",totalDamage:100,hitCount:1,firstDamageAt:ownLast,lastDamageAt:ownLast}]:[],
+  });
+  const incoming=encounter(2,"an add","2026-09-05 10:00:20");
+  const target=encounter(1,"my target","2026-09-05 10:00:10","2026-09-05 10:00:10");
+  expect(sortLiveEncountersByPlayerTarget([incoming,target],"Youngman").map(row=>row.id)).toEqual([1,2]);
  });
 
  it("reports rising, falling, and steady momentum",()=>{

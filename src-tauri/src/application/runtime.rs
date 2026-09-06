@@ -7,6 +7,7 @@ use crate::{
 use chrono::NaiveDateTime;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
 use serde_json::json;
 use std::{
     collections::{HashMap, VecDeque},
@@ -286,7 +287,20 @@ pub fn scan_history(database: &Database) -> Result<serde_json::Value, String> {
     Ok(json!({"files":summary.files,"inserted":summary.inserted}))
 }
 
-pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DamageScanProgress {
+    completed: usize,
+    total: usize,
+    current_file: String,
+    inserted: usize,
+    done: bool,
+}
+
+pub fn rescan_damage(
+    database: &Database,
+    mut report: impl FnMut(DamageScanProgress),
+) -> Result<serde_json::Value, String> {
     let directory = configured_log_directory(database)
         .ok_or("Choose a Logs folder on the System page first")?;
     if !directory.is_dir() {
@@ -302,6 +316,14 @@ pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
         .filter(|path| is_log(path))
         .collect::<Vec<_>>();
     paths.sort();
+    let total = paths.len();
+    report(DamageScanProgress {
+        completed: 0,
+        total,
+        current_file: String::new(),
+        inserted: 0,
+        done: false,
+    });
 
     {
         let connection = database.connect().map_err(|error| error.to_string())?;
@@ -317,8 +339,19 @@ pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
     }
 
     let mut inserted = 0;
-    for path in &paths {
+    for (index, path) in paths.iter().enumerate() {
         inserted += scan_damage_file(database, path)?;
+        report(DamageScanProgress {
+            completed: index + 1,
+            total,
+            current_file: path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_owned(),
+            inserted,
+            done: false,
+        });
     }
     let connection = database.connect().map_err(|error| error.to_string())?;
     connection
@@ -344,6 +377,13 @@ pub fn rescan_damage(database: &Database) -> Result<serde_json::Value, String> {
             paths.len()
         ),
     );
+    report(DamageScanProgress {
+        completed: total,
+        total,
+        current_file: String::new(),
+        inserted,
+        done: true,
+    });
     Ok(json!({"files":paths.len(),"inserted":inserted}))
 }
 

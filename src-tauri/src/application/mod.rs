@@ -135,7 +135,7 @@ pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
 }
 
 #[tauri::command]
-pub fn mutate_app(
+pub async fn mutate_app(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
     request: MutationRequest,
@@ -143,8 +143,23 @@ pub fn mutate_app(
     let result = match request.action.as_str() {
         "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
-        "activityHistory.scan" => runtime::scan_history(&state.database),
-        "damageTracker.rescan" => runtime::rescan_damage(&state.database),
+        "activityHistory.scan" => {
+            let database = state.database.clone();
+            tauri::async_runtime::spawn_blocking(move || runtime::scan_history(&database))
+                .await
+                .map_err(|error| error.to_string())?
+        }
+        "damageTracker.rescan" => {
+            let database = state.database.clone();
+            let progress_handle = app_handle.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                runtime::rescan_damage(&database, |progress| {
+                    let _ = progress_handle.emit("damage-rescan-progress", progress);
+                })
+            })
+            .await
+            .map_err(|error| error.to_string())?
+        }
         "planner.upload" => services::upload_exports(&state.database),
         "planner.uploadFiles" => services::upload_file_payloads(&state.database, &request.payload),
         "wts.export" => services::export_wts(

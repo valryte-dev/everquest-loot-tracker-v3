@@ -298,6 +298,19 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         },
     )?;
 
+    let damage_encounter_count = connection
+        .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|error| error.to_string())?;
+    let damage_distinct_mob_count = connection
+        .query_row(
+            "SELECT COUNT(DISTINCT mob_name COLLATE NOCASE) FROM damage_encounters",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+
     let damage_encounters = query_values(
         &connection,
         "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
@@ -402,6 +415,8 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
         "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
         "deathReports":death_reports,"damageEncounters":damage_encounters,
+        "damageEncounterCount":damage_encounter_count,
+        "damageDistinctMobCount":damage_distinct_mob_count,
         "clericHealCalls":cleric_heal_calls,
         "currentWeaponLoadout":current_weapon_loadout,"compound":compound}),
     )
@@ -1889,6 +1904,8 @@ mod tests {
         drop(connection);
 
         let overview = snapshot(&database).unwrap();
+        assert_eq!(overview["damageEncounterCount"], 1);
+        assert_eq!(overview["damageDistinctMobCount"], 1);
         assert_eq!(overview["damageEncounters"][0]["totalDamage"], 350);
         assert_eq!(
             overview["damageEncounters"][0]["players"][0]["name"],
