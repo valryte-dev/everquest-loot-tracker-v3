@@ -114,6 +114,17 @@ pub enum LogEvent {
     GroupCleared {
         happened_at: NaiveDateTime,
     },
+    ItemGlow {
+        happened_at: NaiveDateTime,
+        owner_name: Option<String>,
+        item_name: String,
+    },
+    CombatAttempt {
+        happened_at: NaiveDateTime,
+        attacker_name: String,
+        mob_name: String,
+        attack: String,
+    },
     MerchantListing {
         happened_at: NaiveDateTime,
         speaker: String,
@@ -295,6 +306,22 @@ fn healing_message() -> &'static Regex {
     })
 }
 
+fn item_glow() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?:(?<owner>Your|[A-Za-z][A-Za-z'_-]*'s)\s+)?(?<item>.+?) begins to glow\.$")
+            .expect("valid item glow regex")
+    })
+}
+
+fn combat_attempt() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?<attacker>You|[A-Za-z][A-Za-z'_-]*) (?:try|tries) to (?<attack>[A-Za-z-]+) (?<mob>.+?), but .+? ripostes!$")
+            .expect("valid combat attempt regex")
+    })
+}
+
 fn melee_damage() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -370,10 +397,14 @@ fn merchant_intent() -> &'static Regex {
     })
 }
 
-pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
+pub fn parse_envelope(line: &str) -> Option<(NaiveDateTime, &str)> {
     let outer = envelope().captures(line.trim())?;
     let happened_at = NaiveDateTime::parse_from_str(&outer["time"], "%a %b %d %H:%M:%S %Y").ok()?;
-    let body = outer.name("body")?.as_str();
+    Some((happened_at, outer.name("body")?.as_str()))
+}
+
+pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
+    let (happened_at, body) = parse_envelope(line)?;
     for (pattern, direction) in [
         (gained_level(), LevelChangeKind::Gained),
         (lost_level(), LevelChangeKind::Lost),
@@ -394,6 +425,35 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     }
     if healing_message().is_match(body) {
         return None;
+    }
+    if let Some(value) = item_glow().captures(body) {
+        let owner = value
+            .name("owner")
+            .map(|owner| owner.as_str().trim_end_matches("'s"));
+        return Some(LogEvent::ItemGlow {
+            happened_at,
+            owner_name: owner.map(|name| {
+                if name.eq_ignore_ascii_case("Your") {
+                    active_character.to_owned()
+                } else {
+                    name.to_owned()
+                }
+            }),
+            item_name: value["item"].trim().to_owned(),
+        });
+    }
+    if let Some(value) = combat_attempt().captures(body) {
+        let attacker = value["attacker"].trim();
+        return Some(LogEvent::CombatAttempt {
+            happened_at,
+            attacker_name: if attacker.eq_ignore_ascii_case("You") {
+                active_character.to_owned()
+            } else {
+                attacker.to_owned()
+            },
+            mob_name: value["mob"].trim().to_owned(),
+            attack: value["attack"].to_ascii_lowercase(),
+        });
     }
     if let Some(value) = melee_damage().captures(body) {
         return Some(LogEvent::Damage {
@@ -1034,5 +1094,25 @@ mod tests {
             extract_item_links(&format!("'{live} / {padded}'")),
             vec!["A Black Crown", "Water Sprinkler of Nem Ankh"]
         );
+    }
+
+    #[test]
+    fn parses_dot_attribution_clues() {
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 12:59:59 2026] Your Dawncall begins to glow.",
+                "Asquatii"
+            ),
+            Some(LogEvent::ItemGlow { owner_name: Some(ref owner), ref item_name, .. })
+                if owner == "Asquatii" && item_name == "Dawncall"
+        ));
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 13:00:28 2026] Asquatii tries to crush a mortiferous golem, but a mortiferous golem ripostes!",
+                "Youngman"
+            ),
+            Some(LogEvent::CombatAttempt { ref attacker_name, ref mob_name, ref attack, .. })
+                if attacker_name == "Asquatii" && mob_name == "a mortiferous golem" && attack == "crush"
+        ));
     }
 }

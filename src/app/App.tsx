@@ -13,6 +13,7 @@ import {isVeliousArmorGem} from "./gems/catalog";
 import {openUrl} from "@tauri-apps/plugin-opener";
 import {SpellHover} from "./SpellHover";
 import {SpellCatalogPanel} from "./SpellCatalogPanel";
+import {SpellCatalogBrowser} from "./SpellCatalogBrowser";
 import {Release35} from "./Release35";
 import {buildSplitPayoutSummary,groupSplitPeople,type ContributionStatus,type PersonPayoutSummary} from "./splits/model";
 import {HistoryAnalytics} from "./history/HistoryCharts";
@@ -506,6 +507,7 @@ function RosterSpellsPage({data}:{data:AppSnapshot}){
   <Stats items={[["Scrolls held",String(scrolls.reduce((sum,item)=>sum+item.count,0)),`${new Set(scrolls.map(item=>item.itemName.toLowerCase())).size} unique`],["Scroll estimate",money(scrollValue)],["Scribed spells",String(data.spells.length),`${scribedNames.size} unique across roster`]]}/>
   <Card title="Spell scrolls across all characters" sub={`Total estimate: ${money(scrollValue)} · carried and banked inventory`}><DataTable rows={scrolls} columns={scrollColumns} rowKey={row=>row.id} empty="No Spell: inventory items have been imported."/></Card>
   <Card title="Scribed spellbooks across all characters" sub={`${data.spells.length} spellbook entries across ${new Set(data.spells.map(spell=>spell.character)).size} characters`}><DataTable rows={data.spells} columns={spellColumns} rowKey={row=>`${row.character}-${row.slot}-${row.spellName}`} empty="No spellbook exports have been imported."/></Card>
+  <SpellCatalogBrowser/>
  </>;
 }
 

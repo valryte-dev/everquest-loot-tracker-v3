@@ -16,6 +16,7 @@ use std::{
 };
 
 const WIKI_API: &str = "https://wiki.project1999.com/api.php";
+const SPELL_SELECT: &str = "SELECT spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,focus,where_to_obtain,cast_on_you,cast_on_other,wears_off,damage_kind,damage_per_tick,tick_count,tick_interval_seconds,total_dot_damage,fetched_at FROM spell_info";
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS spell_info (
  spell_name TEXT PRIMARY KEY COLLATE NOCASE, wiki_url TEXT NOT NULL,
@@ -27,7 +28,10 @@ CREATE TABLE IF NOT EXISTS spell_info (
  target_type TEXT NOT NULL DEFAULT '', spell_type TEXT NOT NULL DEFAULT '',
  duration TEXT NOT NULL DEFAULT '', reagent TEXT NOT NULL DEFAULT '',
  focus TEXT NOT NULL DEFAULT '', where_to_obtain TEXT NOT NULL DEFAULT '',
- fetched_at TEXT NOT NULL
+ cast_on_you TEXT NOT NULL DEFAULT '', cast_on_other TEXT NOT NULL DEFAULT '',
+ wears_off TEXT NOT NULL DEFAULT '', damage_kind TEXT NOT NULL DEFAULT 'unknown',
+ damage_per_tick INTEGER, tick_count INTEGER, tick_interval_seconds INTEGER NOT NULL DEFAULT 6,
+ total_dot_damage INTEGER, fetched_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_spell_info_fetched_at ON spell_info(fetched_at);
 CREATE TABLE IF NOT EXISTS spell_catalog_meta (
@@ -71,8 +75,26 @@ pub struct SpellInfo {
     pub reagent: String,
     pub focus: String,
     pub where_to_obtain: String,
+    pub cast_on_you: String,
+    pub cast_on_other: String,
+    pub wears_off: String,
+    pub damage_kind: String,
+    pub damage_per_tick: Option<u64>,
+    pub tick_count: Option<u32>,
+    pub tick_interval_seconds: u32,
+    pub total_dot_damage: Option<u64>,
     pub fetched_at: String,
     pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DotSpellProfile {
+    pub spell_name: String,
+    pub cast_on_other: String,
+    pub damage_per_tick: u64,
+    pub tick_count: u32,
+    pub tick_interval_seconds: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -99,9 +121,11 @@ pub struct SpellCatalog {
 impl SpellCatalog {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref().to_owned();
-        connect(&path)?
+        let connection = connect(&path)?;
+        connection
             .execute_batch(SCHEMA)
             .map_err(|e| e.to_string())?;
+        migrate_catalog(&connection)?;
         let client = Client::builder()
             .timeout(StdDuration::from_secs(15))
             .user_agent("EverQuestLootTracker/3.4 (spell metadata cache)")
@@ -199,6 +223,46 @@ impl SpellCatalog {
         }
     }
 
+    pub fn list(&self) -> Result<Vec<SpellInfo>, String> {
+        let connection = connect(&self.path)?;
+        let mut statement = connection
+            .prepare(&format!(
+                "{SPELL_SELECT} ORDER BY spell_name COLLATE NOCASE"
+            ))
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], row_to_info)
+            .map_err(|error| error.to_string())?
+            .map(|row| row.map_err(|error| error.to_string()))
+            .collect();
+        rows
+    }
+
+    pub fn dot_profiles(&self) -> Result<Vec<DotSpellProfile>, String> {
+        let connection = connect(&self.path)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT spell_name,cast_on_other,damage_per_tick,tick_count,tick_interval_seconds
+             FROM spell_info WHERE damage_kind IN ('dot','hybrid') AND cast_on_other<>''
+               AND damage_per_tick IS NOT NULL AND tick_count IS NOT NULL",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(DotSpellProfile {
+                    spell_name: row.get(0)?,
+                    cast_on_other: row.get(1)?,
+                    damage_per_tick: row.get(2)?,
+                    tick_count: row.get(3)?,
+                    tick_interval_seconds: row.get(4)?,
+                })
+            })
+            .map_err(|error| error.to_string())?
+            .map(|row| row.map_err(|error| error.to_string()))
+            .collect();
+        rows
+    }
+
     fn fetch(&self, name: &str) -> Result<SpellInfo, String> {
         let body = self.get_wiki_json(&[
             ("action", "parse"),
@@ -221,9 +285,14 @@ impl SpellCatalog {
     }
 
     fn read_cached(&self, name: &str) -> Result<Option<SpellInfo>, String> {
-        connect(&self.path)?.query_row(
-   "SELECT spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,focus,where_to_obtain,fetched_at FROM spell_info WHERE spell_name=?1 COLLATE NOCASE",
-   [name], row_to_info).optional().map_err(|e|e.to_string())
+        connect(&self.path)?
+            .query_row(
+                &format!("{SPELL_SELECT} WHERE spell_name=?1 COLLATE NOCASE"),
+                [name],
+                row_to_info,
+            )
+            .optional()
+            .map_err(|e| e.to_string())
     }
 
     fn save(&self, i: &SpellInfo) -> Result<(), String> {
@@ -308,6 +377,47 @@ impl SpellCatalog {
     }
 }
 
+fn migrate_catalog(connection: &Connection) -> Result<(), String> {
+    let columns = [
+        ("cast_on_you", "TEXT NOT NULL DEFAULT ''"),
+        ("cast_on_other", "TEXT NOT NULL DEFAULT ''"),
+        ("wears_off", "TEXT NOT NULL DEFAULT ''"),
+        ("damage_kind", "TEXT NOT NULL DEFAULT 'unknown'"),
+        ("damage_per_tick", "INTEGER"),
+        ("tick_count", "INTEGER"),
+        ("tick_interval_seconds", "INTEGER NOT NULL DEFAULT 6"),
+        ("total_dot_damage", "INTEGER"),
+    ];
+    let mut upgraded = false;
+    for (name, definition) in columns {
+        let exists: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('spell_info') WHERE name=?1",
+                [name],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if exists == 0 {
+            connection
+                .execute(
+                    &format!("ALTER TABLE spell_info ADD COLUMN {name} {definition}"),
+                    [],
+                )
+                .map_err(|error| error.to_string())?;
+            upgraded = true;
+        }
+    }
+    if upgraded {
+        connection
+            .execute(
+                "DELETE FROM spell_catalog_meta WHERE key='last_refresh_at'",
+                [],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    set_meta_on(connection, "combat_schema_version", "1")
+}
+
 fn request_json(client: &Client, query: &[(&str, &str)]) -> Result<Value, reqwest::Error> {
     client
         .get(WIKI_API)
@@ -328,13 +438,34 @@ fn certificate_chain_detail(detail: &str) -> bool {
 
 fn save_on(connection: &Connection, i: &SpellInfo) -> Result<(), String> {
     connection.execute(
-   "INSERT INTO spell_info VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
-    ON CONFLICT(spell_name) DO UPDATE SET wiki_url=excluded.wiki_url,description=excluded.description,classes_json=excluded.classes_json,effects_json=excluded.effects_json,mana=excluded.mana,skill=excluded.skill,casting_time=excluded.casting_time,recast_time=excluded.recast_time,fizzle_time=excluded.fizzle_time,resist=excluded.resist,range_value=excluded.range_value,target_type=excluded.target_type,spell_type=excluded.spell_type,duration=excluded.duration,reagent=excluded.reagent,focus=excluded.focus,where_to_obtain=excluded.where_to_obtain,fetched_at=excluded.fetched_at",
-   params![i.spell_name,i.wiki_url,i.description,serde_json::to_string(&i.classes).map_err(|e|e.to_string())?,serde_json::to_string(&i.effects).map_err(|e|e.to_string())?,i.mana,i.skill,i.casting_time,i.recast_time,i.fizzle_time,i.resist,i.range,i.target_type,i.spell_type,i.duration,i.reagent,i.focus,i.where_to_obtain,i.fetched_at]
-  ).map_err(|e|e.to_string())?;
+        "INSERT INTO spell_info(
+            spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,
+            recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,
+            focus,where_to_obtain,cast_on_you,cast_on_other,wears_off,damage_kind,damage_per_tick,
+            tick_count,tick_interval_seconds,total_dot_damage,fetched_at
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)
+         ON CONFLICT(spell_name) DO UPDATE SET
+            wiki_url=excluded.wiki_url,description=excluded.description,classes_json=excluded.classes_json,
+            effects_json=excluded.effects_json,mana=excluded.mana,skill=excluded.skill,
+            casting_time=excluded.casting_time,recast_time=excluded.recast_time,
+            fizzle_time=excluded.fizzle_time,resist=excluded.resist,range_value=excluded.range_value,
+            target_type=excluded.target_type,spell_type=excluded.spell_type,duration=excluded.duration,
+            reagent=excluded.reagent,focus=excluded.focus,where_to_obtain=excluded.where_to_obtain,
+            cast_on_you=excluded.cast_on_you,cast_on_other=excluded.cast_on_other,
+            wears_off=excluded.wears_off,damage_kind=excluded.damage_kind,
+            damage_per_tick=excluded.damage_per_tick,tick_count=excluded.tick_count,
+            tick_interval_seconds=excluded.tick_interval_seconds,total_dot_damage=excluded.total_dot_damage,
+            fetched_at=excluded.fetched_at",
+        params![
+            i.spell_name,i.wiki_url,i.description,serde_json::to_string(&i.classes).map_err(|e|e.to_string())?,
+            serde_json::to_string(&i.effects).map_err(|e|e.to_string())?,i.mana,i.skill,i.casting_time,
+            i.recast_time,i.fizzle_time,i.resist,i.range,i.target_type,i.spell_type,i.duration,
+            i.reagent,i.focus,i.where_to_obtain,i.cast_on_you,i.cast_on_other,i.wears_off,
+            i.damage_kind,i.damage_per_tick,i.tick_count,i.tick_interval_seconds,i.total_dot_damage,i.fetched_at
+        ],
+    ).map_err(|error| error.to_string())?;
     Ok(())
 }
-
 fn set_meta_on(connection: &Connection, key: &str, value: &str) -> Result<(), String> {
     connection.execute(
         "INSERT INTO spell_catalog_meta(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -395,11 +526,18 @@ fn row_to_info(row: &rusqlite::Row<'_>) -> rusqlite::Result<SpellInfo> {
         reagent: row.get(15)?,
         focus: row.get(16)?,
         where_to_obtain: row.get(17)?,
-        fetched_at: row.get(18)?,
+        cast_on_you: row.get(18)?,
+        cast_on_other: row.get(19)?,
+        wears_off: row.get(20)?,
+        damage_kind: row.get(21)?,
+        damage_per_tick: row.get(22)?,
+        tick_count: row.get(23)?,
+        tick_interval_seconds: row.get(24)?,
+        total_dot_damage: row.get(25)?,
+        fetched_at: row.get(26)?,
         stale: false,
     })
 }
-
 fn fresh(info: &SpellInfo) -> bool {
     DateTime::parse_from_rfc3339(&info.fetched_at)
         .map(|d| d.with_timezone(&Utc) >= Utc::now() - Duration::days(30))
@@ -464,7 +602,7 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
         .collect();
     let effect_re =
         Regex::new(r"(?i)\{\{\s*SpellSlotRow\s*\|\s*(\d+)\s*\|\s*(.*?)\s*\}\}").unwrap();
-    let effects = effect_re
+    let effects: Vec<SpellEffect> = effect_re
         .captures_iter(field(&fields, "slots"))
         .filter_map(|c| {
             Some(SpellEffect {
@@ -481,6 +619,12 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
             .map(|c| clean(&c[1]))
             .unwrap_or_default()
     };
+    let cast_on_you = clean(field(&fields, "msg_cast_on_you"));
+    let cast_on_other = clean(field(&fields, "msg_cast_on_other"));
+    let wears_off = clean(field(&fields, "msg_wears_off"));
+    let duration = clean(field(&fields, "duration"));
+    let (damage_kind, damage_per_tick, tick_count, total_dot_damage) =
+        classify_damage(&effects, &duration);
     let canonical = clean(field(&fields, "spellname"));
     let name = if canonical.is_empty() {
         title.into()
@@ -502,13 +646,55 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
         range: clean(field(&fields, "range")),
         target_type: clean(field(&fields, "target_type")),
         spell_type: clean(field(&fields, "spell_type")),
-        duration: clean(field(&fields, "duration")),
+        duration,
         reagent: extra("Reagent"),
         focus: extra("Focus"),
         where_to_obtain: clean(field(&fields, "where_to_obtain")),
+        cast_on_you,
+        cast_on_other,
+        wears_off,
+        damage_kind,
+        damage_per_tick,
+        tick_count,
+        tick_interval_seconds: 6,
+        total_dot_damage,
         fetched_at: Utc::now().to_rfc3339(),
         stale: false,
     })
+}
+
+fn classify_damage(
+    effects: &[SpellEffect],
+    duration: &str,
+) -> (String, Option<u64>, Option<u32>, Option<u64>) {
+    let dot_pattern = Regex::new(
+        r"(?i)decrease hitpoints.*?by\s+(?:\d+\s*\([^)]*\)\s+to\s+)?(?<damage>\d+).*?per tick",
+    )
+    .expect("valid dot effect regex");
+    let has_direct = effects.iter().any(|effect| {
+        let lower = effect.description.to_ascii_lowercase();
+        lower.contains("decrease hitpoints") && !lower.contains("per tick")
+    });
+    let damage_per_tick = effects.iter().find_map(|effect| {
+        dot_pattern.captures(&effect.description)?["damage"]
+            .parse::<u64>()
+            .ok()
+    });
+    let tick_count = Regex::new(r"(?i)(?<ticks>\d+)\s*ticks?")
+        .expect("valid duration regex")
+        .captures(duration)
+        .and_then(|capture| capture["ticks"].parse::<u32>().ok());
+    let damage_kind = match (damage_per_tick.is_some(), has_direct) {
+        (true, true) => "hybrid",
+        (true, false) => "dot",
+        (false, true) => "direct",
+        (false, false) => "non_damage",
+    }
+    .to_owned();
+    let total = damage_per_tick
+        .zip(tick_count)
+        .map(|(damage, ticks)| damage * u64::from(ticks));
+    (damage_kind, damage_per_tick, tick_count, total)
 }
 
 fn parse_fields(text: &str) -> HashMap<String, String> {
@@ -615,6 +801,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn classifies_dawncall_and_preserves_cast_message() {
+        let dawncall = r#"{{Spellpage|
+| spellname = Dawncall
+| description = Calls down the light of dawn.
+| slots = {{SpellSlotRow | 1 | Decrease Hitpoints by 125 per tick }}
+| duration = 6 ticks
+| msg_cast_on_you = You stagger as the light of dawn washes over you.
+| msg_cast_on_other = Someone staggers as the light of dawn washes over it.
+| msg_wears_off = The light of dawn fades.
+}}"#;
+        let spell = parse_spell_template("Dawncall", dawncall).unwrap();
+        assert_eq!(spell.damage_kind, "dot");
+        assert_eq!(spell.damage_per_tick, Some(125));
+        assert_eq!(spell.tick_count, Some(6));
+        assert_eq!(spell.total_dot_damage, Some(750));
+        assert_eq!(
+            spell.cast_on_other,
+            "Someone staggers as the light of dawn washes over it."
+        );
+    }
     #[test]
     #[ignore = "requires public Project 1999 wiki access"]
     fn downloads_the_complete_spell_category_in_batches() {

@@ -6,6 +6,8 @@ The architecture work was delivered as additive, independently tagged checkpoint
 
 | Tag | Purpose |
 | --- | --- |
+| `pre-dot-damage-tracking-2026-09-06` | Clean v3.16.0 baseline before spell classification and inferred DoT combat tracking |
+| `dot-damage-tracking-2026-09-06` | Verified implementation checkpoint after additive schema, parser, runtime, UI, and tests |
 | `pre-architecture-refactor-2026-09-06` | Known-good baseline before the refactor |
 | `architecture-phase-1-scoped-refresh` | True page-scoped database reads and coalesced frontend refreshes |
 | `architecture-phase-2-ingestion` | Durable Planner upload queue and transactional log batches |

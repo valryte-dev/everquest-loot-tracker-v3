@@ -1,8 +1,8 @@
 use crate::{
-    application::{data, services, system_tasks::TaskRegistry},
+    application::{data, dot_tracking::DotTracker, services, system_tasks::TaskRegistry},
     domain::log_events::{parse_log_event, ChatChannel, GroupChangeKind, LogEvent},
     domain::merchant::{parse_listing_items, CatalogItem},
-    infrastructure::database::Database,
+    infrastructure::{database::Database, spell_catalog::SpellCatalog},
 };
 use chrono::NaiveDateTime;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -28,6 +28,7 @@ pub fn start(
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
+    spell_catalog: SpellCatalog,
 ) {
     let backlog_database = database.clone();
     let backlog_app_handle = app_handle.clone();
@@ -51,6 +52,7 @@ pub fn start(
                 app_handle,
                 revision,
                 watcher_tasks,
+                spell_catalog,
                 Some(watcher_ready_tx),
             )
         })
@@ -369,6 +371,7 @@ fn watch(
     app_handle: tauri::AppHandle,
     revision: Arc<AtomicU64>,
     tasks: TaskRegistry,
+    spell_catalog: SpellCatalog,
     mut startup_complete: Option<mpsc::SyncSender<()>>,
 ) {
     let (event_tx, event_rx) = mpsc::channel();
@@ -390,6 +393,7 @@ fn watch(
     let mut watched_logs: Option<PathBuf> = None;
     let mut watched_exports: Option<PathBuf> = None;
     let mut last_safety_poll = SystemTime::UNIX_EPOCH;
+    let mut dot_tracker = DotTracker::new(spell_catalog);
     loop {
         let configured = configured_log_directory(&database);
         let mut force_poll = false;
@@ -440,6 +444,19 @@ fn watch(
             .elapsed()
             .map_or(true, |elapsed| elapsed >= Duration::from_secs(30));
         if !(force_poll || event_received || safety_due) {
+            let tick_changed = {
+                let _writer_guard = database.writer_guard();
+                database
+                    .connect()
+                    .ok()
+                    .and_then(|connection| dot_tracker.flush_live(&connection).ok())
+                    .unwrap_or(0)
+                    > 0
+            };
+            if tick_changed {
+                revision.fetch_add(1, Ordering::Relaxed);
+                let _ = app_handle.emit("data-changed", "damage.dot-tick");
+            }
             continue;
         }
         if event_received {
@@ -461,7 +478,7 @@ fn watch(
             );
             let _ = app_handle.emit("system-task-changed", "folder-reconcile");
         }
-        let poll_result = poll(
+        let poll_result = poll_with_dots(
             &database,
             &mut active_log,
             &mut offsets,
@@ -469,6 +486,7 @@ fn watch(
             &mut export_signatures,
             &mut export_directory,
             changed_log.as_deref(),
+            &mut dot_tracker,
         );
         let poll_changed = match &poll_result {
             Ok(changed) => *changed,
@@ -512,6 +530,7 @@ fn configured_log_directory(database: &Database) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+#[cfg(test)]
 fn poll(
     database: &Database,
     active_log: &mut Option<PathBuf>,
@@ -520,6 +539,52 @@ fn poll(
     exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
     watched_export_directory: &mut Option<PathBuf>,
     preferred_log: Option<&Path>,
+) -> Result<bool, String> {
+    poll_internal(
+        database,
+        active_log,
+        offsets,
+        last_mob,
+        exports,
+        watched_export_directory,
+        preferred_log,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn poll_with_dots(
+    database: &Database,
+    active_log: &mut Option<PathBuf>,
+    offsets: &mut HashMap<PathBuf, u64>,
+    last_mob: &mut HashMap<PathBuf, String>,
+    exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
+    watched_export_directory: &mut Option<PathBuf>,
+    preferred_log: Option<&Path>,
+    dot_tracker: &mut DotTracker,
+) -> Result<bool, String> {
+    poll_internal(
+        database,
+        active_log,
+        offsets,
+        last_mob,
+        exports,
+        watched_export_directory,
+        preferred_log,
+        Some(dot_tracker),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn poll_internal(
+    database: &Database,
+    active_log: &mut Option<PathBuf>,
+    offsets: &mut HashMap<PathBuf, u64>,
+    last_mob: &mut HashMap<PathBuf, String>,
+    exports: &mut HashMap<PathBuf, (u64, SystemTime)>,
+    watched_export_directory: &mut Option<PathBuf>,
+    preferred_log: Option<&Path>,
+    dot_tracker: Option<&mut DotTracker>,
 ) -> Result<bool, String> {
     let mut changed = false;
     let connection = database.connect().map_err(|error| error.to_string())?;
@@ -600,7 +665,11 @@ fn poll(
             *active_log = Some(newest.clone());
             changed = true;
         }
-        changed |= process_log(database, &newest, offsets, last_mob)?;
+        changed |= if let Some(tracker) = dot_tracker {
+            process_log_with_dots(database, &newest, offsets, last_mob, tracker)?
+        } else {
+            process_log_internal(database, &newest, offsets, last_mob, None)?
+        };
         if character_changed {
             database
                 .connect()
@@ -661,6 +730,7 @@ pub struct DamageScanProgress {
 
 pub fn rescan_damage(
     database: &Database,
+    spell_catalog: SpellCatalog,
     mut report: impl FnMut(DamageScanProgress),
 ) -> Result<serde_json::Value, String> {
     let directory = configured_log_directory(database)
@@ -691,7 +761,8 @@ pub fn rescan_damage(
         let connection = database.connect().map_err(|error| error.to_string())?;
         connection
             .execute_batch(
-                "DELETE FROM cleric_heal_calls;
+                "DELETE FROM dot_applications;
+                 DELETE FROM cleric_heal_calls;
                  DELETE FROM damage_received_events;
                  DELETE FROM damage_events;
                  DELETE FROM damage_encounters;
@@ -702,7 +773,8 @@ pub fn rescan_damage(
 
     let mut inserted = 0;
     for (index, path) in paths.iter().enumerate() {
-        inserted += scan_damage_file(database, path)?;
+        let mut dot_tracker = DotTracker::new(spell_catalog.clone());
+        inserted += scan_damage_file_with_dots(database, path, &mut dot_tracker)?;
         report(DamageScanProgress {
             completed: index + 1,
             total,
@@ -1008,6 +1080,22 @@ fn scan_death_report_file(database: &Database, path: &Path) -> Result<usize, Str
 }
 
 fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
+    scan_damage_file_internal(database, path, None)
+}
+
+fn scan_damage_file_with_dots(
+    database: &Database,
+    path: &Path,
+    dot_tracker: &mut DotTracker,
+) -> Result<usize, String> {
+    scan_damage_file_internal(database, path, Some(dot_tracker))
+}
+
+fn scan_damage_file_internal(
+    database: &Database,
+    path: &Path,
+    mut dot_tracker: Option<&mut DotTracker>,
+) -> Result<usize, String> {
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
     let source = path.display().to_string();
     let mut file = File::open(path).map_err(|error| error.to_string())?;
@@ -1046,7 +1134,8 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
         }
         let text = String::from_utf8_lossy(&line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
-        if let Some(event) = parse_log_event(line, &character) {
+        let event = parse_log_event(line, &character);
+        if let Some(event) = event.clone() {
             match event {
                 LogEvent::Damage {
                     happened_at,
@@ -1174,6 +1263,16 @@ fn scan_damage_file(database: &Database, path: &Path) -> Result<usize, String> {
                 }
                 _ => {}
             }
+        }
+        if let Some(tracker) = dot_tracker.as_deref_mut() {
+            inserted += tracker.process_line(
+                &transaction,
+                &source,
+                line_offset as i64,
+                line,
+                &character,
+                event.as_ref(),
+            )?;
         }
         line_offset += bytes_read as u64;
     }
@@ -1554,6 +1653,55 @@ fn record_damage_event(
     Ok(created)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn record_inferred_dot_tick(
+    connection: &rusqlite::Connection,
+    encounter_id: i64,
+    application_id: i64,
+    tick_index: i64,
+    happened_at: NaiveDateTime,
+    caster_name: &str,
+    spell_name: &str,
+    amount: u64,
+) -> Result<usize, String> {
+    let source = format!("dot://{application_id}");
+    let created = connection
+        .execute(
+            "INSERT OR IGNORE INTO damage_events(
+            encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,
+            source_offset,weapon_loadout_id,attacker_name
+         ) VALUES(?,'spell',?,?,?, ?,?, ?,NULL,?)",
+            params![
+                encounter_id,
+                happened_at.to_string(),
+                spell_name,
+                amount as i64,
+                format!("Inferred {spell_name} tick {tick_index}"),
+                source,
+                tick_index,
+                caster_name,
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if created > 0 {
+        connection
+            .execute(
+                "UPDATE damage_encounters SET last_damage_at=MAX(last_damage_at,?),
+             total_damage=total_damage+?,spell_damage=spell_damage+?,hit_count=hit_count+1,
+             max_hit=MAX(max_hit,?) WHERE id=?",
+                params![
+                    happened_at.to_string(),
+                    amount as i64,
+                    amount as i64,
+                    amount as i64,
+                    encounter_id
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(created)
+}
+
 fn record_activity_event(
     connection: &rusqlite::Connection,
     path: &Path,
@@ -1661,11 +1809,32 @@ fn record_activity_event(
     }
 }
 
+#[cfg(test)]
 fn process_log(
     database: &Database,
     path: &Path,
     offsets: &mut HashMap<PathBuf, u64>,
     last_mob: &mut HashMap<PathBuf, String>,
+) -> Result<bool, String> {
+    process_log_internal(database, path, offsets, last_mob, None)
+}
+
+fn process_log_with_dots(
+    database: &Database,
+    path: &Path,
+    offsets: &mut HashMap<PathBuf, u64>,
+    last_mob: &mut HashMap<PathBuf, String>,
+    dot_tracker: &mut DotTracker,
+) -> Result<bool, String> {
+    process_log_internal(database, path, offsets, last_mob, Some(dot_tracker))
+}
+
+fn process_log_internal(
+    database: &Database,
+    path: &Path,
+    offsets: &mut HashMap<PathBuf, u64>,
+    last_mob: &mut HashMap<PathBuf, String>,
+    mut dot_tracker: Option<&mut DotTracker>,
 ) -> Result<bool, String> {
     let before = log_data_signature(database)?;
     let mut file = File::open(path).map_err(|error| error.to_string())?;
@@ -1695,13 +1864,14 @@ fn process_log(
         }
         let text = String::from_utf8_lossy(line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
-        if let Some(event) = parse_log_event(line, &character) {
+        let event = parse_log_event(line, &character);
+        if let Some(event) = event.as_ref() {
             apply_event(
                 &transaction,
                 path,
                 line_offset as i64,
                 line,
-                &event,
+                event,
                 last_mob,
             )?;
         } else if line.to_ascii_lowercase().contains(" looted ") {
@@ -1711,6 +1881,16 @@ fn process_log(
                 "parser",
                 &format!("Unrecognized loot line in {}: {line}", path.display()),
             );
+        }
+        if let Some(tracker) = dot_tracker.as_deref_mut() {
+            tracker.process_line(
+                &transaction,
+                &path.display().to_string(),
+                line_offset as i64,
+                line,
+                &character,
+                event.as_ref(),
+            )?;
         }
         line_offset += line_bytes.len() as u64;
     }
@@ -1776,7 +1956,7 @@ fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u6
     Ok(offset)
 }
 
-type LogDataSignature = (i64, i64, i64, i64, i64, i64, i64, i64, i64, String);
+type LogDataSignature = (i64, i64, i64, i64, i64, i64, i64, i64, i64, String, i64);
 
 fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
     database.connect().map_err(|error| error.to_string())?.query_row(
@@ -1790,7 +1970,8 @@ fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
             COALESCE((SELECT MAX(id) FROM damage_received_events),0),
             COALESCE((SELECT MAX(id) FROM cleric_heal_calls),0),
             COALESCE((SELECT SUM(last_source_offset) FROM damage_encounters),0),
-            COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),'')",
+            COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),''),
+            COALESCE((SELECT SUM(id+ticks_applied+CASE WHEN status='active' THEN 1 ELSE 0 END) FROM dot_applications),0)",
         [],
         |row| Ok((
             row.get(0)?,
@@ -1803,6 +1984,7 @@ fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
             row.get(7)?,
             row.get(8)?,
             row.get(9)?,
+            row.get(10)?,
         )),
     ).map_err(|error| error.to_string())
 }
@@ -2123,6 +2305,7 @@ fn apply_event(
                 );
             }
         }
+        LogEvent::ItemGlow { .. } | LogEvent::CombatAttempt { .. } => {}
     }
     Ok(())
 }

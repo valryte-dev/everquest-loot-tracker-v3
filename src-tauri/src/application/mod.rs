@@ -1,5 +1,6 @@
 mod data;
 mod database_management;
+mod dot_tracking;
 mod runtime;
 mod services;
 mod system_tasks;
@@ -75,6 +76,7 @@ impl AppState {
             app_handle.clone(),
             self.revision.clone(),
             self.tasks.clone(),
+            self.spell_catalog.clone(),
         );
         services::start_update_check(
             self.database_path.clone(),
@@ -201,6 +203,7 @@ pub async fn mutate_app(
         }
         "damageTracker.rescan" => {
             let database = state.database.clone();
+            let spell_catalog = state.spell_catalog.clone();
             let progress_handle = app_handle.clone();
             let progress_tasks = state.tasks.clone();
             progress_tasks.start(
@@ -211,7 +214,7 @@ pub async fn mutate_app(
             );
             let _ = app_handle.emit("system-task-changed", "damage-rescan");
             let result = tauri::async_runtime::spawn_blocking(move || {
-                runtime::rescan_damage(&database, |progress| {
+                runtime::rescan_damage(&database, spell_catalog, |progress| {
                     let detail = if progress.current_file.is_empty() {
                         "Discovering log files"
                     } else {
@@ -291,6 +294,11 @@ pub fn spell_info(
     spell_name: String,
 ) -> Result<SpellInfo, String> {
     state.spell_catalog.get(&spell_name)
+}
+
+#[tauri::command]
+pub fn spell_catalog_entries(state: tauri::State<'_, AppState>) -> Result<Vec<SpellInfo>, String> {
+    state.spell_catalog.list()
 }
 
 #[tauri::command]

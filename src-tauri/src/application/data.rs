@@ -352,7 +352,7 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
         (0, 0)
     };
 
-    let damage_encounters = query_values_if(wants("damageEncounters"),
+    let mut damage_encounters = query_values_if(wants("damageEncounters"),
         &connection,
         "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
                 e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
@@ -418,6 +418,9 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
         },
     )?;
 
+    if wants("damageEncounters") {
+        attach_active_dots(&connection, &mut damage_encounters)?;
+    }
     let current_weapon_loadout = if wants("damageEncounters") {
         if let Some(character) = settings
             .get("active_character")
@@ -702,7 +705,9 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
             .map_err(err)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(err)?
     };
-    let mut value = encounter;
+    let mut enriched = vec![encounter];
+    attach_active_dots(&connection, &mut enriched)?;
+    let mut value = enriched.pop().expect("encounter remains available");
     let root = value
         .as_object_mut()
         .expect("damage encounter query returns an object");
@@ -721,7 +726,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
         )
         .optional()
         .map_err(|error| error.to_string())?;
-    let encounters=query_values(&connection,
+    let mut encounters=query_values(&connection,
         "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
                 e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
                 (SELECT GROUP_CONCAT(name,char(31)) FROM (
@@ -749,6 +754,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
             "players":row.get::<_,Option<String>>(14)?.and_then(|v|serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(||json!([])),
             "incomingDamage":row.get::<_,i64>(15)?,"incomingHitCount":row.get::<_,i64>(16)?,
             "incomingMaxHit":row.get::<_,i64>(17)?,"damageTargets":[] })))?;
+    attach_active_dots(&connection, &mut encounters)?;
     let loadout=active_character.as_deref().filter(|value|!value.is_empty()).and_then(|character|
         connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
             [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
@@ -1036,6 +1042,52 @@ fn sync_split_lifecycle_snapshot(connection: &rusqlite::Connection) -> Result<()
     }
     Ok(())
 }
+fn attach_active_dots(
+    connection: &rusqlite::Connection,
+    encounters: &mut [Value],
+) -> Result<(), String> {
+    if encounters.is_empty() {
+        return Ok(());
+    }
+    let mut by_encounter: HashMap<i64, Vec<Value>> = HashMap::new();
+    let mut statement = connection
+        .prepare(
+            "SELECT id,encounter_id,spell_name,target_name,caster_name,attribution_method,
+                landed_at,expires_at,damage_per_tick,tick_interval_seconds,total_ticks,
+                ticks_applied,inference_enabled,status
+         FROM dot_applications WHERE status='active' ORDER BY expires_at,id",
+        )
+        .map_err(err)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(1)?,
+                json!({
+                    "id":row.get::<_,i64>(0)?,"spellName":row.get::<_,String>(2)?,
+                    "targetName":row.get::<_,String>(3)?,"casterName":row.get::<_,String>(4)?,
+                    "attributionMethod":row.get::<_,String>(5)?,"landedAt":row.get::<_,String>(6)?,
+                    "expiresAt":row.get::<_,String>(7)?,"damagePerTick":row.get::<_,i64>(8)?,
+                    "tickIntervalSeconds":row.get::<_,i64>(9)?,"totalTicks":row.get::<_,i64>(10)?,
+                    "ticksApplied":row.get::<_,i64>(11)?,"inferenceEnabled":row.get::<_,bool>(12)?,
+                    "status":row.get::<_,String>(13)?
+                }),
+            ))
+        })
+        .map_err(err)?;
+    for row in rows {
+        let (encounter_id, dot) = row.map_err(err)?;
+        by_encounter.entry(encounter_id).or_default().push(dot);
+    }
+    for encounter in encounters {
+        let id = encounter
+            .get("id")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        encounter["activeDots"] = Value::Array(by_encounter.remove(&id).unwrap_or_default());
+    }
+    Ok(())
+}
+
 fn query_values_if<F>(
     enabled: bool,
     connection: &rusqlite::Connection,

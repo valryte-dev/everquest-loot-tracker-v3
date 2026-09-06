@@ -15,6 +15,7 @@ export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDeta
 export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;
 export const getSpellInfo=(spellName:string)=>desktop()?invoke<SpellInfo>("spell_info",{spellName}):Promise.reject(new Error("Spell information is available in the desktop app."));
+export const getSpellCatalogEntries=()=>desktop()?invoke<SpellInfo[]>("spell_catalog_entries"):Promise.resolve([]);
 const previewSpellCatalog:SpellCatalogStatus={cachedCount:0,processed:0,saved:0,failed:0,refreshing:false};
 export const getSpellCatalogStatus=()=>desktop()?invoke<SpellCatalogStatus>("spell_catalog_status"):Promise.resolve(previewSpellCatalog);
 export const reloadSpellCatalog=()=>desktop()?invoke<SpellCatalogStatus>("reload_spell_catalog"):Promise.resolve(previewSpellCatalog);
