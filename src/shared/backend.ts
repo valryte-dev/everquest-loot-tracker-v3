@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
 const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,compound:{projects:[],templates:[],activeId:null}};
@@ -8,7 +8,8 @@ export const bootstrapStatus=()=>desktop()?invoke<BootstrapStatus>("bootstrap_st
 export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promise.resolve(previewSnapshot);
 export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_page_snapshot",{page}):Promise.resolve(previewSnapshot);
 export const getActivityHistorySnapshot=()=>desktop()?invoke<ActivityHistorySnapshot>("activity_history_snapshot"):Promise.resolve({loot:[],mobs:[],offers:[],levels:[]});
-export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
+export const getDatabaseStats=()=>desktop()?invoke<DatabaseStats>("database_stats"):Promise.reject(new Error("Database statistics are available in the desktop app."));
+export const getCombatCleanupPreview=(keepDays:number)=>desktop()?invoke<DatabaseCleanupPreview>("database_cleanup_preview",{keepDays}):Promise.reject(new Error("Cleanup previews are available in the desktop app."));export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
 export const getGlobalStatus=()=>desktop()?invoke<GlobalStatusSnapshot>("global_status_snapshot"):Promise.resolve({tasks:[],damageEncounters:[]});
 export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDetail>("death_report_details",{id}):Promise.reject(new Error("Death reports are available in the desktop app."));
 export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));

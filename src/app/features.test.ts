@@ -24,6 +24,7 @@ describe("feature catalog", () => {
       "gems",
       "imports",
       "items",
+      "database",
       "system",
       "logs",
       "help",

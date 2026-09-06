@@ -1,4 +1,4 @@
-export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "spells" | "gems" | "imports" | "items" | "system" | "logs" | "help" | "changes";
+export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "spells" | "gems" | "imports" | "items" | "database" | "system" | "logs" | "help" | "changes";
 export type FeatureGroup = "Loot" | "Combat" | "Trading" | "Roster" | "Data" | "Application";
 export interface FeatureDefinition { key:FeatureKey; label:string; shortLabel:string; description:string; icon:string; phase:1|2|3|4; group:FeatureGroup }
 export const FEATURE_GROUPS:FeatureGroup[] = ["Loot", "Combat", "Trading", "Roster", "Data", "Application"];
@@ -18,6 +18,7 @@ export const FEATURES:FeatureDefinition[] = [
  {key:"gems",label:"Velious Armor Gems",shortLabel:"Armor Gems",icon:"◆",phase:2,group:"Roster",description:"Special Velious armor gems held across the entire character roster."},
  {key:"imports",label:"Import Center",shortLabel:"Import Center",icon:"⇩",phase:2,group:"Data",description:"Drop character exports, review import results, and publish selected files to P99 Planner."},
  {key:"items",label:"Master Items",shortLabel:"Master Items",icon:"▦",phase:2,group:"Data",description:"Item IDs, PigParse 30-day WTS values and protected manual corrections."},
+ {key:"database",label:"Database Management",shortLabel:"Database",icon:"DB",phase:2,group:"Data",description:"Inspect database growth, storage categories, health, backups, and preview safe retention policies."},
  {key:"system",label:"System",shortLabel:"System",icon:"⚙",phase:1,group:"Application",description:"Application updates, paths, watchers, aliases, themes, migration and database backups."},
  {key:"logs",label:"Application Logs",shortLabel:"Logs",icon:"≡",phase:1,group:"Application",description:"Rolling structured diagnostics with levels, search, pause, copy and export."},
  {key:"help",label:"Help",shortLabel:"Help",icon:"?",phase:4,group:"Application",description:"Brief guides for every workflow in the application."},

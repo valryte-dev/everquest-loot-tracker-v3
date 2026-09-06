@@ -1,4 +1,5 @@
 mod data;
+mod database_management;
 mod runtime;
 mod services;
 mod system_tasks;
@@ -132,6 +133,29 @@ pub fn damage_encounter_details(
     id: i64,
 ) -> Result<Value, String> {
     data::damage_encounter_details(&state.database, id)
+}
+
+#[tauri::command]
+pub async fn database_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<database_management::DatabaseStats, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || database_management::stats(&database))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn database_cleanup_preview(
+    state: tauri::State<'_, AppState>,
+    keep_days: u32,
+) -> Result<database_management::CleanupPreview, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database_management::preview_combat_retention(&database, keep_days)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
