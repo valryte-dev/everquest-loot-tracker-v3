@@ -7,8 +7,8 @@ const SAMPLE=`[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.
 [Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.
 [Sun Sep 06 10:53:06 2026] You crush Hexbone skeleton for 79 points of damage.
 [Sun Sep 06 10:53:10 2026] Legiteral crushes Hexbone skeleton for 81 points of damage.
-[Sun Sep 06 10:53:25 2026] You crush a mortiferous golem for 79 points of damage.
-[Sun Sep 06 10:53:26 2026] a mortiferous golem staggers as the light of dawn washes over it.`;
+[Sun Sep 06 10:53:25 2026] a mortiferous golem staggers as the light of dawn washes over it.
+[Sun Sep 06 10:53:26 2026] Asquatii tries to crush a mortiferous golem, but a mortiferous golem ripostes!`;
 type Verdict="correct"|"wrong";
 const parseTime=(value:string)=>{const parsed=Date.parse(value.includes("T")?value:value.replace(" ","T"));return Number.isFinite(parsed)?parsed:0};
 const number=(value:number)=>Math.round(value).toLocaleString();

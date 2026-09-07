@@ -39,11 +39,11 @@ Caster attribution is conservative:
 
 1. An item-glow message within three seconds attributes the landing to the glow owner. A local or ownerless glow uses the active log character.
 2. Otherwise, an exact `You begin casting <Spell Name>.` match within the preceding 15 seconds attributes the landing to the active log character.
-3. Otherwise, a local melee hit against the same target within the preceding three seconds classifies the landing as a weapon proc and attributes it to the active log character.
-4. Otherwise, the first player attack or riposte attempt against the same target within five seconds after the landing supplies the caster.
+3. Otherwise, the landing remains pending for exactly the next log line. If that immediately following line is a player attack or riposte attempt against the same target, that player is the caster and the application is classified as a weapon proc.
+4. An intervening line, a different target, or a non-melee event cancels proc attribution for that landing.
 5. If none of these clues exists, the caster remains `Unknown`.
 
-Attribution method is persisted as `item_glow`, `direct_cast`, `proc`, `next_attack`, or `unknown` and shown in the live data contract. Item glow retains priority because it explicitly identifies the owner; direct casting requires an exact spell-name match. Proc inference requires both a recent local melee event and the same normalized target, so simultaneous fights do not cross-attribute the effect.
+Attribution method is persisted as `item_glow`, `direct_cast`, `proc`, or `unknown` and shown in the live data contract. Item glow retains priority because it explicitly identifies the owner; direct casting requires an exact spell-name match. Proc inference is intentionally adjacency-based and requires the same normalized target, so unrelated lines and simultaneous fights do not cross-attribute the effect.
 
 ## Tick and refresh behavior
 

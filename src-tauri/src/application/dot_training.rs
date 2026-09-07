@@ -362,26 +362,22 @@ fn interpret_lines(
             decisions.push(format!("Stored {spell_name} as an exact local-cast clue for a matching DoT landing within the next 15 seconds."));
         }
         if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored as a caster clue for a DoT landing within the next 3 seconds.".into()); }
-        match parsed.as_ref() {
-            Some(LogEvent::Damage {
-                attacker_name,
-                mob_name,
-                damage_type,
-                ..
-            }) if attacker_name.eq_ignore_ascii_case(character)
-                && damage_type.as_str() == "melee" =>
-            {
-                decisions.push(format!("Stored the local melee hit on {mob_name} as a possible weapon-proc clue for the next 3 seconds."));
-            }
-            Some(LogEvent::ObservedMelee {
-                subject_name,
-                target_name,
-                ..
-            }) if subject_name.eq_ignore_ascii_case(character) => {
-                decisions.push(format!("Stored the local melee hit on {target_name} as a possible weapon-proc clue for the next 3 seconds."));
-            }
-            _ => {}
-        }        if matches!(parsed, Some(LogEvent::CombatAttempt { .. })) { decisions.push("Eligible to attribute an unknown DoT on the same target if it occurred within 5 seconds after landing.".into()); }
+        let preceding_proc = lines
+            .iter()
+            .position(|(_, candidate_offset, _)| candidate_offset == offset)
+            .and_then(|index| index.checked_sub(1))
+            .map(|index| lines[index].1)
+            .and_then(|preceding_offset| {
+                applications.iter().find(|dot| {
+                    dot.source_offset == preceding_offset && dot.attribution_method == "proc"
+                })
+            });
+        if let Some(dot) = preceding_proc {
+            decisions.push(format!(
+                "Attributed the immediately preceding {} landing on {} to {} as a weapon proc.",
+                dot.spell_name, dot.target_name, dot.caster_name
+            ));
+        }
         for event in direct { decisions.push(format!("Recorded explicit {} damage: {} used {} for {}.", event.damage_type, event.attacker, event.attack, event.damage)); }
         let (parser_event, summary) = parsed.as_ref().map(describe_event).unwrap_or_else(|| ("none".into(), if envelope.is_some() { "No standard combat event recognized.".into() } else { "Invalid or missing EverQuest timestamp envelope.".into() }));
         let status = if !landed.is_empty() { "dot" } else if parsed.is_some() { "recognized" } else if envelope.is_none() { "invalid" } else { "ignored" };
@@ -554,5 +550,19 @@ mod tests {
             "direct_cast"
         );
         assert_eq!(report.lines[1].status, "dot");
+
+        let proc_report = analyze(
+            &catalog,
+            "[Sun Sep 06 10:53:25 2026] a mortiferous golem staggers as the light of dawn washes over it.\n[Sun Sep 06 10:53:26 2026] Asquatii tries to crush a mortiferous golem, but a mortiferous golem ripostes!",
+            "Asquatii",
+            false,
+        )
+        .unwrap();
+        assert_eq!(proc_report.encounters[0].dots[0].caster_name, "Asquatii");
+        assert_eq!(proc_report.encounters[0].dots[0].attribution_method, "proc");
+        assert!(proc_report.lines[1]
+            .decisions
+            .iter()
+            .any(|decision| decision.contains("immediately preceding")));
     }
 }
