@@ -466,6 +466,56 @@ mod tests {
     }
 
     #[test]
+    fn glow_is_only_a_clue_and_never_creates_dot_damage_by_itself() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let glow = "[Sun Sep 06 10:53:00 2026] Your Test Weapon begins to glow.";
+        let glow_event = crate::domain::log_events::parse_log_event(glow, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                1,
+                glow,
+                "Asquatii",
+                glow_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                2,
+                "[Sun Sep 06 10:53:01 2026] Asquatii is surrounded by a protective light.",
+                "Asquatii",
+                None,
+            )
+            .unwrap();
+
+        let application_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM dot_applications", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let damage_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM damage_events", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!((application_count, damage_count), (0, 0));
+    }
+
+    #[test]
     fn immediately_following_same_target_attack_attributes_a_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();

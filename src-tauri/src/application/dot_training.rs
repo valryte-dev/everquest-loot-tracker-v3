@@ -361,7 +361,7 @@ fn interpret_lines(
         if let Some(LogEvent::SpellCastStarted { spell_name, .. }) = parsed.as_ref() {
             decisions.push(format!("Stored {spell_name} as an exact local-cast clue for a matching DoT landing within the next 15 seconds."));
         }
-        if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored as a caster clue for a DoT landing within the next 3 seconds.".into()); }
+        if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored only as a possible caster clue. A glow creates no damage; a separate landing must match a spell-catalog profile categorized as DoT or hybrid.".into()); }
         let preceding_proc = lines
             .iter()
             .position(|(_, candidate_offset, _)| candidate_offset == offset)

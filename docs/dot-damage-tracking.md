@@ -35,6 +35,8 @@ If no profile matches, or more than one profile matches the same line, no DoT is
 
 ## Caster attribution
 
+A glow message is never treated as evidence that damage occurred. Glows may represent direct damage, buffs, or other effects. The tracker creates a DoT application only when a separate landing line matches a cached spell-database profile categorized as `dot` or `hybrid`, with valid per-tick damage and duration fields.
+
 Caster attribution is conservative:
 
 1. An item-glow message within three seconds attributes the landing to the glow owner. A local or ownerless glow uses the active log character.

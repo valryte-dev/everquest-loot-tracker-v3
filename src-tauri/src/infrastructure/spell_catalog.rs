@@ -828,6 +828,48 @@ mod tests {
         );
     }
     #[test]
+    fn dot_profiles_exclude_direct_damage_and_buff_spells() {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spell-info.db")).unwrap();
+        for (name, template) in [
+            (
+                "Catalog Dot",
+                r#"{{Spellpage|
+| slots = {{SpellSlotRow | 1 | Decrease Hitpoints by 25 per tick }}
+| duration = 4 ticks
+| msg_cast_on_other = Someone begins to smolder.
+}}"#,
+            ),
+            (
+                "Catalog Direct",
+                r#"{{Spellpage|
+| slots = {{SpellSlotRow | 1 | Decrease Hitpoints by 300 }}
+| duration = Instant
+| msg_cast_on_other = Someone is struck by force.
+}}"#,
+            ),
+            (
+                "Catalog Buff",
+                r#"{{Spellpage|
+| slots = {{SpellSlotRow | 1 | Increase Strength by 20 }}
+| duration = 10 minutes
+| msg_cast_on_other = Someone looks stronger.
+}}"#,
+            ),
+        ] {
+            catalog
+                .save(&parse_spell_template(name, template).unwrap())
+                .unwrap();
+        }
+
+        let profiles = catalog.dot_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].spell_name, "Catalog Dot");
+        assert_eq!(profiles[0].damage_per_tick, 25);
+        assert_eq!(profiles[0].tick_count, 4);
+    }
+
+    #[test]
     #[ignore = "requires public Project 1999 wiki access"]
     fn downloads_the_complete_spell_category_in_batches() {
         let directory = tempfile::tempdir().unwrap();
