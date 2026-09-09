@@ -535,3 +535,27 @@ After every individual complete or reopen operation, recompute the parent sale s
 The Phase 2 UI must not expose an item-wide "mark all payouts complete" action. It should show each canonical participant with an independent Paid/Pending state and an icon action for that participant. Player cards should total only currently unpaid shares. A sale may therefore contribute to one player's paid history and another player's outstanding balance at the same time.
 
 Existing item-wide completed sales are migrated by creating an individual payment record for every stored participant, using the prior overall payment/completion timestamp. Existing sold records that were not completed remain pending.
+
+## 18. Potential-payout Discord summary
+
+The Phase 1 potential-income panel provides separate **Copy brief** and **Copy detailed** actions for Discord-friendly Markdown summaries of currently held, unsold split loot. Each player card also provides a clipboard icon that copies only that canonical player's potential payout and item details.
+
+The export must be generated from the same alias-consolidated `SplitPayoutSummary` model rendered by the UI. It must not recalculate participants or payouts through a separate data path.
+
+The brief export contains only the canonical player names and their potential totals. The detailed and individual-player exports include:
+
+- total estimated value and held-item count;
+- total estimated player shares after whole-platinum rounding;
+- one section per canonical player, ordered by highest potential income;
+- each held item, the player's estimated share, full item estimate, participant count, holder, and mob when available; and
+- a notice that estimates can change when items are sold.
+
+Only held contributions appear in this export. Pending and completed payouts remain in their respective lifecycle views. Output is capped below Discord's 2,000-character message limit and states when additional details were omitted.
+
+## Pasted sold-list reconciliation
+
+The Phase 1 Splits view includes a collapsible reconciler for sale reports received as plain text. It accepts one sale per line in `price - item` form, with flexible dash, colon, or whitespace delimiters.
+
+The frontend parser is feature-owned by `src/app/splits/saleReconciliation.ts`. It normalizes case, punctuation, the `Spell:` prefix, common singular/plural differences, acronyms, suffixes, and minor spelling variations. Matching is one-to-one: repeated item names consume separate held split records and uncertain or ambiguous labels remain unconfirmed for manual review. An optional list-owner filter scopes candidates to the person currently holding the items.
+
+Applying a preview sends only confirmed `key`, `valuePp`, and `note` records through `split.reconcileSales`. The Rust application service validates the bounded typed request and completes the whole batch in one SQLite transaction. A failure or stale split key rolls back every sale. Successful rows use the existing split completion path, preserve their item, mob, holder, and participant relationships, leave Phase 1, and create Phase 2 per-person pending payout records. Unmatched pasted lines do not mutate data.

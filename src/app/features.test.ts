@@ -16,6 +16,7 @@ describe("feature catalog", () => {
       "death-reports",
       "damage",
       "dot-lab",
+      "ch-lab",
       "splits",
       "compounds",
       "merchant",

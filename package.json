@@ -1,11 +1,12 @@
 {
   "name": "everquest-loot-tracker",
   "private": true,
-  "version": "3.16.0",
+  "version": "3.17.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:standalone": "tauri build --no-bundle",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run"
@@ -14,6 +15,7 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2.5.0",
+    "html-to-image": "^1.11.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

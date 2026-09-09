@@ -1,4 +1,4 @@
-import type {DamageEvent,DamageParticipant} from "../../shared/contracts";
+import type {DamageEncounter,DamageEvent,DamageParticipant,DamageSpellMetric,DamageTarget} from "../../shared/contracts";
 
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 
@@ -8,6 +8,107 @@ export interface MeterPlayer extends DamageParticipant {
  dps:number;
 }
 
+export interface IncomingTarget extends DamageTarget {
+ rank:number;
+ contribution:number;
+}
+
+export interface SpellMetricTotals {
+ procCount:number;
+ directProcDamage:number;
+ dotDamage:number;
+ dotTickCount:number;
+ procDotDamage:number;
+ totalProcDamage:number;
+}
+
+export interface PlayerEffectTotals {
+ procCount:number;
+ procDirectDamage:number;
+ procDotDamage:number;
+ spellCount:number;
+ spellDirectDamage:number;
+ spellDotDamage:number;
+}
+export interface ProcLeader {
+ name:string;
+ rank:number;
+ procCount:number;
+ directDamage:number;
+ dotDamage:number;
+ totalDamage:number;
+ contribution:number;
+}
+
+export interface DamageComposition {
+ melee:number;
+ direct:number;
+ dot:number;
+ total:number;
+ meleePercent:number;
+ directPercent:number;
+ dotPercent:number;
+}
+
+export function playerSpellMetrics(encounter:DamageEncounter,playerName:string):DamageSpellMetric[]{
+ const wanted=playerName.trim().toLowerCase();
+ return (encounter.spellMetrics||[]).filter(metric=>metric.playerName.trim().toLowerCase()===wanted);
+}
+
+export function summarizeSpellMetrics(metrics:DamageSpellMetric[]):SpellMetricTotals{
+ return metrics.reduce((total,metric)=>({
+  procCount:total.procCount+metric.procCount,
+  directProcDamage:total.directProcDamage+metric.directProcDamage,
+  dotDamage:total.dotDamage+metric.dotDamage,
+  dotTickCount:total.dotTickCount+metric.dotTickCount,
+  procDotDamage:total.procDotDamage+metric.procDotDamage,
+  totalProcDamage:total.totalProcDamage+metric.totalProcDamage,
+ }),{procCount:0,directProcDamage:0,dotDamage:0,dotTickCount:0,procDotDamage:0,totalProcDamage:0});
+}
+
+export function rankProccers(metrics:DamageSpellMetric[]):ProcLeader[]{
+ const grouped=new Map<string,{name:string;procCount:number;directDamage:number;dotDamage:number}>();
+ for(const metric of metrics){
+  if(metric.procCount<=0&&metric.totalProcDamage<=0)continue;
+  const key=metric.playerName.trim().toLowerCase();
+  const current=grouped.get(key)||{name:metric.playerName,procCount:0,directDamage:0,dotDamage:0};
+  current.procCount+=metric.procCount;
+  current.directDamage+=metric.directProcDamage;
+  current.dotDamage+=metric.procDotDamage;
+  grouped.set(key,current);
+ }
+ const ranked=[...grouped.values()].sort((a,b)=>(b.directDamage+b.dotDamage)-(a.directDamage+a.dotDamage)||b.procCount-a.procCount||a.name.localeCompare(b.name));
+ const total=ranked.reduce((sum,row)=>sum+row.directDamage+row.dotDamage,0);
+ return ranked.map((row,index)=>({...row,rank:index+1,totalDamage:row.directDamage+row.dotDamage,contribution:(row.directDamage+row.dotDamage)/Math.max(1,total)*100}));
+}
+export function summarizePlayerEffects(encounter:DamageEncounter,events:DamageEvent[],playerName:string):PlayerEffectTotals{
+ const metrics=playerSpellMetrics(encounter,playerName);
+ const proc=summarizeSpellMetrics(metrics);
+ const wanted=playerName.trim().toLowerCase();
+ const explicitDirect=events.filter(event=>event.attacker.trim().toLowerCase()===wanted&&event.damageType==="spell"&&event.source!=="proc"&&event.source!=="dot");
+ const spellDotDamage=Math.max(0,proc.dotDamage-proc.procDotDamage);
+ const dotSpellCount=metrics.filter(metric=>metric.dotDamage>metric.procDotDamage).length;
+ return {
+  procCount:proc.procCount,
+  procDirectDamage:proc.directProcDamage,
+  procDotDamage:proc.procDotDamage,
+  spellCount:explicitDirect.length+dotSpellCount,
+  spellDirectDamage:explicitDirect.reduce((total,event)=>total+event.damage,0),
+  spellDotDamage,
+ };
+}
+
+export function damageComposition(encounter:Pick<DamageEncounter,"totalDamage"|"meleeDamage"|"spellDamage"|"dotDamage">):DamageComposition{
+ const dot=Math.max(0,Math.min(encounter.dotDamage||0,encounter.spellDamage));
+ const direct=Math.max(0,encounter.spellDamage-dot);
+ const melee=Math.max(0,encounter.meleeDamage);
+ const total=Math.max(1,encounter.totalDamage);
+ return {melee,direct,dot,total:encounter.totalDamage,meleePercent:melee/total*100,directPercent:direct/total*100,dotPercent:dot/total*100};
+}
+export interface RollingDpsPoint {
+ second:number;
+ dps:Record<string,number>;
+}
 export interface MeterTrendPoint {
  second:number;
  totals:Record<string,number>;
@@ -31,6 +132,13 @@ export function rankMeterPlayers(players:DamageParticipant[],totalDamage:number,
    contribution:player.totalDamage/Math.max(1,totalDamage)*100,
    dps:player.totalDamage/Math.max(1,durationSeconds),
   }));
+}
+
+export function rankIncomingTargets(targets:DamageTarget[]):IncomingTarget[]{
+ const total=targets.reduce((sum,target)=>sum+target.totalDamage,0);
+ return [...targets]
+  .sort((a,b)=>b.totalDamage-a.totalDamage||b.maxHit-a.maxHit||a.name.localeCompare(b.name))
+  .map((target,index)=>({...target,rank:index+1,contribution:target.totalDamage/Math.max(1,total)*100}));
 }
 
 export function buildMeterTrend(events:DamageEvent[],startedAt:string,names:string[],maxPoints=60):MeterTrendPoint[]{
@@ -58,4 +166,28 @@ export function buildMeterTrend(events:DamageEvent[],startedAt:string,names:stri
   if(!sampled.length||sampled.at(-1)!==points[source])sampled.push(points[source]);
  }
  return sampled;
+}
+export function buildRollingDpsTrend(events:DamageEvent[],startedAt:string,names:string[],durationSeconds:number,windowSeconds=30,horizonSeconds=120):RollingDpsPoint[]{
+ const canonical=new Map(names.map(name=>[name.toLowerCase(),name]));
+ const bySecond=new Map<number,Map<string,number>>();
+ const duration=Math.max(0,Math.floor(durationSeconds)),window=Math.max(1,Math.floor(windowSeconds));
+ for(const event of events){
+  const name=canonical.get(event.attacker.toLowerCase());
+  if(!name)continue;
+  const second=Math.max(0,Math.floor((stamp(event.happenedAt)-stamp(startedAt))/1000));
+  if(second>duration)continue;
+  const bucket=bySecond.get(second)||new Map<string,number>();
+  bucket.set(name,(bucket.get(name)||0)+event.damage);
+  bySecond.set(second,bucket);
+ }
+ const start=Math.max(0,duration-Math.max(1,Math.floor(horizonSeconds))),points:RollingDpsPoint[]=[];
+ for(let second=start;second<=duration;second++){
+  const totals:Record<string,number>=Object.fromEntries(names.map(name=>[name,0]));
+  for(let cursor=Math.max(0,second-window+1);cursor<=second;cursor++){
+   for(const [name,damage] of bySecond.get(cursor)||[])totals[name]=(totals[name]||0)+damage;
+  }
+  const divisor=Math.min(window,Math.max(1,second));
+  points.push({second,dps:Object.fromEntries(names.map(name=>[name,(totals[name]||0)/divisor]))});
+ }
+ return points;
 }

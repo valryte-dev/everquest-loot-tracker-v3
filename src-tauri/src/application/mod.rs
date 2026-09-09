@@ -1,9 +1,15 @@
+mod ch_replay_library;
+mod ch_training;
+mod combat_metrics;
 mod data;
 mod database_management;
 mod dot_tracking;
 mod dot_training;
+mod proc_coach;
+mod replay_library;
 mod runtime;
 mod services;
+mod split_reconciliation;
 mod system_tasks;
 
 use serde::Deserialize;
@@ -97,7 +103,7 @@ fn clear_current_group(database: &Database) -> Result<(), String> {
     database
         .connect()
         .map_err(|error| error.to_string())?
-        .execute("DELETE FROM current_group", [])
+        .execute_batch("DELETE FROM current_group; DELETE FROM app_settings WHERE key IN ('damage_target_character','damage_target_encounter_id');")
         .map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -128,6 +134,124 @@ pub fn activity_history_snapshot(state: tauri::State<'_, AppState>) -> Result<Va
 #[tauri::command]
 pub fn death_report_details(state: tauri::State<'_, AppState>, id: i64) -> Result<Value, String> {
     data::death_report_details(&state.database, id)
+}
+
+#[tauri::command]
+pub async fn ch_training_preview(
+    text: String,
+    active_character: String,
+) -> Result<ch_training::ChTrainingReport, String> {
+    tauri::async_runtime::spawn_blocking(move || ch_training::analyze(&text, &active_character))
+        .await
+        .map_err(|error| error.to_string())
+}
+#[tauri::command]
+pub async fn ch_replay_library_list(
+) -> Result<Vec<ch_replay_library::ClericHealReplayEntry>, String> {
+    tauri::async_runtime::spawn_blocking(ch_replay_library::list)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn ch_replay_library_load(
+    path: String,
+) -> Result<ch_replay_library::ClericHealReplayFile, String> {
+    tauri::async_runtime::spawn_blocking(move || ch_replay_library::load(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_ch_replay(
+    request: ch_replay_library::SaveClericHealReplayRequest,
+) -> Result<ch_replay_library::ClericHealReplayEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || ch_replay_library::save(request))
+        .await
+        .map_err(|error| error.to_string())?
+}
+#[tauri::command]
+pub async fn replay_library_list() -> Result<Vec<replay_library::ReplayFileEntry>, String> {
+    tauri::async_runtime::spawn_blocking(replay_library::list)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn replay_library_load(path: String) -> Result<replay_library::ReplayFile, String> {
+    tauri::async_runtime::spawn_blocking(move || replay_library::load(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn replay_library_import(
+    path: String,
+) -> Result<replay_library::ReplayFileEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || replay_library::import(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn proc_coach_status() -> Result<proc_coach::ProcCoachStatus, String> {
+    tauri::async_runtime::spawn_blocking(proc_coach::credential_status)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn proc_coach_save_key(api_key: String) -> Result<proc_coach::ProcCoachStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || proc_coach::save_api_key(&api_key))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn proc_coach_delete_key() -> Result<proc_coach::ProcCoachStatus, String> {
+    tauri::async_runtime::spawn_blocking(proc_coach::delete_api_key)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn proc_coach_analyze(
+    state: tauri::State<'_, AppState>,
+    text: String,
+    active_character: String,
+    project_all_ticks: bool,
+) -> Result<proc_coach::ProcCoachReview, String> {
+    let spell_catalog = state.spell_catalog.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let report =
+            dot_training::analyze(&spell_catalog, &text, &active_character, project_all_ticks)?;
+        let parser_report = serde_json::to_string(&report).map_err(|error| error.to_string())?;
+        proc_coach::analyze(&text, &active_character, &parser_report)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn replay_library_save_coach_review(
+    path: String,
+    review: proc_coach::ProcCoachSavedReview,
+) -> Result<replay_library::ReplayFile, String> {
+    tauri::async_runtime::spawn_blocking(move || replay_library::append_coach_review(&path, review))
+        .await
+        .map_err(|error| error.to_string())?
+}
+#[tauri::command]
+pub async fn save_damage_replay(
+    state: tauri::State<'_, AppState>,
+    encounter_id: i64,
+) -> Result<replay_library::ReplayFileEntry, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        replay_library::save_encounter(&database, encounter_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -351,6 +475,7 @@ mod tests {
                 [],
             )
             .unwrap();
+        connection.execute_batch("INSERT INTO app_settings(key,value) VALUES('damage_target_character','Youngman'); INSERT INTO app_settings(key,value) VALUES('damage_target_encounter_id','99');").unwrap();
         drop(connection);
 
         clear_current_group(&database).unwrap();
@@ -362,6 +487,14 @@ mod tests {
         let remembered: i64 = connection
             .query_row("SELECT COUNT(*) FROM known_members", [], |row| row.get(0))
             .unwrap();
+        let target_preferences: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM app_settings WHERE key LIKE 'damage_target_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!((active, remembered), (0, 2));
+        assert_eq!(target_preferences, 0);
     }
 }

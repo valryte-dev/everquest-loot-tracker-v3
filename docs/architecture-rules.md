@@ -73,6 +73,7 @@ A change is complete only when all applicable items pass:
 - Strict TypeScript and production frontend build.
 - Cross-platform CI remains green on Windows, macOS, and Linux.
 - A local standalone Windows executable is built for application-code changes unless the user explicitly says otherwise. Do not build Linux locally unless requested.
+- Build distributable standalone executables through `npm run build:standalone` (Tauri `build --no-bundle`) so production web assets use the embedded custom protocol. Plain `cargo build --release` creates a development-protocol binary that may try to load `localhost` and must not be distributed.
 - Existing database migration and clean database creation are verified for schema changes.
 - Watcher, character-switch, backlog, network-failure, and form-stability regressions are tested when affected.
 - Documentation and rollback instructions are updated.

@@ -40,3 +40,123 @@ export function buildSplitPayoutSummary(splits:Split[],history:History[],aliases
  const pendingRows=history.filter(row=>row.disposition==="sold"&&row.payoutStatus!=="completed"),paidRows=history.filter(row=>row.disposition==="sold"&&row.payoutStatus==="completed"),consumed=history.filter(row=>row.disposition==="consumed");
  return {people:result,heldValuePp:splits.reduce((sum,row)=>sum+(row.payoutValuePp??row.marketValuePp??0),0),pendingValuePp:result.reduce((sum,person)=>sum+person.pendingSharePp,0),paidValuePp:paidRows.reduce((sum,row)=>sum+row.valuePp,0),consumedValuePp:consumed.reduce((sum,row)=>sum+row.valuePp,0),heldCount:splits.length,pendingCount:pendingRows.length,paidCount:paidRows.length,consumedCount:consumed.length};
 }
+const discordMoney=(value:number)=>`${Math.round(value).toLocaleString("en-US")} pp`;
+
+const heldPeople=(summary:SplitPayoutSummary)=>summary.people
+ .filter(person=>person.heldItems>0)
+ .sort((a,b)=>b.heldSharePp-a.heldSharePp||a.name.localeCompare(b.name));
+
+const heldContributionLines=(person:PersonPayoutSummary)=>person.contributions
+ .filter(item=>item.status==="held")
+ .sort((a,b)=>b.shareValuePp-a.shareValuePp||a.itemName.localeCompare(b.itemName))
+ .map(item=>{
+  const context=[item.holderName?`held by ${item.holderName}`:"",item.mobName?`dropped by ${item.mobName}`:""].filter(Boolean);
+  return `- ${item.itemName} - **${discordMoney(item.shareValuePp)} share** (${discordMoney(item.totalValuePp)} / ${item.participantCount})${context.length?` - ${context.join("; ")}`:""}`;
+ });
+
+const boundDiscordMessage=(lines:string[])=>{
+ const limit=1900,omission="\n\n_Additional payout details omitted._",message=lines.join("\n");
+ if(message.length<=limit)return message;
+ const kept:string[]=[];
+ for(const line of lines){if([...kept,line].join("\n").length+omission.length>limit)break;kept.push(line)}
+ return `${kept.join("\n")}${omission}`;
+};
+
+export function discordPotentialPayoutBriefSummary(summary:SplitPayoutSummary):string{
+ const people=heldPeople(summary);
+ if(!people.length)return "**Potential Split Payouts**\n_No unsold split loot is currently tracked._";
+ return boundDiscordMessage(["**Potential Split Payouts**",...people.map(person=>`- **${person.name}:** ${discordMoney(person.heldSharePp)}`)]);
+}
+
+export function discordPlayerPotentialPayoutSummary(person:PersonPayoutSummary):string{
+ return boundDiscordMessage([
+  `**${person.name} - Potential Split Payout**`,
+  `Total: **${discordMoney(person.heldSharePp)}** across **${person.heldItems} item${person.heldItems===1?"":"s"}**`,
+  "*Unsold loot estimate - final payout may change when items sell.*",
+  "",
+  ...heldContributionLines(person),
+ ]);
+}
+
+export function discordPotentialPayoutSummary(summary:SplitPayoutSummary):string{
+ const people=heldPeople(summary);
+ if(!people.length)return "**Potential Split Payouts**\n_No unsold split loot is currently tracked._";
+ const estimatedShares=people.reduce((sum,person)=>sum+person.heldSharePp,0);
+ const lines=[
+  "**Potential Split Payouts**",
+  "*Unsold loot estimates - final payouts may change when items sell.*",
+  `Tracked loot: **${discordMoney(summary.heldValuePp)}** across **${summary.heldCount} item${summary.heldCount===1?"":"s"}**`,
+  `Estimated player shares: **${discordMoney(estimatedShares)}**`,
+ ];
+ people.forEach(person=>{
+  lines.push("",`**${person.name} - ${discordMoney(person.heldSharePp)} potential**`);
+  lines.push(...heldContributionLines(person));
+ });
+ return boundDiscordMessage(lines);
+}
+
+export function discordSoldItemsSummary(history:History[],aliases:Alias[]):string{
+ const aliasMap=new Map(aliases.map(alias=>[alias.alias.trim().toLowerCase(),alias.canonical.trim()]));
+ const canonical=(name:string)=>aliasMap.get(name.trim().toLowerCase())||name.trim();
+ const lines=history.filter(row=>row.disposition==="sold").map(row=>{
+  const people=[...new Map(row.attendees.map(name=>canonical(name)).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+  const splitValue=Math.floor(row.valuePp/Math.max(1,people.length));
+  return `- **${row.itemName}** - Sale price: **${discordMoney(row.valuePp)}** - Split names: ${people.join(", ")||"None"} - Split value: **${discordMoney(splitValue)} each**`;
+ });
+ return lines.length?boundDiscordMessage(lines):"_No sold split items to share._";
+}
+
+const discordDetailCell=(value:string|undefined)=>value?.replace(/[\r\n]+/g," ").trim()||"-";
+
+function soldItemsDiscordMessages(title:string,rows:History[],rowLines:string[]):string[]{
+ if(!rows.length)return ["**"+title+"**\n_No sold split items to share._"];
+ const saleTotal=rows.reduce((sum,row)=>sum+row.valuePp,0);
+ const bodyLimit=1750,segments:string[]=[];
+ rowLines.forEach(rowLine=>{
+  let remaining=rowLine;
+  while(remaining.length>bodyLimit){
+   const naturalBreak=remaining.lastIndexOf(" - ",bodyLimit),breakAt=naturalBreak>0?naturalBreak:bodyLimit;
+   segments.push(remaining.slice(0,breakAt));
+   remaining=remaining.slice(breakAt).replace(/^ - /,"- ");
+  }
+  if(remaining)segments.push(remaining);
+ });
+ const messages:string[]=[];
+ segments.forEach(segment=>{
+  const index=messages.length-1,current=messages[index];
+  if(current&&current.length+segment.length+1<=bodyLimit)messages[index]=current+"\n"+segment;
+  else messages.push(segment);
+ });
+ return messages.map((body,index)=>[
+  "**"+title+"**",
+  "_Message "+(index+1)+" of "+messages.length+"_",
+  ...(index===0?["**"+rows.length+" items | "+discordMoney(saleTotal)+" total sale value**"]:[]),
+  body,
+ ].join("\n"));
+}
+
+function soldItemCanonicalizer(aliases:Alias[]){
+ const aliasMap=new Map(aliases.map(alias=>[alias.alias.trim().toLowerCase(),alias.canonical.trim()]));
+ return (name:string)=>aliasMap.get(name.trim().toLowerCase())||name.trim();
+}
+
+export function soldItemsCompactMessages(history:History[],aliases:Alias[]):string[]{
+ const rows=history.filter(row=>row.disposition==="sold"),canonical=soldItemCanonicalizer(aliases);
+ const rowLines=rows.map(row=>{
+  const people=[...new Map(row.attendees.map(name=>canonical(name)).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+  return "- **"+discordDetailCell(row.itemName)+"** - Sale price: **"+discordMoney(row.valuePp)+"** - Split toons: "+discordDetailCell(people.join(", ")||"None");
+ });
+ return soldItemsDiscordMessages("Sold Split Items - Compact",rows,rowLines);
+}
+
+export function soldItemsFullDetailMessages(history:History[],aliases:Alias[]):string[]{
+ const rows=history.filter(row=>row.disposition==="sold"),canonical=soldItemCanonicalizer(aliases);
+ const rowLines=rows.map(row=>{
+  const people=[...new Map(row.attendees.map(name=>canonical(name)).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+  const each=Math.floor(row.valuePp/Math.max(1,people.length));
+  const paid=new Set((row.payouts||[]).map(payout=>canonical(payout.name).toLowerCase()));
+  const payouts=people.map(name=>name+" ["+(paid.has(name.toLowerCase())?"paid":"pending")+"]").join(", ")||"None";
+  return "- **"+discordDetailCell(row.itemName)+"** - Dropped by: "+discordDetailCell(row.mobName)+" - Held / sold by: "+discordDetailCell(row.looterName)+" - Player payouts: "+discordDetailCell(payouts)+" - Sale value: **"+discordMoney(row.valuePp)+"** - Each payout: **"+discordMoney(each)+"** - Note: "+discordDetailCell(row.note)+" - Sold / consumed: "+discordDetailCell(row.completedAt);
+ });
+ return soldItemsDiscordMessages("Sold Split Items - Full Detail",rows,rowLines);
+}

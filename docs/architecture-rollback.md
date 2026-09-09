@@ -1,11 +1,12 @@
 # Architecture refactor checkpoints and rollback
 
-The architecture work was delivered as additive, independently tagged checkpoints. No legacy loot, split, compound, history, inventory, combat, or market tables were removed.
+The architecture work was delivered as additive, independently tagged checkpoints. No legacy loot, split, compound, history, inventory, combat, or market tables were removed. Schema 30 only adds `combat_spell_activity`; older builds ignore this table, so code rollback remains non-destructive.
 
 ## Checkpoints
 
 | Tag | Purpose |
 | --- | --- |
+| `pre-proc-metrics-2026-09-06` | Verified v3.16.0 DoT-training baseline before proc persistence, direct-damage catalog enrichment, and combat-meter changes |
 | `pre-dot-damage-tracking-2026-09-06` | Clean v3.16.0 baseline before spell classification and inferred DoT combat tracking |
 | `dot-damage-tracking-2026-09-06` | Verified implementation checkpoint after additive schema, parser, runtime, UI, and tests |
 | `pre-dot-training-page-2026-09-06` | Verified DoT implementation immediately before the isolated parser training workspace |
@@ -19,6 +20,13 @@ The architecture work was delivered as additive, independently tagged checkpoint
 | `architecture-phase-7-contracts` | Typed frontend contracts and safe online database backup/restore |
 | database-management-preview | Read-only database statistics and cleanup previews |
 | pre-folder-reconcile-lock-fix-2026-09-06 | Rollback point before startup writer sequencing and runtime transaction coordination |
+
+## Combat schema compatibility
+
+Schema 31 adds the derived `combat_pet_evidence` table used to classify multi-word and otherwise-unowned pets as separate outgoing fighters. It contains no user-authored data and is rebuilt by a Damage Tracker rescan. Builds before schema 31 ignore this additive table.
+## CH replay compatibility
+
+CH encounter replay is additive and does not change the SQLite schema. Portable `.eqch.json` files live in the `ch-chain-replays` application-data directory. Rolling back the application leaves those files untouched; older builds ignore them. Copy that directory before removing or editing replay files manually.
 
 ## Safest rollback workflow
 

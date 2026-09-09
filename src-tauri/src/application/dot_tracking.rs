@@ -1,7 +1,9 @@
-use super::runtime::record_inferred_dot_tick;
+use super::combat_metrics::{
+    insert_or_get_damage_encounter, record_inferred_dot_tick, record_inferred_proc_damage,
+};
 use crate::{
     domain::log_events::{parse_envelope, LogEvent},
-    infrastructure::spell_catalog::{DotSpellProfile, SpellCatalog},
+    infrastructure::spell_catalog::{CombatSpellProfile, SpellCatalog},
 };
 use chrono::{Duration, Local, NaiveDateTime};
 use regex::Regex;
@@ -9,10 +11,11 @@ use rusqlite::{params, OptionalExtension};
 use std::time::{Duration as StdDuration, Instant};
 
 const GLOW_WINDOW_SECONDS: i64 = 3;
-const CAST_WINDOW_SECONDS: i64 = 15;
+const CAST_FALLBACK_WINDOW_SECONDS: i64 = 15;
+const CAST_RESOLUTION_TOLERANCE_MILLISECONDS: i64 = 2_000;
 
 struct CompiledProfile {
-    profile: DotSpellProfile,
+    profile: CombatSpellProfile,
     landing: Regex,
 }
 
@@ -20,17 +23,34 @@ struct CompiledProfile {
 struct RecentGlow {
     happened_at: NaiveDateTime,
     owner_name: String,
+    item_name: String,
 }
 #[derive(Clone)]
 struct RecentCast {
     happened_at: NaiveDateTime,
+    expected_at: Option<NaiveDateTime>,
     spell_name: String,
 }
+#[derive(Clone)]
+struct RecentNonMelee {
+    source: String,
+    happened_at: NaiveDateTime,
+    target_name: String,
+    amount: u64,
+}
+
 #[derive(Clone)]
 struct PendingProc {
     source: String,
     source_offset: i64,
+    happened_at: NaiveDateTime,
     target_name: String,
+    spell_name: String,
+    direct_damage: Option<u64>,
+    preceding_non_melee: Option<RecentNonMelee>,
+    damage_per_tick: Option<u64>,
+    tick_interval_seconds: u32,
+    tick_count: Option<u32>,
 }
 
 pub struct DotTracker {
@@ -39,6 +59,7 @@ pub struct DotTracker {
     loaded_at: Option<Instant>,
     recent_glow: Option<RecentGlow>,
     recent_cast: Option<RecentCast>,
+    recent_non_melee: Option<RecentNonMelee>,
     pending_proc: Option<PendingProc>,
 }
 
@@ -50,6 +71,7 @@ impl DotTracker {
             loaded_at: None,
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         }
     }
@@ -61,7 +83,7 @@ impl DotTracker {
         {
             return;
         }
-        if let Ok(profiles) = self.catalog.dot_profiles() {
+        if let Ok(profiles) = self.catalog.combat_profiles() {
             self.profiles = profiles.into_iter().filter_map(compile_profile).collect();
             self.loaded_at = Some(Instant::now());
         }
@@ -80,10 +102,11 @@ impl DotTracker {
             return Ok(0);
         };
         self.refresh_profiles();
+        let preceding_non_melee = self.recent_non_melee.take();
         let mut changed = 0;
         if let Some(pending) = self.pending_proc.take() {
             if pending.source == source {
-                let proc_caster = match event {
+                let combat_actor = match event {
                     Some(LogEvent::CombatAttempt {
                         attacker_name,
                         mob_name,
@@ -110,11 +133,17 @@ impl DotTracker {
                     }
                     _ => None,
                 };
-                if let Some(caster) = proc_caster {
-                    changed += attribute_pending_proc(
+                if let Some(combat_actor) = combat_actor {
+                    let caster = if pending.preceding_non_melee.is_some() {
+                        character
+                    } else {
+                        combat_actor
+                    };
+                    changed += record_proc_occurrence(
                         connection,
-                        &pending.source,
-                        pending.source_offset,
+                        &pending,
+                        source_offset,
+                        character,
                         caster,
                     )?;
                 }
@@ -138,17 +167,45 @@ impl DotTracker {
         }
         changed += self.flush_due(connection, happened_at)?;
 
-        if let Some(LogEvent::ItemGlow { owner_name, .. }) = event {
+        if let Some(LogEvent::ItemGlow {
+            owner_name,
+            item_name,
+            ..
+        }) = event
+        {
             self.recent_glow = Some(RecentGlow {
                 happened_at,
                 owner_name: owner_name.clone().unwrap_or_else(|| character.to_owned()),
+                item_name: item_name.clone(),
             });
         }
         if let Some(LogEvent::SpellCastStarted { spell_name, .. }) = event {
+            let expected_at = self
+                .profiles
+                .iter()
+                .find(|profile| profile.profile.spell_name.eq_ignore_ascii_case(spell_name))
+                .and_then(|profile| profile.profile.casting_time_seconds)
+                .map(|seconds| {
+                    happened_at + Duration::milliseconds((seconds * 1_000.0).round() as i64)
+                });
             self.recent_cast = Some(RecentCast {
                 happened_at,
+                expected_at,
                 spell_name: spell_name.clone(),
             });
+        }
+        if matches!(event, Some(LogEvent::SpellInterrupted { .. })) {
+            self.recent_cast = None;
+            self.recent_glow = None;
+        }
+        if let Some(LogEvent::SpellResisted { spell_name, .. }) = event {
+            if self
+                .recent_cast
+                .as_ref()
+                .is_some_and(|cast| cast_resolution_matches(cast, spell_name, happened_at))
+            {
+                self.recent_cast = None;
+            }
         }
 
         let matches = self
@@ -165,49 +222,94 @@ impl DotTracker {
         if matches.len() == 1 {
             let (profile, target) = &matches[0];
             let glow_caster = self.recent_glow.as_ref().filter(|glow| {
-                (0..=GLOW_WINDOW_SECONDS).contains(
-                    &happened_at
-                        .signed_duration_since(glow.happened_at)
-                        .num_seconds(),
-                )
-            });
-            let direct_cast = self.recent_cast.as_ref().is_some_and(|cast| {
-                cast.spell_name.eq_ignore_ascii_case(&profile.spell_name)
-                    && (0..=CAST_WINDOW_SECONDS).contains(
+                glow.owner_name.eq_ignore_ascii_case(character)
+                    && (0..=GLOW_WINDOW_SECONDS).contains(
                         &happened_at
-                            .signed_duration_since(cast.happened_at)
+                            .signed_duration_since(glow.happened_at)
                             .num_seconds(),
                     )
             });
+            let direct_cast = self.recent_cast.as_ref().is_some_and(|cast| {
+                cast_resolution_matches(cast, &profile.spell_name, happened_at)
+            });
 
             let has_glow = glow_caster.is_some();
-            let (caster, attribution_method) = if let Some(glow) = glow_caster {
-                (glow.owner_name.as_str(), "item_glow")
-            } else if direct_cast {
-                (character, "direct_cast")
-            } else {
-                ("Unknown", "unknown")
-            };
-            changed += land_dot(
-                connection,
-                source,
-                source_offset,
-                character,
-                happened_at,
-                target,
-                caster,
-                attribution_method,
-                profile,
-            )?;
+            if has_glow || direct_cast {
+                let (attribution_method, source_kind, source_name) = if let Some(glow) = glow_caster
+                {
+                    ("item_glow", "item_click", Some(glow.item_name.as_str()))
+                } else {
+                    ("direct_cast", "direct", None)
+                };
+                changed += record_confirmed_landing(
+                    connection,
+                    source,
+                    source_offset,
+                    character,
+                    happened_at,
+                    target,
+                    character,
+                    attribution_method,
+                    &profile.spell_name,
+                    source_kind,
+                    source_name,
+                    profile.damage_per_tick,
+                    profile.tick_interval_seconds,
+                    profile.tick_count,
+                )?;
+            }
             self.recent_glow = None;
             if direct_cast {
                 self.recent_cast = None;
             }
             if !has_glow && !direct_cast {
-                self.pending_proc = Some(PendingProc {
+                let preceding_non_melee = preceding_non_melee.filter(|damage| {
+                    damage.source == source
+                        && damage.target_name.eq_ignore_ascii_case(target)
+                        && happened_at >= damage.happened_at
+                });
+                if profile.observed_source_kind.as_deref() == Some("item_click_only") {
+                    changed += record_unattributed_landing(
+                        connection,
+                        source,
+                        source_offset,
+                        character,
+                        happened_at,
+                        target,
+                        &profile.spell_name,
+                        profile.observed_source_name.as_deref(),
+                    )?;
+                } else {
+                    self.pending_proc = Some(PendingProc {
+                        source: source.to_owned(),
+                        source_offset,
+                        happened_at,
+                        target_name: target.clone(),
+                        spell_name: profile.spell_name.clone(),
+                        direct_damage: profile.direct_damage,
+                        preceding_non_melee,
+                        damage_per_tick: profile.damage_per_tick,
+                        tick_interval_seconds: profile.tick_interval_seconds,
+                        tick_count: profile.tick_count,
+                    });
+                }
+            }
+        }
+
+        if let Some(LogEvent::Damage {
+            mob_name,
+            attack,
+            amount,
+            damage_type,
+            ..
+        }) = event
+        {
+            if damage_type.as_str() == "spell" && attack.eq_ignore_ascii_case("non-melee") {
+                self.recent_non_melee = Some(RecentNonMelee {
                     source: source.to_owned(),
-                    source_offset,
-                    target_name: target.clone(),
+                    happened_at,
+                    target_name: mob_name.clone(),
+                    amount: *amount,
                 });
             }
         }
@@ -299,7 +401,30 @@ impl DotTracker {
     }
 }
 
-fn compile_profile(profile: DotSpellProfile) -> Option<CompiledProfile> {
+fn cast_resolution_matches(
+    cast: &RecentCast,
+    spell_name: &str,
+    happened_at: NaiveDateTime,
+) -> bool {
+    if !cast.spell_name.eq_ignore_ascii_case(spell_name) || happened_at < cast.happened_at {
+        return false;
+    }
+    match cast.expected_at {
+        Some(expected_at) => {
+            happened_at
+                .signed_duration_since(expected_at)
+                .num_milliseconds()
+                .abs()
+                <= CAST_RESOLUTION_TOLERANCE_MILLISECONDS
+        }
+        None => (0..=CAST_FALLBACK_WINDOW_SECONDS).contains(
+            &happened_at
+                .signed_duration_since(cast.happened_at)
+                .num_seconds(),
+        ),
+    }
+}
+fn compile_profile(profile: CombatSpellProfile) -> Option<CompiledProfile> {
     let escaped = regex::escape(profile.cast_on_other.trim());
     let someone = Regex::new("(?i)someone").expect("valid placeholder regex");
     if !someone.is_match(&escaped) {
@@ -321,8 +446,11 @@ fn land_dot(
     target: &str,
     caster: &str,
     attribution_method: &str,
-    profile: &DotSpellProfile,
-) -> Result<usize, String> {
+    spell_name: &str,
+    damage_per_tick: u64,
+    tick_interval_seconds: u32,
+    tick_count: u32,
+) -> Result<(usize, i64), String> {
     let encounter_id = ensure_encounter(
         connection,
         source,
@@ -334,13 +462,11 @@ fn land_dot(
     connection.execute(
         "UPDATE dot_applications SET status='refreshed',ended_at=?
          WHERE encounter_id=? AND target_name=? COLLATE NOCASE AND spell_name=? COLLATE NOCASE AND status='active'",
-        params![happened_at.to_string(),encounter_id,target,profile.spell_name],
+        params![happened_at.to_string(),encounter_id,target,spell_name],
     ).map_err(|error| error.to_string())?;
-    let expires_at = happened_at
-        + Duration::seconds(
-            i64::from(profile.tick_interval_seconds) * i64::from(profile.tick_count),
-        );
-    connection
+    let expires_at =
+        happened_at + Duration::seconds(i64::from(tick_interval_seconds) * i64::from(tick_count));
+    let inserted = connection
         .execute(
             "INSERT OR IGNORE INTO dot_applications(
             encounter_id,spell_name,target_name,caster_name,attribution_method,landed_at,expires_at,
@@ -348,20 +474,29 @@ fn land_dot(
          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 encounter_id,
-                profile.spell_name,
+                spell_name,
                 target,
                 caster,
                 attribution_method,
                 happened_at.to_string(),
                 expires_at.to_string(),
-                profile.damage_per_tick,
-                profile.tick_interval_seconds,
-                profile.tick_count,
+                damage_per_tick,
+                tick_interval_seconds,
+                tick_count,
                 source,
                 source_offset
             ],
         )
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    let application_id = connection
+        .query_row(
+            "SELECT id FROM dot_applications
+             WHERE source_file=? AND source_offset=? AND spell_name=? COLLATE NOCASE",
+            params![source, source_offset, spell_name],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok((inserted, application_id))
 }
 
 fn ensure_encounter(
@@ -372,32 +507,338 @@ fn ensure_encounter(
     at: NaiveDateTime,
     mob: &str,
 ) -> Result<i64, String> {
+    // A backlog can replay a landing after its encounter has already closed.
+    // The original file offset is the durable idempotency key, so reuse that
+    // encounter regardless of lifecycle state before attempting an insert.
+    if let Some(id) = connection
+        .query_row(
+            "SELECT id FROM damage_encounters
+             WHERE source_file=? AND first_source_offset=?",
+            params![source, offset],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(id);
+    }
     if let Some(id) = connection.query_row(
         "SELECT id FROM damage_encounters WHERE source_file=? AND character_name=? COLLATE NOCASE AND mob_name=? COLLATE NOCASE AND outcome='active' ORDER BY last_source_offset DESC LIMIT 1",
         params![source,character,mob], |row| row.get(0),
     ).optional().map_err(|error| error.to_string())? { return Ok(id); }
-    connection.execute(
-        "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,source_file,first_source_offset,last_source_offset) VALUES(?,?,?,?,?,?,?)",
-        params![character,mob,at.to_string(),at.to_string(),source,offset,offset],
-    ).map_err(|error| error.to_string())?;
-    Ok(connection.last_insert_rowid())
+    insert_or_get_damage_encounter(connection, source, offset, character, at, mob)
 }
 
-fn attribute_pending_proc(
+#[allow(clippy::too_many_arguments)]
+fn record_unattributed_landing(
     connection: &rusqlite::Connection,
     source: &str,
     source_offset: i64,
+    character: &str,
+    happened_at: NaiveDateTime,
+    target: &str,
+    spell_name: &str,
+    source_name: Option<&str>,
+) -> Result<usize, String> {
+    let encounter_id = ensure_encounter(
+        connection,
+        source,
+        source_offset,
+        character,
+        happened_at,
+        target,
+    )?;
+    record_spell_activity(
+        connection,
+        encounter_id,
+        source,
+        source_offset,
+        happened_at,
+        target,
+        "Unattributed",
+        spell_name,
+        "unknown",
+        source_name,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_confirmed_landing(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    character: &str,
+    happened_at: NaiveDateTime,
+    target: &str,
     caster: &str,
+    attribution_method: &str,
+    spell_name: &str,
+    source_kind: &str,
+    source_name: Option<&str>,
+    damage_per_tick: Option<u64>,
+    tick_interval_seconds: u32,
+    tick_count: Option<u32>,
+) -> Result<usize, String> {
+    let mut changed = 0;
+    let dot_application_id =
+        if let (Some(damage_per_tick), Some(tick_count)) = (damage_per_tick, tick_count) {
+            let (inserted, application_id) = land_dot(
+                connection,
+                source,
+                source_offset,
+                character,
+                happened_at,
+                target,
+                caster,
+                attribution_method,
+                spell_name,
+                damage_per_tick,
+                tick_interval_seconds,
+                tick_count,
+            )?;
+            changed += inserted;
+            Some(application_id)
+        } else {
+            None
+        };
+    let encounter_id = if let Some(application_id) = dot_application_id {
+        connection
+            .query_row(
+                "SELECT encounter_id FROM dot_applications WHERE id=?",
+                [application_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| error.to_string())?
+    } else {
+        ensure_encounter(
+            connection,
+            source,
+            source_offset,
+            character,
+            happened_at,
+            target,
+        )?
+    };
+    changed += record_spell_activity(
+        connection,
+        encounter_id,
+        source,
+        source_offset,
+        happened_at,
+        target,
+        caster,
+        spell_name,
+        source_kind,
+        source_name,
+    )?;
+    Ok(changed)
+}
+#[allow(clippy::too_many_arguments)]
+fn record_spell_activity(
+    connection: &rusqlite::Connection,
+    encounter_id: i64,
+    source: &str,
+    source_offset: i64,
+    happened_at: NaiveDateTime,
+    target: &str,
+    caster: &str,
+    spell_name: &str,
+    source_kind: &str,
+    source_name: Option<&str>,
 ) -> Result<usize, String> {
     connection
         .execute(
-            "UPDATE dot_applications SET caster_name=?,attribution_method='proc'
-         WHERE source_file=? AND source_offset=? AND caster_name='Unknown' COLLATE NOCASE",
-            params![caster, source, source_offset],
+            "INSERT OR IGNORE INTO combat_spell_activity(
+                encounter_id,spell_name,target_name,caster_name,source_kind,source_name,
+                happened_at,source_file,landing_source_offset
+             ) VALUES(?,?,?,?,?,?,?,?,?)",
+            params![
+                encounter_id,
+                spell_name,
+                target,
+                caster,
+                source_kind,
+                source_name,
+                happened_at.to_string(),
+                source,
+                source_offset
+            ],
         )
         .map_err(|error| error.to_string())
 }
 
+fn record_proc_occurrence(
+    connection: &rusqlite::Connection,
+    pending: &PendingProc,
+    attribution_source_offset: i64,
+    character: &str,
+    caster: &str,
+) -> Result<usize, String> {
+    let already_recorded = connection
+        .query_row(
+            "SELECT 1 FROM proc_occurrences
+             WHERE source_file=? AND landing_source_offset=? AND spell_name=? COLLATE NOCASE",
+            params![pending.source, pending.source_offset, pending.spell_name],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if already_recorded {
+        return Ok(0);
+    }
+
+    let dot_application_id = if let (Some(damage_per_tick), Some(tick_count)) =
+        (pending.damage_per_tick, pending.tick_count)
+    {
+        let (_, application_id) = land_dot(
+            connection,
+            &pending.source,
+            pending.source_offset,
+            character,
+            pending.happened_at,
+            &pending.target_name,
+            caster,
+            "proc",
+            &pending.spell_name,
+            damage_per_tick,
+            pending.tick_interval_seconds,
+            tick_count,
+        )?;
+        connection
+            .execute(
+                "UPDATE dot_applications SET caster_name=?,attribution_method='proc'
+                 WHERE id=?",
+                params![caster, application_id],
+            )
+            .map_err(|error| error.to_string())?;
+        Some(application_id)
+    } else {
+        None
+    };
+    let encounter_id = if let Some(application_id) = dot_application_id {
+        connection
+            .query_row(
+                "SELECT encounter_id FROM dot_applications WHERE id=?",
+                [application_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| error.to_string())?
+    } else {
+        ensure_encounter(
+            connection,
+            &pending.source,
+            pending.source_offset,
+            character,
+            pending.happened_at,
+            &pending.target_name,
+        )?
+    };
+    let direct_damage = pending
+        .preceding_non_melee
+        .as_ref()
+        .map(|damage| damage.amount)
+        .or(pending.direct_damage)
+        .unwrap_or(0);
+    let direct_damage_at = pending
+        .preceding_non_melee
+        .as_ref()
+        .map(|damage| damage.happened_at)
+        .unwrap_or(pending.happened_at);
+    let inserted = connection
+        .execute(
+            "INSERT OR IGNORE INTO proc_occurrences(
+                encounter_id,dot_application_id,spell_name,target_name,caster_name,happened_at,
+                direct_damage,source_file,landing_source_offset,attribution_source_offset
+             ) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            params![
+                encounter_id,
+                dot_application_id,
+                pending.spell_name,
+                pending.target_name,
+                caster,
+                pending.happened_at.to_string(),
+                direct_damage as i64,
+                pending.source,
+                pending.source_offset,
+                attribution_source_offset
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if inserted == 0 {
+        return Ok(0);
+    }
+    let occurrence_id = connection.last_insert_rowid();
+    let mut changed = inserted;
+    changed += record_spell_activity(
+        connection,
+        encounter_id,
+        &pending.source,
+        pending.source_offset,
+        pending.happened_at,
+        &pending.target_name,
+        caster,
+        &pending.spell_name,
+        "proc",
+        None,
+    )?;
+    connection
+        .execute(
+            "UPDATE combat_spell_activity
+             SET caster_name=?,source_kind='proc',source_name=NULL,attribution_source_offset=?
+             WHERE source_file=? AND landing_source_offset=? AND spell_name=? COLLATE NOCASE",
+            params![
+                caster,
+                attribution_source_offset,
+                pending.source,
+                pending.source_offset,
+                pending.spell_name
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO damage_spell_summaries(
+                encounter_id,caster_name,spell_name,proc_count,direct_proc_damage
+             ) VALUES(?,?,?,1,?)
+             ON CONFLICT(encounter_id,caster_name,spell_name) DO UPDATE SET
+                proc_count=proc_count+1,
+                direct_proc_damage=direct_proc_damage+excluded.direct_proc_damage",
+            params![
+                encounter_id,
+                caster,
+                pending.spell_name,
+                direct_damage as i64
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if direct_damage > 0 {
+        changed += record_inferred_proc_damage(
+            connection,
+            encounter_id,
+            occurrence_id,
+            direct_damage_at,
+            caster,
+            &pending.spell_name,
+            direct_damage,
+        )?;
+        let damage_event_id = connection
+            .query_row(
+                "SELECT id FROM damage_events WHERE source_file=? AND source_offset=1",
+                [format!("proc://{occurrence_id}")],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute(
+                "UPDATE proc_occurrences SET damage_event_id=? WHERE id=?",
+                params![damage_event_id, occurrence_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(changed)
+}
 fn disable_duplicate_inference(
     connection: &rusqlite::Connection,
     source: &str,
@@ -442,13 +883,62 @@ fn finish_character(
 mod tests {
     use super::*;
 
-    fn dawncall_profile() -> DotSpellProfile {
-        DotSpellProfile {
+    fn dawncall_profile() -> CombatSpellProfile {
+        CombatSpellProfile {
             spell_name: "Dawncall".into(),
             cast_on_other: "Someone staggers as the light of dawn washes over it.".into(),
-            damage_per_tick: 125,
-            tick_count: 6,
+            damage_kind: "dot".into(),
+            direct_damage: None,
+            damage_per_tick: Some(125),
+            tick_count: Some(6),
             tick_interval_seconds: 6,
+            casting_time_seconds: Some(3.0),
+            observed_source_kind: None,
+            observed_source_name: None,
+        }
+    }
+
+    fn essence_tap_profile() -> CombatSpellProfile {
+        CombatSpellProfile {
+            spell_name: "Essence Tap".into(),
+            cast_on_other: "Someone staggers.".into(),
+            damage_kind: "direct".into(),
+            direct_damage: Some(20),
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: Some(3.0),
+            observed_source_kind: None,
+            observed_source_name: None,
+        }
+    }
+
+    fn hundred_blows_profile() -> CombatSpellProfile {
+        CombatSpellProfile {
+            spell_name: "Hundred Blows".into(),
+            cast_on_other: "Someone begins to spin from one hundred blows.".into(),
+            damage_kind: "direct".into(),
+            direct_damage: Some(1),
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: None,
+            observed_source_kind: None,
+            observed_source_name: None,
+        }
+    }
+    fn curse_of_spirits_click_profile() -> CombatSpellProfile {
+        CombatSpellProfile {
+            spell_name: "Curse of the Spirits".into(),
+            cast_on_other: "Someone is consumed by the raging spirits of the land.".into(),
+            damage_kind: "dot".into(),
+            direct_damage: None,
+            damage_per_tick: Some(11),
+            tick_count: Some(15),
+            tick_interval_seconds: 6,
+            casting_time_seconds: Some(0.0),
+            observed_source_kind: Some("item_click_only".into()),
+            observed_source_name: Some("Spear of Fate".into()),
         }
     }
 
@@ -478,6 +968,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         };
         let connection = database.connect().unwrap();
@@ -516,6 +1007,67 @@ mod tests {
     }
 
     #[test]
+    fn observed_item_click_only_landing_stays_unattributed_before_an_attack() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(curse_of_spirits_click_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (offset, line) in [
+            (1, "[Mon Sep 07 14:28:25 2026] Hexbone skeleton is consumed by the raging spirits of the land."),
+            (2, "[Mon Sep 07 14:28:25 2026] Anotherplayer crushes Hexbone skeleton for 30 points of damage."),
+        ] {
+            let event = crate::domain::log_events::parse_log_event(line, "Asquatii");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Asquatii.txt",
+                    offset,
+                    line,
+                    "Asquatii",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let activity: (String, String, Option<String>) = connection
+            .query_row(
+                "SELECT caster_name,source_kind,source_name FROM combat_spell_activity",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            activity,
+            (
+                "Unattributed".into(),
+                "unknown".into(),
+                Some("Spear of Fate".into())
+            )
+        );
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let dot_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM dot_applications", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((proc_count, dot_count), (0, 0));
+    }
+
+    #[test]
     fn immediately_following_same_target_attack_attributes_a_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
@@ -528,6 +1080,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         };
         let connection = database.connect().unwrap();
@@ -568,7 +1121,122 @@ mod tests {
     }
 
     #[test]
-    fn proc_attribution_requires_the_immediately_following_line_and_same_target() {
+    fn blocked_attack_confirms_local_proc_after_non_melee_damage() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(hundred_blows_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let lines = [
+            "[Mon Sep 07 12:47:42 2026] a helot spectre was hit by non-melee for 120 points of damage.",
+            "[Mon Sep 07 12:47:42 2026] A helot spectre begins to spin from one hundred blows.",
+            "[Mon Sep 07 12:47:42 2026] You try to crush a helot spectre, but a helot spectre blocks!",
+            "[Mon Sep 07 12:47:42 2026] You crush a helot spectre for 89 points of damage.",
+        ];
+        for (index, line) in lines.iter().enumerate() {
+            let event = crate::domain::log_events::parse_log_event(line, "Valmez");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Valmez_P1999Green.txt",
+                    index as i64 + 1,
+                    line,
+                    "Valmez",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+
+        let occurrence: (String, String, i64) = connection
+            .query_row(
+                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(occurrence, ("Valmez".into(), "Hundred Blows".into(), 120));
+        let fighter_damage: i64 = connection
+            .query_row(
+                "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Valmez'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let encounter_damage: i64 = connection
+            .query_row("SELECT total_damage FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((fighter_damage, encounter_damage), (120, 120));
+    }
+    #[test]
+    fn missed_attack_confirms_local_proc_for_the_active_fighter() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(hundred_blows_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (index, line) in [
+            "[Sun Sep 06 11:51:43 2026] a helot spectre was hit by non-melee for 120 points of damage.",
+            "[Sun Sep 06 11:51:43 2026] A helot spectre begins to spin from one hundred blows.",
+            "[Sun Sep 06 11:51:43 2026] You try to crush a helot spectre, but miss!",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let event = crate::domain::log_events::parse_log_event(line, "Valmez");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Valmez_P1999Green.txt",
+                    index as i64 + 1,
+                    line,
+                    "Valmez",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+
+        let occurrence: (String, String, i64) = connection
+            .query_row(
+                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(occurrence, ("Valmez".into(), "Hundred Blows".into(), 120));
+        let fighter: (i64, i64) = connection
+            .query_row(
+                "SELECT total_damage,hit_count FROM damage_participant_summaries WHERE attacker_name='Valmez'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(fighter, (120, 1));
+    }
+
+    #[test]
+    fn next_same_target_attack_attributes_observed_proc_but_intervening_lines_cancel() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -580,6 +1248,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         };
         let connection = database.connect().unwrap();
@@ -609,7 +1278,7 @@ mod tests {
             )
             .unwrap();
         let unrelated_attack =
-            "[Sun Sep 06 10:54:02 2026] Legiteral crushes a snow cougar for 81 points of damage.";
+            "[Sun Sep 06 10:54:02 2026] Legiteral crushes a frost giant for 81 points of damage.";
         let unrelated_event =
             crate::domain::log_events::parse_log_event(unrelated_attack, "Asquatii");
         tracker
@@ -674,12 +1343,138 @@ mod tests {
             .unwrap();
         assert_eq!(
             attributions,
-            vec![
-                ("A frost giant".into(), "Unknown".into(), "unknown".into()),
-                ("An ice goblin".into(), "Unknown".into(), "unknown".into()),
-            ]
+            vec![("A frost giant".into(), "Legiteral".into(), "proc".into())]
         );
+        let activity_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM combat_spell_activity", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((activity_count, proc_count), (1, 1));
     }
+    #[test]
+    fn attack_confirmed_direct_proc_records_count_and_catalog_damage_once() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(essence_tap_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let non_melee =
+            "[Mon Mar 23 16:00:01 2026] Yeldema was hit by non-melee for 80 points of damage.";
+        let non_melee_event = crate::domain::log_events::parse_log_event(non_melee, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                1,
+                non_melee,
+                "Asquatii",
+                non_melee_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                2,
+                "[Mon Mar 23 16:00:01 2026] Yeldema staggers.",
+                "Asquatii",
+                None,
+            )
+            .unwrap();
+        let attack = "[Mon Mar 23 16:00:01 2026] You crush Yeldema for 51 points of damage.";
+        let attack_event = crate::domain::log_events::parse_log_event(attack, "Asquatii");
+        crate::application::runtime::record_damage_event(
+            &connection,
+            "eqlog_Asquatii.txt",
+            3,
+            attack,
+            "Asquatii",
+            "Asquatii",
+            NaiveDateTime::parse_from_str("2026-03-23 16:00:01", "%Y-%m-%d %H:%M:%S").unwrap(),
+            "Yeldema",
+            "crush",
+            51,
+            "melee",
+        )
+        .unwrap();
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                3,
+                attack,
+                "Asquatii",
+                attack_event.as_ref(),
+            )
+            .unwrap();
+        let occurrence: (String, String, i64) = connection
+            .query_row(
+                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(occurrence, ("Asquatii".into(), "Essence Tap".into(), 80));
+        let tracked: (String, String) = connection
+            .query_row(
+                "SELECT caster_name,source_kind FROM combat_spell_activity",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(tracked, ("Asquatii".into(), "proc".into()));
+        let summary: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT proc_count,direct_proc_damage,dot_damage
+                 FROM damage_spell_summaries",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(summary, (1, 80, 0));
+        let totals: (i64, i64) = connection
+            .query_row(
+                "SELECT total_damage,spell_damage FROM damage_encounters",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(totals, (131, 80));
+
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                3,
+                attack,
+                "Asquatii",
+                attack_event.as_ref(),
+            )
+            .unwrap();
+        let occurrence_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(occurrence_count, 1);
+    }
+
     #[test]
     fn direct_cast_attributes_the_matching_landing_to_the_active_character() {
         use crate::infrastructure::database::Database;
@@ -693,6 +1488,7 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         };
         let connection = database.connect().unwrap();
@@ -726,7 +1522,174 @@ mod tests {
             )
             .unwrap();
         assert_eq!(attribution, ("Asquatii".into(), "direct_cast".into()));
+        let activity: (String, String, Option<String>) = connection
+            .query_row(
+                "SELECT caster_name,source_kind,source_name FROM combat_spell_activity",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(activity, ("Asquatii".into(), "direct".into(), None));
     }
+
+    #[test]
+    fn backlog_replay_reuses_a_closed_encounter_at_the_same_source_offset() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let source = "eqlog_Asquatii.txt";
+        let cast = "[Sun Sep 06 10:53:01 2026] You begin casting Dawncall.";
+        let landing = "[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.";
+
+        let cast_event = crate::domain::log_events::parse_log_event(cast, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                source,
+                1,
+                cast,
+                "Asquatii",
+                cast_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(&connection, source, 2, landing, "Asquatii", None)
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE damage_encounters SET outcome='slain',ended_at=last_damage_at",
+                [],
+            )
+            .unwrap();
+
+        let cast_event = crate::domain::log_events::parse_log_event(cast, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                source,
+                1,
+                cast,
+                "Asquatii",
+                cast_event.as_ref(),
+            )
+            .unwrap();
+        tracker
+            .process_line(&connection, source, 2, landing, "Asquatii", None)
+            .unwrap();
+
+        let encounter_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let application_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM dot_applications", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((encounter_count, application_count), (1, 1));
+    }
+
+    #[test]
+    fn interruption_cancels_direct_cast_and_item_click_attribution() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (offset, line) in [
+            (1, "[Fri May 09 10:12:37 2025] You begin casting Dawncall."),
+            (2, "[Fri May 09 10:12:39 2025] Your spell is interrupted."),
+            (3, "[Fri May 09 10:12:40 2025] A frost giant staggers as the light of dawn washes over it."),
+            (4, "[Fri May 09 10:13:00 2025] Your Great Spear of Dawn begins to glow."),
+            (5, "[Fri May 09 10:13:01 2025] Your spell is interrupted."),
+            (6, "[Fri May 09 10:13:02 2025] An ice giant staggers as the light of dawn washes over it."),
+        ] {
+            let event = crate::domain::log_events::parse_log_event(line, "Asquatii");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Asquatii.txt",
+                    offset,
+                    line,
+                    "Asquatii",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let sources = connection
+            .prepare("SELECT source_kind FROM combat_spell_activity ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(sources.is_empty());
+    }
+
+    #[test]
+    fn item_click_landing_retains_the_glowing_item_name() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(dawncall_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (offset, line) in [
+            (1, "[Sun Sep 06 10:53:03 2026] Your Great Spear of Dawn begins to glow."),
+            (2, "[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it."),
+        ] {
+            let event = crate::domain::log_events::parse_log_event(line, "Asquatii");
+            tracker.process_line(&connection, "eqlog_Asquatii.txt", offset, line, "Asquatii", event.as_ref()).unwrap();
+        }
+        let activity: (String, String, String) = connection
+            .query_row(
+                "SELECT caster_name,source_kind,source_name FROM combat_spell_activity",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            activity,
+            (
+                "Asquatii".into(),
+                "item_click".into(),
+                "Great Spear of Dawn".into()
+            )
+        );
+    }
+
     #[test]
     fn landing_ticks_and_refresh_are_persisted_without_stacking() {
         use crate::infrastructure::database::Database;
@@ -740,9 +1703,22 @@ mod tests {
             loaded_at: Some(Instant::now()),
             recent_glow: None,
             recent_cast: None,
+            recent_non_melee: None,
             pending_proc: None,
         };
         let connection = database.connect().unwrap();
+        let cast = "[Sun Sep 06 10:53:01 2026] You begin casting Dawncall.";
+        let cast_event = crate::domain::log_events::parse_log_event(cast, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                5,
+                cast,
+                "Asquatii",
+                cast_event.as_ref(),
+            )
+            .unwrap();
         tracker.process_line(&connection, "eqlog_Asquatii.txt", 10,
             "[Sun Sep 06 10:53:04 2026] Hexbone skeleton staggers as the light of dawn washes over it.",
             "Asquatii", None).unwrap();
@@ -767,6 +1743,18 @@ mod tests {
             [], |row| Ok((row.get(0)?,row.get(1)?)),
         ).unwrap();
         assert_eq!(event, ("2026-09-06 10:53:10".into(), "spell".into()));
+        let glow = "[Sun Sep 06 10:53:11 2026] Your Great Spear of Dawn begins to glow.";
+        let glow_event = crate::domain::log_events::parse_log_event(glow, "Asquatii");
+        tracker
+            .process_line(
+                &connection,
+                "eqlog_Asquatii.txt",
+                25,
+                glow,
+                "Asquatii",
+                glow_event.as_ref(),
+            )
+            .unwrap();
         tracker.process_line(&connection, "eqlog_Asquatii.txt", 30,
             "[Sun Sep 06 10:53:12 2026] Hexbone skeleton staggers as the light of dawn washes over it.",
             "Asquatii", None).unwrap();

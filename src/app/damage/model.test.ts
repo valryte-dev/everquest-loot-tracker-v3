@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,selectLiveEncounters,sortLiveEncountersByPlayerTarget} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
@@ -24,6 +24,25 @@ describe("cleric CH chain analytics",()=>{
   expect(rows.map(row=>row.gapSeconds)).toEqual([undefined,10,10,undefined]);
   expect(rows[2].clericGapSeconds).toBe(20);
   expect(rows[3].clericGapSeconds).toBeUndefined();
+ });
+ it("creates a useful Discord summary without exposing any names",()=>{
+  const source=[
+   call(1,0,"Bakamore",1),
+   call(2,9,"Clerica",2),
+   call(3,19,"Bakamore",3),
+   call(4,30,"Clerica",4),
+  ];
+  const summary=discordHealChainSummary(buildClericChainTimeline(source),"a mortiferous golem");
+  expect(summary).toContain("**Target:** a mortiferous golem");
+  expect(summary).toContain("**4 calls - 2 anonymous healers - 30s elapsed**");
+  expect(summary).toContain("Average gap: **10.0s**");
+  expect(summary).toContain("Median gap: **10.0s**");
+  expect(summary).toContain("Gap range: **9.0s - 11.0s**");
+  expect(summary).toContain("Consistency: **+/- 0.8s**");
+  expect(summary).toContain("`#001 (start) -> #002 (+9.0s) -> #003 (+10.0s) -> #004 (+11.0s)`");
+  for(const privateText of ["Bakamore","Clerica","Youngman","Forsure","eqlog_"]){
+   expect(summary).not.toContain(privateText);
+  }
  });
  it("uses a 15-second inactivity boundary and the latest slain mob as a hard boundary",()=>{
   const rows=buildClericChainTimeline([call(1,0,"Bakamore",1),call(2,15,"Clerica",2),call(3,31,"Bakamore",3)]);
@@ -88,6 +107,20 @@ describe("live DPS analytics",()=>{
   expect(sortLiveEncountersByPlayerTarget([incoming,target],"Youngman").map(row=>row.id)).toEqual([1,2]);
  });
 
+ it("keeps a manually identified healer target ahead of automatic activity",()=>{
+  const encounter=(id:number,mobName:string,lastDamageAt:string)=>(
+   {id,character:"Cleric",mobName,startedAt:"2026-09-05 10:00:00",lastDamageAt,totalDamage:100,meleeDamage:100,spellDamage:0,hitCount:1,maxHit:100,outcome:"active" as const,sourceFile:"eqlog_Cleric.txt",weapons:[],players:[]}
+  );
+  const target=encounter(1,"raid target","2026-09-05 10:00:10"),add=encounter(2,"an add","2026-09-05 10:00:20");
+  expect(sortLiveEncountersByPlayerTarget([add,target],"Cleric",1).map(row=>row.id)).toEqual([1,2]);
+ });
+
+ it("uses a target preference only for the character that selected it",()=>{
+  const settings={damage_target_character:"Cleric",damage_target_encounter_id:"42"};
+  expect(preferredDamageTargetId(settings,"cleric")).toBe(42);
+  expect(preferredDamageTargetId(settings,"Other")).toBeUndefined();
+  expect(preferredDamageTargetId({...settings,damage_target_encounter_id:"invalid"},"Cleric")).toBeUndefined();
+ });
  it("reports rising, falling, and steady momentum",()=>{
   const base=Array.from({length:7},(_,second)=>({second,group:10,me:10}));
   expect(dpsMomentum(base,"group")).toBe("steady");

@@ -4,10 +4,13 @@ mod infrastructure;
 
 use application::{
     activity_history_snapshot, app_page_snapshot, app_revision, app_snapshot, bootstrap_status,
-    damage_encounter_details, database_cleanup_preview, database_stats, death_report_details,
-    dot_training_preview, global_status_snapshot, mutate_app, parse_inventory_preview,
-    parse_log_preview, reload_spell_catalog, spell_catalog_entries, spell_catalog_status,
-    spell_info, AppState,
+    ch_replay_library_list, ch_replay_library_load, ch_training_preview, damage_encounter_details,
+    database_cleanup_preview, database_stats, death_report_details, dot_training_preview,
+    global_status_snapshot, mutate_app, parse_inventory_preview, parse_log_preview,
+    proc_coach_analyze, proc_coach_delete_key, proc_coach_save_key, proc_coach_status,
+    reload_spell_catalog, replay_library_import, replay_library_list, replay_library_load,
+    replay_library_save_coach_review, save_ch_replay, save_damage_replay, spell_catalog_entries,
+    spell_catalog_status, spell_info, AppState,
 };
 use tauri::Manager;
 
@@ -34,6 +37,19 @@ pub fn run() {
             death_report_details,
             damage_encounter_details,
             dot_training_preview,
+            ch_training_preview,
+            ch_replay_library_list,
+            ch_replay_library_load,
+            save_ch_replay,
+            replay_library_list,
+            replay_library_load,
+            replay_library_import,
+            replay_library_save_coach_review,
+            proc_coach_status,
+            proc_coach_save_key,
+            proc_coach_delete_key,
+            proc_coach_analyze,
+            save_damage_replay,
             mutate_app,
             parse_log_preview,
             parse_inventory_preview,

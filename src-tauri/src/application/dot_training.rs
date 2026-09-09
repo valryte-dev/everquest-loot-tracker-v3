@@ -1,9 +1,12 @@
 use super::{dot_tracking::DotTracker, runtime::scan_damage_file_with_dots};
 use crate::{
     domain::log_events::{parse_envelope, parse_log_event, LogEvent},
-    infrastructure::{database::Database, spell_catalog::SpellCatalog},
+    infrastructure::{
+        database::Database,
+        spell_catalog::{CombatSpellProfile, SpellCatalog},
+    },
 };
-use chrono::NaiveDateTime;
+use chrono::{Duration, NaiveDateTime};
 use serde::Serialize;
 use std::{
     fs,
@@ -22,6 +25,7 @@ pub struct DotTrainingReport {
     recognized_count: usize,
     ignored_count: usize,
     dot_profile_count: usize,
+    combat_profile_count: usize,
     projected_all_ticks: bool,
     projected_through: Option<String>,
     lines: Vec<DotTrainingLine>,
@@ -64,6 +68,20 @@ struct DotTrainingApplication {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DotTrainingProc {
+    id: i64,
+    encounter_id: i64,
+    spell_name: String,
+    target_name: String,
+    caster_name: String,
+    happened_at: String,
+    direct_damage: u64,
+    landing_source_offset: i64,
+    attribution_source_offset: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DotTrainingEvent {
     id: i64,
     encounter_id: i64,
@@ -73,10 +91,23 @@ struct DotTrainingEvent {
     attack: String,
     damage: u64,
     inferred: bool,
+    source_kind: String,
     tick_index: Option<u32>,
     source_offset: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DotTrainingIncomingEvent {
+    id: i64,
+    encounter_id: i64,
+    happened_at: String,
+    attacker: String,
+    target: String,
+    attack: String,
+    damage: u64,
+    source_offset: i64,
+}
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DotTrainingParticipant {
@@ -100,7 +131,9 @@ struct DotTrainingEncounter {
     outcome: String,
     participants: Vec<DotTrainingParticipant>,
     events: Vec<DotTrainingEvent>,
+    incoming_events: Vec<DotTrainingIncomingEvent>,
     dots: Vec<DotTrainingApplication>,
+    procs: Vec<DotTrainingProc>,
 }
 
 struct TemporaryWorkspace(PathBuf);
@@ -138,6 +171,8 @@ pub fn analyze(
     fs::write(&log_path, source_text.as_bytes()).map_err(|error| error.to_string())?;
 
     let dot_profile_count = spell_catalog.dot_profiles()?.len();
+    let combat_profiles = spell_catalog.combat_profiles()?;
+    let combat_profile_count = combat_profiles.len();
     let mut tracker = DotTracker::new(spell_catalog.clone());
     scan_damage_file_with_dots(&database, &log_path, &mut tracker)?;
 
@@ -158,20 +193,35 @@ pub fn analyze(
 
     let connection = database.connect().map_err(|error| error.to_string())?;
     let applications = load_applications(&connection)?;
+    let procs = load_procs(&connection)?;
     let events = load_events(&connection)?;
-    let encounters = load_encounters(&connection, &events, &applications)?;
-    let interpreted = interpret_lines(&lines, &character, &applications, &events);
+    let incoming_events = load_incoming_events(&connection)?;
+    let encounters = load_encounters(
+        &connection,
+        &events,
+        &incoming_events,
+        &applications,
+        &procs,
+    )?;
+    let interpreted = interpret_lines(
+        &lines,
+        &character,
+        &applications,
+        &procs,
+        &events,
+        &combat_profiles,
+    );
     let recognized_count = interpreted
         .iter()
         .filter(|line| line.status != "ignored" && line.status != "invalid")
         .count();
     let ignored_count = interpreted.len() - recognized_count;
     let mut warnings = Vec::new();
-    if dot_profile_count == 0 {
-        warnings.push("The cached spell catalog contains no usable DoT profiles. Reload it on the System page before judging landing-message matches.".into());
+    if combat_profile_count == 0 {
+        warnings.push("The cached spell catalog contains no usable combat-damage profiles. Reload it on the System page before judging landing-message matches.".into());
     }
-    if applications.is_empty() {
-        warnings.push("No pasted line matched a cached DoT Cast on Other message.".into());
+    if applications.is_empty() && procs.is_empty() {
+        warnings.push("No pasted line produced a DoT application or an attack-confirmed proc from a cached Cast on Other message.".into());
     }
     let unknown = applications
         .iter()
@@ -195,6 +245,7 @@ pub fn analyze(
         recognized_count,
         ignored_count,
         dot_profile_count,
+        combat_profile_count,
         projected_all_ticks: project_all_ticks,
         projected_through,
         lines: interpreted,
@@ -284,12 +335,40 @@ fn load_applications(
     Ok(rows)
 }
 
+fn load_procs(connection: &rusqlite::Connection) -> Result<Vec<DotTrainingProc>, String> {
+    let mut statement = connection.prepare("SELECT id,encounter_id,spell_name,target_name,caster_name,happened_at,direct_damage,landing_source_offset,attribution_source_offset FROM proc_occurrences ORDER BY happened_at,id").map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(DotTrainingProc {
+                id: row.get(0)?,
+                encounter_id: row.get(1)?,
+                spell_name: row.get(2)?,
+                target_name: row.get(3)?,
+                caster_name: row.get(4)?,
+                happened_at: row.get(5)?,
+                direct_damage: row.get(6)?,
+                landing_source_offset: row.get(7)?,
+                attribution_source_offset: row.get(8)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
 fn load_events(connection: &rusqlite::Connection) -> Result<Vec<DotTrainingEvent>, String> {
     let mut statement = connection.prepare("SELECT id,encounter_id,happened_at,COALESCE(attacker_name,'Unknown'),damage_type,attack_kind,damage,source_file,source_offset FROM damage_events ORDER BY happened_at,id").map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {
             let source: String = row.get(7)?;
-            let inferred = source.starts_with("dot://");
+            let source_kind = if source.starts_with("dot://") {
+                "dot"
+            } else if source.starts_with("proc://") {
+                "proc"
+            } else {
+                "explicit"
+            };
+            let inferred = source_kind != "explicit";
             Ok(DotTrainingEvent {
                 id: row.get(0)?,
                 encounter_id: row.get(1)?,
@@ -299,7 +378,10 @@ fn load_events(connection: &rusqlite::Connection) -> Result<Vec<DotTrainingEvent
                 attack: row.get(5)?,
                 damage: row.get(6)?,
                 inferred,
-                tick_index: inferred.then(|| row.get::<_, u32>(8)).transpose()?,
+                source_kind: source_kind.into(),
+                tick_index: (source_kind == "dot")
+                    .then(|| row.get::<_, u32>(8))
+                    .transpose()?,
                 source_offset: row.get(8)?,
             })
         })
@@ -309,10 +391,39 @@ fn load_events(connection: &rusqlite::Connection) -> Result<Vec<DotTrainingEvent
     Ok(rows)
 }
 
+fn load_incoming_events(
+    connection: &rusqlite::Connection,
+) -> Result<Vec<DotTrainingIncomingEvent>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id,encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,source_offset
+             FROM damage_received_events ORDER BY happened_at,id",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(DotTrainingIncomingEvent {
+                id: row.get(0)?,
+                encounter_id: row.get(1)?,
+                happened_at: row.get(2)?,
+                attacker: row.get(3)?,
+                target: row.get(4)?,
+                attack: row.get(5)?,
+                damage: row.get(6)?,
+                source_offset: row.get(7)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
 fn load_encounters(
     connection: &rusqlite::Connection,
     events: &[DotTrainingEvent],
+    incoming_events: &[DotTrainingIncomingEvent],
     applications: &[DotTrainingApplication],
+    procs: &[DotTrainingProc],
 ) -> Result<Vec<DotTrainingEncounter>, String> {
     let mut statement = connection.prepare("SELECT id,mob_name,started_at,ended_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,outcome FROM damage_encounters ORDER BY started_at,id").map_err(|error| error.to_string())?;
     let rows = statement
@@ -336,7 +447,7 @@ fn load_encounters(
     rows.into_iter().map(|(id,mob_name,started_at,ended_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,outcome)| {
         let mut participant_statement = connection.prepare("SELECT attacker_name,total_damage,hit_count FROM damage_participant_summaries WHERE encounter_id=? ORDER BY total_damage DESC,attacker_name COLLATE NOCASE").map_err(|error| error.to_string())?;
         let participants = participant_statement.query_map([id], |row| Ok(DotTrainingParticipant { name: row.get(0)?, total_damage: row.get(1)?, hit_count: row.get(2)? })).map_err(|error| error.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
-        Ok(DotTrainingEncounter { id,mob_name,started_at,ended_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,outcome,participants,events:events.iter().filter(|event|event.encounter_id==id).cloned().collect(),dots:applications.iter().filter(|dot|dot.encounter_id==id).cloned().collect() })
+        Ok(DotTrainingEncounter { id,mob_name,started_at,ended_at,last_damage_at,total_damage,melee_damage,spell_damage,hit_count,outcome,participants,events:events.iter().filter(|event|event.encounter_id==id).cloned().collect(),incoming_events:incoming_events.iter().filter(|event|event.encounter_id==id).cloned().collect(),dots:applications.iter().filter(|dot|dot.encounter_id==id).cloned().collect(),procs:procs.iter().filter(|proc|proc.encounter_id==id).cloned().collect() })
     }).collect()
 }
 
@@ -344,13 +455,17 @@ fn interpret_lines(
     lines: &[(usize, i64, String)],
     character: &str,
     applications: &[DotTrainingApplication],
+    procs: &[DotTrainingProc],
     events: &[DotTrainingEvent],
+    combat_profiles: &[CombatSpellProfile],
 ) -> Vec<DotTrainingLine> {
     lines.iter().map(|(line_number, offset, raw)| {
         let envelope = parse_envelope(raw);
         let parsed = parse_log_event(raw, character);
         let landed: Vec<_> = applications.iter().filter(|dot|dot.source_offset==*offset).collect();
         let direct: Vec<_> = events.iter().filter(|event|!event.inferred&&event.source_offset==*offset).collect();
+        let landed_procs: Vec<_> = procs.iter().filter(|proc|proc.landing_source_offset==*offset).collect();
+        let confirmed_procs: Vec<_> = procs.iter().filter(|proc|proc.attribution_source_offset==*offset).collect();
         let mut decisions = Vec::new();
         for dot in &landed {
             decisions.push(format!("Matched {} from its cached Cast on Other message; target = {}.", dot.spell_name, dot.target_name));
@@ -358,10 +473,50 @@ fn interpret_lines(
             if !dot.inference_enabled { decisions.push("Explicit spell damage was observed, so calculated ticks were disabled to prevent double counting.".into()); }
             if dot.status == "refreshed" { decisions.push("A later landing refreshed this application; remaining ticks from this instance were stopped instead of stacked.".into()); }
         }
-        if let Some(LogEvent::SpellCastStarted { spell_name, .. }) = parsed.as_ref() {
-            decisions.push(format!("Stored {spell_name} as an exact local-cast clue for a matching DoT landing within the next 15 seconds."));
+        for proc in &landed_procs {
+            let preceding_non_melee = lines
+                .iter()
+                .position(|(_, candidate_offset, _)| candidate_offset == offset)
+                .and_then(|index| index.checked_sub(1))
+                .and_then(|index| parse_log_event(&lines[index].2, character))
+                .is_some_and(|event| matches!(event,
+                    LogEvent::Damage { mob_name, attack, amount, damage_type, .. }
+                        if damage_type.as_str() == "spell"
+                            && attack.eq_ignore_ascii_case("non-melee")
+                            && mob_name.eq_ignore_ascii_case(&proc.target_name)
+                            && amount == proc.direct_damage
+                ));
+            decisions.push(format!("Matched {} from the spell catalog on {}; this became a proc only after the immediately following attack/riposte identified {}.", proc.spell_name, proc.target_name, proc.caster_name));
+            if proc.direct_damage > 0 {
+                decisions.push(if preceding_non_melee {
+                    format!("Assigned {} logged non-melee damage to the active character's proc; the following melee damage remains separate.", proc.direct_damage)
+                } else {
+                    format!("Added {} inferred direct proc damage from the catalog exactly once; the following melee damage remains separate.", proc.direct_damage)
+                });
+            }
         }
-        if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored only as a possible caster clue. A glow creates no damage; a separate landing must match a spell-catalog profile categorized as DoT or hybrid.".into()); }
+        for proc in &confirmed_procs {
+            decisions.push(format!("This same-target attack/riposte confirmed {} as {}'s weapon proc (landing offset {}).", proc.spell_name, proc.caster_name, proc.landing_source_offset));
+        }
+        if let Some(LogEvent::SpellCastStarted { happened_at, spell_name }) = parsed.as_ref() {
+            if let Some(seconds) = combat_profiles
+                .iter()
+                .find(|profile| profile.spell_name.eq_ignore_ascii_case(spell_name))
+                .and_then(|profile| profile.casting_time_seconds)
+            {
+                let expected = *happened_at + Duration::milliseconds((seconds * 1_000.0).round() as i64);
+                decisions.push(format!("Stored {spell_name} as a local direct-cast clue. Catalog cast time = {seconds:.1}s; expect its matching landing or resist near {} (2-second log tolerance). Direct casts never count as procs.", expected.format("%H:%M:%S")));
+            } else {
+                decisions.push(format!("Stored {spell_name} as a local direct-cast clue, but its catalog casting time is unavailable; the conservative 15-second fallback window applies. Direct casts never count as procs."));
+            }
+        }
+        if matches!(parsed, Some(LogEvent::SpellInterrupted { .. })) {
+            decisions.push("Cancelled the pending direct-cast and item-click clues. An interrupted attempt creates no landed spell, proc, DoT, or damage credit.".into());
+        }
+        if let Some(LogEvent::SpellResisted { spell_name, target_name, .. }) = parsed.as_ref() {
+            decisions.push(format!("Resolved the pending {spell_name} cast as resisted{}; it creates no spell or proc damage.", target_name.as_ref().map(|target| format!(" by {target}")).unwrap_or_default()));
+        }
+        if matches!(parsed, Some(LogEvent::ItemGlow { .. })) { decisions.push("Stored only as a possible caster clue. A glow creates no damage; a separate landing must match a spell-catalog damage profile, and glow-attributed landings never count as procs.".into()); }
         let preceding_proc = lines
             .iter()
             .position(|(_, candidate_offset, _)| candidate_offset == offset)
@@ -380,7 +535,7 @@ fn interpret_lines(
         }
         for event in direct { decisions.push(format!("Recorded explicit {} damage: {} used {} for {}.", event.damage_type, event.attacker, event.attack, event.damage)); }
         let (parser_event, summary) = parsed.as_ref().map(describe_event).unwrap_or_else(|| ("none".into(), if envelope.is_some() { "No standard combat event recognized.".into() } else { "Invalid or missing EverQuest timestamp envelope.".into() }));
-        let status = if !landed.is_empty() { "dot" } else if parsed.is_some() { "recognized" } else if envelope.is_none() { "invalid" } else { "ignored" };
+        let status = if !landed_procs.is_empty() || !confirmed_procs.is_empty() { "proc" } else if !landed.is_empty() { "dot" } else if parsed.is_some() { "recognized" } else if envelope.is_none() { "invalid" } else { "ignored" };
         DotTrainingLine { line_number:*line_number, source_offset:*offset, happened_at:envelope.map(|value|value.0.to_string()), raw_line:raw.clone(), status:status.into(), parser_event, summary, decisions }
     }).collect()
 }
@@ -452,6 +607,24 @@ fn describe_event(event: &LogEvent) -> (String, String) {
                 item_name
             ),
         ),
+        LogEvent::SpellInterrupted { .. } => (
+            "spellInterrupted".into(),
+            "The pending local cast or item activation was interrupted before landing.".into(),
+        ),
+        LogEvent::SpellResisted {
+            spell_name,
+            target_name,
+            ..
+        } => (
+            "spellResisted".into(),
+            format!(
+                "{spell_name} was resisted{}.",
+                target_name
+                    .as_ref()
+                    .map(|target| format!(" by {target}"))
+                    .unwrap_or_default()
+            ),
+        ),
         LogEvent::MobSlain {
             mob_name, killer, ..
         } => (
@@ -488,9 +661,12 @@ fn event_kind(event: &LogEvent) -> &'static str {
         LogEvent::GroupCleared { .. } => "groupCleared",
         LogEvent::ItemGlow { .. } => "itemGlow",
         LogEvent::SpellCastStarted { .. } => "spellCastStarted",
+        LogEvent::SpellInterrupted { .. } => "spellInterrupted",
+        LogEvent::SpellResisted { .. } => "spellResisted",
         LogEvent::CombatAttempt { .. } => "combatAttempt",
         LogEvent::MerchantListing { .. } => "merchantListing",
         LogEvent::DirectTell { .. } => "directTell",
+        LogEvent::PetAttack { .. } => "petAttack",
         LogEvent::TradeOffer { .. } => "tradeOffer",
         LogEvent::LinkedItems { .. } => "linkedItems",
         LogEvent::ClericHealCall { .. } => "clericHealCall",
@@ -533,10 +709,47 @@ mod tests {
                 cast_on_other: "Someone staggers as the light of dawn washes over it.".into(),
                 wears_off: String::new(),
                 damage_kind: "dot".into(),
+                direct_damage: None,
                 damage_per_tick: Some(125),
                 tick_count: Some(6),
                 tick_interval_seconds: 6,
                 total_dot_damage: Some(750),
+                fetched_at: "2026-09-06T00:00:00Z".into(),
+                stale: false,
+            })
+            .unwrap();
+        catalog
+            .save_for_test(&SpellInfo {
+                spell_name: "Essence Tap".into(),
+                wiki_url: "https://wiki.project1999.com/Essence_Tap".into(),
+                description: String::new(),
+                classes: vec![],
+                effects: vec![SpellEffect {
+                    slot: 1,
+                    description: "Decrease Hitpoints by 20".into(),
+                }],
+                mana: String::new(),
+                skill: String::new(),
+                casting_time: String::new(),
+                recast_time: String::new(),
+                fizzle_time: String::new(),
+                resist: String::new(),
+                range: String::new(),
+                target_type: String::new(),
+                spell_type: String::new(),
+                duration: String::new(),
+                reagent: String::new(),
+                focus: String::new(),
+                where_to_obtain: String::new(),
+                cast_on_you: String::new(),
+                cast_on_other: "Someone staggers.".into(),
+                wears_off: String::new(),
+                damage_kind: "direct".into(),
+                direct_damage: Some(20),
+                damage_per_tick: None,
+                tick_count: None,
+                tick_interval_seconds: 6,
+                total_dot_damage: None,
                 fetched_at: "2026-09-06T00:00:00Z".into(),
                 stale: false,
             })
@@ -564,5 +777,84 @@ mod tests {
             .decisions
             .iter()
             .any(|decision| decision.contains("immediately preceding")));
+        let observed_dot_proc_report = analyze(
+            &catalog,
+            "[Sun Sep 06 20:46:11 2026] Drusella Sathir staggers as the light of dawn washes over it.
+[Sun Sep 06 20:46:11 2026] Balbazak pierces Drusella Sathir for 271 points of damage.",
+            "Asquatii",
+            true,
+        )
+        .unwrap();
+        assert_eq!(observed_dot_proc_report.encounters.len(), 1);
+        assert_eq!(observed_dot_proc_report.encounters[0].total_damage, 1_021);
+        assert_eq!(observed_dot_proc_report.encounters[0].procs.len(), 1);
+        assert_eq!(observed_dot_proc_report.encounters[0].dots.len(), 1);
+        assert_eq!(
+            observed_dot_proc_report.encounters[0].procs[0].caster_name,
+            "Balbazak"
+        );
+        assert_eq!(
+            observed_dot_proc_report.encounters[0].dots[0].caster_name,
+            "Balbazak"
+        );
+        assert_eq!(
+            observed_dot_proc_report.encounters[0].dots[0].attribution_method,
+            "proc"
+        );
+        assert_eq!(
+            observed_dot_proc_report.encounters[0].dots[0].ticks_applied,
+            6
+        );
+        let other_player_report = analyze(
+            &catalog,
+            "[Mon Sep 07 08:55:39 2026] Lizzyflop says 'Ahhh, I feel much better now\\...'
+[Mon Sep 07 08:55:39 2026] Grink staggers.
+[Mon Sep 07 08:55:39 2026] Lizzyflop crushes Grink for 30 points of damage.",
+            "Asquatii",
+            false,
+        )
+        .unwrap();
+        assert_eq!(other_player_report.encounters[0].total_damage, 50);
+        assert_eq!(other_player_report.encounters[0].procs.len(), 1);
+        assert_eq!(
+            other_player_report.encounters[0].procs[0].caster_name,
+            "Lizzyflop"
+        );
+
+        let direct_proc_report = analyze(
+            &catalog,
+            "[Mon Mar 23 16:00:01 2026] Yeldema was hit by non-melee for 80 points of damage.
+[Mon Mar 23 16:00:01 2026] Yeldema staggers.
+[Mon Mar 23 16:00:01 2026] You crush Yeldema for 51 points of damage.
+[Mon Mar 23 16:00:02 2026] Yeldema hits YOU for 18 points of damage.",
+            "Asquatii",
+            false,
+        )
+        .unwrap();
+        assert_eq!(direct_proc_report.encounters.len(), 1);
+        assert_eq!(direct_proc_report.encounters[0].total_damage, 131);
+        assert_eq!(direct_proc_report.encounters[0].procs.len(), 1);
+        assert_eq!(direct_proc_report.encounters[0].incoming_events.len(), 1);
+        assert_eq!(
+            direct_proc_report.encounters[0].incoming_events[0].target,
+            "Asquatii"
+        );
+        assert_eq!(
+            direct_proc_report.encounters[0].incoming_events[0].damage,
+            18
+        );
+        assert_eq!(
+            direct_proc_report.encounters[0].procs[0].spell_name,
+            "Essence Tap"
+        );
+        assert_eq!(
+            direct_proc_report.encounters[0].procs[0].caster_name,
+            "Asquatii"
+        );
+        assert_eq!(direct_proc_report.encounters[0].procs[0].direct_damage, 80);
+        assert!(direct_proc_report.lines[2]
+            .decisions
+            .iter()
+            .any(|decision| decision.contains("confirmed Essence Tap")));
     }
 }

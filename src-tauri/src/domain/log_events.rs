@@ -123,6 +123,14 @@ pub enum LogEvent {
         happened_at: NaiveDateTime,
         spell_name: String,
     },
+    SpellInterrupted {
+        happened_at: NaiveDateTime,
+    },
+    SpellResisted {
+        happened_at: NaiveDateTime,
+        spell_name: String,
+        target_name: Option<String>,
+    },
     CombatAttempt {
         happened_at: NaiveDateTime,
         attacker_name: String,
@@ -139,6 +147,11 @@ pub enum LogEvent {
         happened_at: NaiveDateTime,
         speaker: String,
         message: String,
+    },
+    PetAttack {
+        happened_at: NaiveDateTime,
+        pet_name: String,
+        target_name: String,
     },
     TradeOffer {
         happened_at: NaiveDateTime,
@@ -285,6 +298,14 @@ fn auction() -> &'static Regex {
     })
 }
 
+fn pet_attack_tell() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r#"(?i)^(?<pet>.+?) tells you,\s*['"]?Attacking (?<target>.+?) Master\.['"]?$"#)
+            .expect("valid pet attack tell regex")
+    })
+}
+
 fn direct_tell() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -316,6 +337,19 @@ fn spell_cast_started() -> &'static Regex {
         Regex::new(r"^You begin casting (?<spell>.+)\.$").expect("valid spell cast regex")
     })
 }
+fn spell_interrupted() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^Your spell is interrupted\.$").expect("valid spell interruption regex")
+    })
+}
+fn spell_resisted() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^(?:Your target resisted the (?<local_spell>.+?) spell\.|(?<target>.+?) resisted your (?<target_spell>.+?)(?: spell)?[.!])$")
+            .expect("valid spell resist regex")
+    })
+}
 fn item_glow() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -327,7 +361,7 @@ fn item_glow() -> &'static Regex {
 fn combat_attempt() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
-        Regex::new(r"^(?<attacker>You|[A-Za-z][A-Za-z'_-]*) (?:try|tries) to (?<attack>[A-Za-z-]+) (?<mob>.+?), but .+? ripostes!$")
+        Regex::new(r"^(?<attacker>You|[A-Za-z][A-Za-z'_-]*) (?:try|tries) to (?<attack>[A-Za-z-]+) (?<mob>.+?), but (?:(?:.+? )?(?:ripostes|blocks|parries|dodges)|miss(?:es)?)!$")
             .expect("valid combat attempt regex")
     })
 }
@@ -440,6 +474,21 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
         return Some(LogEvent::SpellCastStarted {
             happened_at,
             spell_name: value["spell"].trim().to_owned(),
+        });
+    }
+    if spell_interrupted().is_match(body) {
+        return Some(LogEvent::SpellInterrupted { happened_at });
+    }
+    if let Some(value) = spell_resisted().captures(body) {
+        let spell_name = value
+            .name("local_spell")
+            .or_else(|| value.name("target_spell"))?;
+        return Some(LogEvent::SpellResisted {
+            happened_at,
+            spell_name: spell_name.as_str().trim().to_owned(),
+            target_name: value
+                .name("target")
+                .map(|target| target.as_str().trim().to_owned()),
         });
     }
     if let Some(value) = item_glow().captures(body) {
@@ -588,6 +637,13 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             });
         }
     }
+    if let Some(value) = pet_attack_tell().captures(body) {
+        return Some(LogEvent::PetAttack {
+            happened_at,
+            pet_name: value["pet"].trim().to_owned(),
+            target_name: value["target"].trim().to_owned(),
+        });
+    }
     if let Some(value) = direct_tell().captures(body) {
         return Some(LogEvent::DirectTell {
             happened_at,
@@ -618,14 +674,14 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
                 happened_at,
                 speaker: active_character.to_owned(),
                 channel,
-                item_names: extract_item_links(&message),
+                item_names: extract_linked_item_names(&message),
                 message,
             });
         }
     }
     if let Some(value) = linked_chat().captures(body) {
         let message = value.name("message")?.as_str().to_owned();
-        let item_names = extract_item_links(&message);
+        let item_names = extract_linked_item_names(&message);
         let who = value.name("name")?.as_str();
         let speaker = if who.eq_ignore_ascii_case("You") {
             active_character.to_owned()
@@ -725,6 +781,50 @@ pub fn extract_item_links(message: &str) -> Vec<String> {
     items
 }
 
+fn extract_linked_item_names(message: &str) -> Vec<String> {
+    let encoded = extract_item_links(message);
+    if !encoded.is_empty() {
+        return encoded;
+    }
+    extract_contextual_item_mentions(message)
+}
+
+fn extract_contextual_item_mentions(message: &str) -> Vec<String> {
+    let clean = unquote(message);
+    let lower = clean.to_ascii_lowercase();
+    let Some(end) = [" is rotting", " rotting"]
+        .iter()
+        .filter_map(|marker| lower.find(marker))
+        .min()
+    else {
+        return Vec::new();
+    };
+    let candidate = clean[..end]
+        .trim()
+        .trim_matches(|character: char| matches!(character, ':' | '-' | ',' | ';'));
+    let word_count = candidate.split_whitespace().count();
+    let rejected = [
+        "it",
+        "this",
+        "that",
+        "something",
+        "anything",
+        "corpse",
+        "mob",
+    ]
+    .iter()
+    .any(|word| candidate.eq_ignore_ascii_case(word));
+    if candidate.len() < 2
+        || candidate.len() > 120
+        || word_count == 0
+        || word_count > 15
+        || rejected
+    {
+        Vec::new()
+    } else {
+        vec![candidate.to_owned()]
+    }
+}
 fn unquote(value: &str) -> String {
     let value = value.trim();
     let paired = (value.starts_with('\'') && value.ends_with('\''))
@@ -1001,6 +1101,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_pet_attack_tells_with_multiword_names() {
+        assert!(matches!(
+            parse_log_event(
+                "[Mon Sep 07 06:18:16 2026] Treasure Chest tells you, 'Attacking Grink Master.'",
+                "Valmezz"
+            ),
+            Some(LogEvent::PetAttack { ref pet_name, ref target_name, .. })
+                if pet_name == "Treasure Chest" && target_name == "Grink"
+        ));
+    }
+
+    #[test]
     fn parses_incoming_tells_with_optional_bracketed_name() {
         let event = parse_log_event(
             "[Mon Aug 03 07:16:29 2026] [Posed] tells you, \"I will buy that\"",
@@ -1065,6 +1177,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn parses_catalog_independent_rotting_item_mention() {
+        let event = parse_log_event(
+            "[Tue Sep 08 08:48:06 2026] Tranquellious tells the guild, 'Gleaming Serrated Blade rotting in CoM. 5m25s'",
+            "Derpscleric",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::LinkedItems { ref speaker, ref item_names, channel: ChatChannel::Guild, .. })
+                if speaker == "Tranquellious" && item_names == &["Gleaming Serrated Blade"]
+        ));
+        assert!(extract_contextual_item_mentions("'It is rotting nearby'").is_empty());
+    }
     #[test]
     fn parses_named_guild_item_link() {
         let link = format!("\u{12}{}White Dragon Scale\u{12}", "1".repeat(45));
@@ -1132,11 +1257,53 @@ mod tests {
         ));
         assert!(matches!(
             parse_log_event(
+                "[Fri May 09 10:12:39 2025] Your spell is interrupted.",
+                "Asquatii"
+            ),
+            Some(LogEvent::SpellInterrupted { .. })
+        ));
+        assert!(matches!(
+            parse_log_event(
                 "[Sun Sep 06 13:00:28 2026] Asquatii tries to crush a mortiferous golem, but a mortiferous golem ripostes!",
                 "Youngman"
             ),
             Some(LogEvent::CombatAttempt { ref attacker_name, ref mob_name, ref attack, .. })
                 if attacker_name == "Asquatii" && mob_name == "a mortiferous golem" && attack == "crush"
+        ));
+        assert!(matches!(
+            parse_log_event(
+                "[Mon Sep 07 12:47:42 2026] You try to crush a helot spectre, but a helot spectre blocks!",
+                "Valmez"
+            ),
+            Some(LogEvent::CombatAttempt { ref attacker_name, ref mob_name, ref attack, .. })
+                if attacker_name == "Valmez" && mob_name == "a helot spectre" && attack == "crush"
+        ));
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 11:51:43 2026] You try to crush a helot spectre, but miss!",
+                "Valmez"
+            ),
+            Some(LogEvent::CombatAttempt { ref attacker_name, ref mob_name, ref attack, .. })
+                if attacker_name == "Valmez" && mob_name == "a helot spectre" && attack == "crush"
+        ));
+    }
+    #[test]
+    fn parses_local_spell_resist_resolutions() {
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 12:59:57 2026] Your target resisted the Dawncall spell.",
+                "Asquatii"
+            ),
+            Some(LogEvent::SpellResisted { ref spell_name, target_name: None, .. })
+                if spell_name == "Dawncall"
+        ));
+        assert!(matches!(
+            parse_log_event(
+                "[Sun Sep 06 12:59:57 2026] Hexbone skeleton resisted your Dawncall spell.",
+                "Asquatii"
+            ),
+            Some(LogEvent::SpellResisted { ref spell_name, target_name: Some(ref target), .. })
+                if spell_name == "Dawncall" && target == "Hexbone skeleton"
         ));
     }
 }

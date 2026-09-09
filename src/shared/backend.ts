@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo, DotTrainingReport } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo, DotTrainingReport, ChTrainingReport, ReplayFile, ReplayFileEntry, ClericHealReplayCall, ClericHealReplayFile, ClericHealReplayEntry, ProcCoachStatus, ProcCoachReview, ProcCoachSavedReview } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
 const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,compound:{projects:[],templates:[],activeId:null}};
@@ -20,3 +20,16 @@ const previewSpellCatalog:SpellCatalogStatus={cachedCount:0,processed:0,saved:0,
 export const getSpellCatalogStatus=()=>desktop()?invoke<SpellCatalogStatus>("spell_catalog_status"):Promise.resolve(previewSpellCatalog);
 export const reloadSpellCatalog=()=>desktop()?invoke<SpellCatalogStatus>("reload_spell_catalog"):Promise.resolve(previewSpellCatalog);
 export const getDotTrainingPreview=(text:string,activeCharacter:string,projectAllTicks:boolean)=>desktop()?invoke<DotTrainingReport>("dot_training_preview",{text,activeCharacter,projectAllTicks}):Promise.reject(new Error("DoT training is available in the desktop app."));
+export const listClericHealReplayFiles=()=>desktop()?invoke<ClericHealReplayEntry[]>("ch_replay_library_list"):Promise.resolve([]);
+export const getChTrainingPreview=(text:string,activeCharacter:string)=>desktop()?invoke<ChTrainingReport>("ch_training_preview",{text,activeCharacter}):Promise.reject(new Error("CH training is available in the desktop app."));
+export const loadClericHealReplayFile=(path:string)=>desktop()?invoke<ClericHealReplayFile>("ch_replay_library_load",{path}):Promise.reject(new Error("CH replays are available in the desktop app."));
+export const saveClericHealReplay=(character:string,targetMob:string,calls:ClericHealReplayCall[])=>desktop()?invoke<ClericHealReplayEntry>("save_ch_replay",{request:{character,targetMob,calls}}):Promise.reject(new Error("CH replays are available in the desktop app."));
+export const listReplayFiles=()=>desktop()?invoke<ReplayFileEntry[]>("replay_library_list"):Promise.resolve([]);
+export const loadReplayFile=(path:string)=>desktop()?invoke<ReplayFile>("replay_library_load",{path}):Promise.reject(new Error("Fight replays are available in the desktop app."));
+export const importReplayFile=(path:string)=>desktop()?invoke<ReplayFileEntry>("replay_library_import",{path}):Promise.reject(new Error("Fight replays are available in the desktop app."));
+export const saveDamageReplay=(encounterId:number)=>desktop()?invoke<ReplayFileEntry>("save_damage_replay",{encounterId}):Promise.reject(new Error("Fight replays are available in the desktop app."));
+export const getProcCoachStatus=()=>desktop()?invoke<ProcCoachStatus>("proc_coach_status"):Promise.resolve({configured:false,model:"gpt-5.4-mini-2026-03-17",secureStore:"Desktop app required"});
+export const saveProcCoachApiKey=(apiKey:string)=>desktop()?invoke<ProcCoachStatus>("proc_coach_save_key",{apiKey}):Promise.reject(new Error("Secure credentials are available in the desktop app."));
+export const deleteProcCoachApiKey=()=>desktop()?invoke<ProcCoachStatus>("proc_coach_delete_key"):Promise.reject(new Error("Secure credentials are available in the desktop app."));
+export const analyzeWithProcCoach=(text:string,activeCharacter:string,projectAllTicks:boolean)=>desktop()?invoke<ProcCoachReview>("proc_coach_analyze",{text,activeCharacter,projectAllTicks}):Promise.reject(new Error("Proc Coach is available in the desktop app."));
+export const saveReplayCoachReview=(path:string,review:ProcCoachSavedReview)=>desktop()?invoke<ReplayFile>("replay_library_save_coach_review",{path,review}):Promise.reject(new Error("Replay annotations are available in the desktop app."));

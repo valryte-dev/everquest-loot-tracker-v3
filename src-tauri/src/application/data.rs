@@ -2,11 +2,13 @@ use chrono::Local;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Map, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     io::{BufRead, BufReader},
     path::Path,
 };
+
+use super::combat_metrics::{self, EncounterSpellMetrics};
 
 use crate::{
     domain::{
@@ -38,7 +40,7 @@ fn payouts(value: Option<String>) -> Vec<Value> {
 
 fn page_fields(page: &str) -> &'static [&'static str] {
     match page {
-        "live" => &["loot", "items", "mobs"],
+        "live" => &["loot", "tracked", "items", "mobs"],
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
@@ -420,6 +422,8 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
 
     if wants("damageEncounters") {
         attach_active_dots(&connection, &mut damage_encounters)?;
+        attach_spell_metrics(&connection, &mut damage_encounters)?;
+        attach_tracked_spells(&connection, &mut damage_encounters)?;
     }
     let current_weapon_loadout = if wants("damageEncounters") {
         if let Some(character) = settings
@@ -663,7 +667,12 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                 "SELECT e.id,e.happened_at,e.damage_type,e.attack_kind,e.damage,
                         w.primary_weapon_name,w.primary_item_id,
                         w.secondary_weapon_name,w.secondary_item_id,
-                        COALESCE(e.attacker_name,encounter.character_name,'Unknown')
+                        COALESCE(e.attacker_name,encounter.character_name,'Unknown'),
+                        CASE
+                            WHEN e.source_file LIKE 'dot://%' THEN 'dot'
+                            WHEN e.source_file LIKE 'proc://%' THEN 'proc'
+                            ELSE 'explicit'
+                        END
                  FROM damage_events e
                  LEFT JOIN character_weapon_loadouts w ON w.id=e.weapon_loadout_id
                  LEFT JOIN damage_encounters encounter ON encounter.id=e.encounter_id
@@ -680,7 +689,8 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                     "primaryItemId":row.get::<_,Option<i64>>(6)?,
                     "secondaryWeapon":row.get::<_,Option<String>>(7)?,
                     "secondaryItemId":row.get::<_,Option<i64>>(8)?,
-                    "attacker":row.get::<_,String>(9)?
+                    "attacker":row.get::<_,String>(9)?,
+                    "source":row.get::<_,String>(10)?
                 }))
             })
             .map_err(err)?;
@@ -707,6 +717,8 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
     };
     let mut enriched = vec![encounter];
     attach_active_dots(&connection, &mut enriched)?;
+    attach_spell_metrics(&connection, &mut enriched)?;
+    attach_tracked_spells(&connection, &mut enriched)?;
     let mut value = enriched.pop().expect("encounter remains available");
     let root = value
         .as_object_mut()
@@ -726,6 +738,22 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
         )
         .optional()
         .map_err(|error| error.to_string())?;
+    let preferred_target_character = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='damage_target_character'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let preferred_target_encounter_id = connection
+        .query_row(
+            "SELECT CAST(value AS INTEGER) FROM app_settings WHERE key='damage_target_encounter_id'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
     let mut encounters=query_values(&connection,
         "SELECT e.id,e.character_name,e.mob_name,e.started_at,e.ended_at,e.last_damage_at,
                 e.total_damage,e.melee_damage,e.spell_damage,e.hit_count,e.max_hit,e.outcome,e.source_file,
@@ -742,7 +770,20 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
                        GROUP BY attacker_name COLLATE NOCASE ORDER BY total_damage DESC)),
                 COALESCE((SELECT SUM(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
                 COALESCE((SELECT COUNT(*) FROM damage_received_events WHERE encounter_id=e.id),0),
-                COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0)
+                COALESCE((SELECT MAX(damage) FROM damage_received_events WHERE encounter_id=e.id),0),
+                (SELECT json_group_array(json_object(
+                    'name',target_name,'totalDamage',total_damage,'hitCount',hit_count,
+                    'maxHit',max_hit,'firstDamageAt',first_damage_at,'lastDamageAt',last_damage_at
+                )) FROM (
+                    SELECT target_name,total_damage,hit_count,max_hit,first_damage_at,last_damage_at
+                    FROM damage_target_summaries WHERE encounter_id=e.id
+                    UNION ALL
+                    SELECT target_name,SUM(damage),COUNT(*),MAX(damage),MIN(happened_at),MAX(happened_at)
+                    FROM damage_received_events
+                    WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_target_summaries WHERE encounter_id=e.id)
+                    GROUP BY target_name COLLATE NOCASE
+                    ORDER BY total_damage DESC,target_name COLLATE NOCASE
+                ))
          FROM damage_encounters e
          WHERE e.outcome='active' OR datetime(e.last_damage_at)>=datetime('now','localtime','-45 seconds')
          ORDER BY e.last_damage_at DESC,e.id DESC LIMIT 8",
@@ -753,13 +794,15 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
             "sourceFile":row.get::<_,String>(12)?,"weapons":names(row.get::<_,Option<String>>(13)?),
             "players":row.get::<_,Option<String>>(14)?.and_then(|v|serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(||json!([])),
             "incomingDamage":row.get::<_,i64>(15)?,"incomingHitCount":row.get::<_,i64>(16)?,
-            "incomingMaxHit":row.get::<_,i64>(17)?,"damageTargets":[] })))?;
+            "incomingMaxHit":row.get::<_,i64>(17)?,"damageTargets":row.get::<_,Option<String>>(18)?.and_then(|v|serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(||json!([])) })))?;
     attach_active_dots(&connection, &mut encounters)?;
+    attach_spell_metrics(&connection, &mut encounters)?;
+    attach_tracked_spells(&connection, &mut encounters)?;
     let loadout=active_character.as_deref().filter(|value|!value.is_empty()).and_then(|character|
         connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
             [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
     Ok(
-        json!({"activeCharacter":active_character,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
+        json!({"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
     )
 }
 
@@ -1042,6 +1085,63 @@ fn sync_split_lifecycle_snapshot(connection: &rusqlite::Connection) -> Result<()
     }
     Ok(())
 }
+fn attach_spell_metrics(
+    connection: &rusqlite::Connection,
+    encounters: &mut [Value],
+) -> Result<(), String> {
+    let ids = encounters
+        .iter()
+        .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+        .collect::<Vec<_>>();
+    let mut metrics = combat_metrics::load_for_encounters(connection, &ids)?;
+    for encounter in encounters {
+        let id = encounter
+            .get("id")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        let value = serde_json::to_value(
+            metrics
+                .remove(&id)
+                .unwrap_or_else(EncounterSpellMetrics::default),
+        )
+        .map_err(|error| error.to_string())?;
+        let root = encounter
+            .as_object_mut()
+            .ok_or("Damage encounter query returned a non-object")?;
+        let value = value
+            .as_object()
+            .ok_or("Spell metrics did not serialize as an object")?;
+        for (key, field) in value {
+            if key == "spells" {
+                root.insert("spellMetrics".into(), field.clone());
+            } else {
+                root.insert(key.clone(), field.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn attach_tracked_spells(
+    connection: &rusqlite::Connection,
+    encounters: &mut [Value],
+) -> Result<(), String> {
+    let ids = encounters
+        .iter()
+        .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+        .collect::<Vec<_>>();
+    let mut activity = combat_metrics::load_activity_for_encounters(connection, &ids)?;
+    for encounter in encounters {
+        let id = encounter
+            .get("id")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        encounter["trackedSpells"] = serde_json::to_value(activity.remove(&id).unwrap_or_default())
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 fn attach_active_dots(
     connection: &rusqlite::Connection,
     encounters: &mut [Value],
@@ -1122,6 +1222,23 @@ where
 pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Value, String> {
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     match action {
+        "damageTracker.close" => {
+            super::combat_metrics::close_encounter(&mut connection, integer(payload, "id")?)?;
+        }
+        "damageTracker.correctTarget" => {
+            let encounter_id = integer(payload, "id")?;
+            let mob_name = required(payload, "mobName")?;
+            super::combat_metrics::correct_encounter_target(
+                &mut connection,
+                encounter_id,
+                &mob_name,
+            )?;
+        }
+        "damageTracker.target" => {
+            let character = required(payload, "character")?;
+            let encounter_id = payload.get("id").and_then(Value::as_i64);
+            super::combat_metrics::set_preferred_target(&mut connection, &character, encounter_id)?;
+        }
         "setting.save" => {
             let key = required(payload, "key")?;
             let value = required(payload, "value")?;
@@ -1209,14 +1326,21 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
         "linked.rescan" => return rescan_linked_loot(&connection),
         "split.add" => add_split(&mut connection, payload)?,
         "split.save" => save_split(&mut connection, payload)?,
-        "split.delete" => delete_split(&mut connection, required(payload, "key")?)?,
-        "split.complete" => complete_split(&mut connection, payload)?,
+        "split.delete" => delete_split(&connection, required(payload, "key")?)?,
+        "split.complete" => complete_split(&connection, payload)?,
+        "split.reconcileSales" => {
+            super::split_reconciliation::apply(&mut connection, payload)?;
+        }
         "history.save" => save_history(&mut connection, payload)?,
+        "history.unsell" => unsell_history(&mut connection, payload)?,
         "history.payout.member.complete" => {
-            set_split_member_payout(&mut connection, payload, true)?;
+            set_split_member_payout(&connection, payload, true)?;
         }
         "history.payout.member.reopen" => {
-            set_split_member_payout(&mut connection, payload, false)?;
+            set_split_member_payout(&connection, payload, false)?;
+        }
+        "history.payout.rows.complete" => {
+            complete_split_payout_rows(&mut connection, payload)?;
         }
         "history.delete" => {
             for id in integers(payload, "ids") {
@@ -1336,9 +1460,12 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
             | "split.save"
             | "split.delete"
             | "split.complete"
+            | "split.reconcileSales"
             | "history.save"
+            | "history.unsell"
             | "history.payout.member.complete"
             | "history.payout.member.reopen"
+            | "history.payout.rows.complete"
             | "history.delete"
     ) {
         sync_split_lifecycle_snapshot(&connection)?;
@@ -1743,7 +1870,7 @@ fn save_history(connection: &mut rusqlite::Connection, payload: &Value) -> Resul
     Ok(())
 }
 
-fn delete_split(connection: &mut rusqlite::Connection, key: String) -> Result<(), String> {
+fn delete_split(connection: &rusqlite::Connection, key: String) -> Result<(), String> {
     if let Some(id) = key.strip_prefix("manual:") {
         connection
             .execute("DELETE FROM manual_split_list_items WHERE id=?", [id])
@@ -1756,8 +1883,74 @@ fn delete_split(connection: &mut rusqlite::Connection, key: String) -> Result<()
     Ok(())
 }
 
+fn unsell_history(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
+    let id = integer(payload, "id")?;
+    let transaction = connection.transaction().map_err(err)?;
+    let (item_name, mob_name, looter_name, value_pp, item_id, disposition) = transaction
+        .query_row(
+            "SELECT item_name,mob_name,looter_name,value_pp,item_id,disposition
+             FROM completed_split_items WHERE id=?",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => "Sale record was not found".to_owned(),
+            other => err(other),
+        })?;
+    if disposition != "sold" {
+        return Err("Only sold split items can be returned to held loot".into());
+    }
+    let mob_id = if let Some(name) = mob_name.as_deref() {
+        transaction
+            .execute(
+                "INSERT INTO mobs(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+                [name],
+            )
+            .map_err(err)?;
+        transaction
+            .query_row(
+                "SELECT id FROM mobs WHERE name=? COLLATE NOCASE",
+                [name],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(err)?
+    } else {
+        None
+    };
+    transaction
+        .execute(
+            "INSERT INTO manual_split_list_items(item_name,mob_id,looter_name,payout_value_pp,item_id)
+             VALUES(?,?,?,NULLIF(?,0),?)",
+            params![item_name, mob_id, looter_name, value_pp, item_id],
+        )
+        .map_err(err)?;
+    let restored_id = transaction.last_insert_rowid();
+    transaction
+        .execute(
+            "INSERT INTO manual_split_list_members(split_list_item_id,member_name)
+             SELECT ?,member_name FROM completed_split_members WHERE completed_split_item_id=?",
+            params![restored_id, id],
+        )
+        .map_err(err)?;
+    transaction
+        .execute("DELETE FROM completed_split_items WHERE id=?", [id])
+        .map_err(err)?;
+    transaction.commit().map_err(err)?;
+    Ok(())
+}
+
 fn set_split_member_payout(
-    connection: &mut rusqlite::Connection,
+    connection: &rusqlite::Connection,
     payload: &Value,
     paid: bool,
 ) -> Result<(), String> {
@@ -1810,7 +2003,50 @@ fn set_split_member_payout(
     Ok(())
 }
 
-fn complete_split(connection: &mut rusqlite::Connection, payload: &Value) -> Result<(), String> {
+fn complete_split_payout_rows(
+    connection: &mut rusqlite::Connection,
+    payload: &Value,
+) -> Result<(), String> {
+    let ids = integers(payload, "ids");
+    if ids.is_empty() || ids.len() > 2000 {
+        return Err("Choose between 1 and 2000 pending payout rows".into());
+    }
+    let unique = ids.iter().copied().collect::<HashSet<_>>();
+    if unique.len() != ids.len() {
+        return Err("A payout row was selected more than once".into());
+    }
+    let transaction = connection.transaction().map_err(err)?;
+    for id in ids {
+        let updated = transaction
+            .execute(
+                "UPDATE completed_split_items
+                 SET payout_status='completed',paid_at=CURRENT_TIMESTAMP
+                 WHERE id=? AND disposition='sold' AND payout_status<>'completed'",
+                [id],
+            )
+            .map_err(err)?;
+        if updated == 0 {
+            return Err(format!("Pending payout row {id} was not found"));
+        }
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO completed_split_payouts(
+                    completed_split_item_id,member_name,paid_at
+                 )
+                 SELECT completed_split_item_id,member_name,CURRENT_TIMESTAMP
+                 FROM completed_split_members WHERE completed_split_item_id=?",
+                [id],
+            )
+            .map_err(err)?;
+    }
+    transaction.commit().map_err(err)?;
+    Ok(())
+}
+
+pub(super) fn complete_split(
+    connection: &rusqlite::Connection,
+    payload: &Value,
+) -> Result<(), String> {
     let key = required(payload, "key")?;
     let (table, id_col, members_table, fk, id) = if let Some(v) = key.strip_prefix("manual:") {
         (
@@ -2666,6 +2902,11 @@ mod tests {
 
         mutate(&database, "loot.track", &json!({"id":loot_id})).unwrap();
         mutate(&database, "loot.track", &json!({"id":loot_id})).unwrap();
+
+        let live = page_snapshot(&database, "live").unwrap();
+        assert_eq!(live["tracked"].as_array().unwrap().len(), 1);
+        assert_eq!(live["tracked"][0]["sourceLootId"], loot_id);
+
         mutate(&database, "loot.delete", &json!({"ids":[loot_id]})).unwrap();
 
         let value = snapshot(&database).unwrap();
@@ -2806,6 +3047,76 @@ mod tests {
     }
 
     #[test]
+    fn unselling_restores_one_sale_to_held_with_identity_and_participants() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO master_items(item_id,item_name,source) VALUES(77,'Peacebringer','test')",[]).unwrap();
+        connection.execute("INSERT INTO completed_split_items(item_name,mob_name,looter_name,value_pp,disposition,note,payout_status,item_id) VALUES('Peacebringer','Grenn','Seller',900,'sold','mistake','completed',77)",[]).unwrap();
+        let history_id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'Seller'),(?,'Friend')",params![history_id,history_id]).unwrap();
+        connection.execute("INSERT INTO completed_split_payouts(completed_split_item_id,member_name,paid_at) VALUES(?,'Seller','2026-09-09')",[history_id]).unwrap();
+        drop(connection);
+
+        mutate(&database, "history.unsell", &json!({"id":history_id})).unwrap();
+        let value = snapshot(&database).unwrap();
+        assert!(value["history"].as_array().unwrap().is_empty());
+        assert_eq!(value["splits"].as_array().unwrap().len(), 1);
+        let restored = &value["splits"][0];
+        assert_eq!(restored["itemName"], "Peacebringer");
+        assert_eq!(restored["mobName"], "Grenn");
+        assert_eq!(restored["looterName"], "Seller");
+        assert_eq!(restored["payoutValuePp"], 900);
+        assert_eq!(restored["attendees"], json!(["Friend", "Seller"]));
+        let connection = database.connect().unwrap();
+        let item_id: Option<i64> = connection
+            .query_row("SELECT item_id FROM manual_split_list_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let payout_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((item_id, payout_count), (Some(77), 0));
+    }
+
+    #[test]
+    fn completing_payout_rows_marks_every_member_and_rolls_back_invalid_batches() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute("INSERT INTO completed_split_items(id,item_name,value_pp,disposition,payout_status) VALUES(1,'First',100,'sold','pending'),(2,'Second',200,'sold','pending'),(3,'Third',300,'sold','pending')",[]).unwrap();
+        connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(1,'Main'),(1,'Friend'),(2,'Main'),(3,'Main')",[]).unwrap();
+        drop(connection);
+
+        mutate(
+            &database,
+            "history.payout.rows.complete",
+            &json!({"ids":[1,2]}),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let completed:i64=connection.query_row("SELECT COUNT(*) FROM completed_split_items WHERE id IN (1,2) AND payout_status='completed' AND paid_at IS NOT NULL",[],|row|row.get(0)).unwrap();
+        let payouts:i64=connection.query_row("SELECT COUNT(*) FROM completed_split_payouts WHERE completed_split_item_id IN (1,2)",[],|row|row.get(0)).unwrap();
+        assert_eq!((completed, payouts), (2, 3));
+        drop(connection);
+
+        assert!(mutate(
+            &database,
+            "history.payout.rows.complete",
+            &json!({"ids":[3,999]})
+        )
+        .is_err());
+        let connection = database.connect().unwrap();
+        let third:(String,i64)=connection.query_row("SELECT payout_status,(SELECT COUNT(*) FROM completed_split_payouts WHERE completed_split_item_id=3) FROM completed_split_items WHERE id=3",[],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
+        assert_eq!(third, ("pending".to_owned(), 0));
+    }
+
+    #[test]
     fn activity_history_snapshot_resolves_shared_item_values() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -2926,11 +3237,32 @@ mod tests {
              VALUES('Test','a test mob','2026-09-06 12:00:00','2026-09-06 12:00:01',10,10,0,1,10,'active','eqlog_Test_P1999Green.txt',2,2)",
             [],
         ).unwrap();
+        connection.execute(
+            "INSERT INTO damage_received_events(encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,raw_line,source_file,source_offset) VALUES(1,'2026-09-06 12:00:01','a test mob','Test','hit',17,'test line','eqlog_Test_P1999Green.txt',3)",
+            [],
+        ).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO app_settings(key,value) VALUES('active_character','Test');
+             INSERT INTO app_settings(key,value) VALUES('damage_target_character','Test');
+             INSERT INTO app_settings(key,value) VALUES('damage_target_encounter_id','1');",
+            )
+            .unwrap();
         drop(connection);
 
         let status = global_combat_snapshot(&database).unwrap();
         assert_eq!(status["damageEncounters"].as_array().unwrap().len(), 1);
         assert_eq!(status["damageEncounters"][0]["mobName"], "a test mob");
+        assert_eq!(status["preferredTargetCharacter"], "Test");
+        assert_eq!(status["preferredTargetEncounterId"], 1);
+        assert_eq!(
+            status["damageEncounters"][0]["damageTargets"][0]["name"],
+            "Test"
+        );
+        assert_eq!(
+            status["damageEncounters"][0]["damageTargets"][0]["totalDamage"],
+            17
+        );
     }
     #[test]
     fn compound_save_appends_an_idempotent_normalized_snapshot() {

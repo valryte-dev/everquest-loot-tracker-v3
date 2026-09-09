@@ -15,11 +15,14 @@ import {SpellHover} from "./SpellHover";
 import {SpellCatalogPanel} from "./SpellCatalogPanel";
 import {SpellCatalogBrowser} from "./SpellCatalogBrowser";
 import {Release35} from "./Release35";
-import {buildSplitPayoutSummary,groupSplitPeople,type ContributionStatus,type PersonPayoutSummary} from "./splits/model";
+import {buildSplitPayoutSummary,discordPlayerPotentialPayoutSummary,discordPotentialPayoutBriefSummary,discordPotentialPayoutSummary,discordSoldItemsSummary,groupSplitPeople,type ContributionStatus,type PersonPayoutSummary} from "./splits/model";
+import {SaleReconciliation} from "./splits/SoldListReconciler";
+import {SoldItemsFullDetailExport} from "./splits/SoldItemsFullDetailExport";
 import {HistoryAnalytics} from "./history/HistoryCharts";
 import {DeathReportsPage} from "./death-reports/DeathReportsPage";
 import {DamageTrackerPage} from "./damage/DamageTrackerPage";
 import {DotTrainingPage} from "./damage/DotTrainingPage";
+import {ChTrainingPage} from "./damage/ChTrainingPage";
 import {DatabaseManagementPage} from "./database/DatabaseManagementPage";
 import {sortLiveEncountersByPlayerTarget} from "./damage/model";
 import {formatCombatClock} from "./damage/meterModel";
@@ -46,7 +49,7 @@ export function App(){
  useEffect(()=>{if(!("__TAURI_INTERNALS__" in window))return;let moved:(()=>void)|undefined,resized:(()=>void)|undefined;const interacting=()=>{windowBusy.current=true;window.clearTimeout(windowSettle.current);windowSettle.current=window.setTimeout(()=>{windowBusy.current=false;if(refreshPending.current&&!document.querySelector(".modal")){refreshPending.current=false;refresh(true)}},250)};getCurrentWindow().onMoved(interacting).then(value=>moved=value);getCurrentWindow().onResized(interacting).then(value=>resized=value);return()=>{window.clearTimeout(windowSettle.current);moved?.();resized?.()}},[refresh]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings.theme||"midnight"},[data.settings.theme]);
  useEffect(()=>{window.scrollTo({top:0,left:0,behavior:"auto"})},[page]);
- const run=async(action:string,payload:Record<string,unknown>={})=>{const backgroundScan=action==="damageTracker.rescan"||action==="activityHistory.scan";if(!backgroundScan)setBusy(true);try{const result=await mutate(action,payload);window.clearTimeout(refreshTimer.current);await refresh(true);return result}catch(e){setError(String(e));return null}finally{if(!backgroundScan)setBusy(false)}};
+ const run=async(action:string,payload:Record<string,unknown>={})=>{const nonBlocking=action==="damageTracker.rescan"||action==="activityHistory.scan"||action==="damageTracker.target"||action==="damageTracker.correctTarget";if(!nonBlocking)setBusy(true);try{const result=await mutate(action,payload);window.clearTimeout(refreshTimer.current);await refresh(true);return result}catch(e){setError(String(e));return null}finally{if(!nonBlocking)setBusy(false)}};
  const feature=FEATURES.find(f=>f.key===page)!;
  return <div className="app-shell">
   <aside className="rail"><div className="brand"><span className="brand-mark">EQ</span><span><strong>Loot Tracker</strong><small>Cross-platform V3</small></span></div><nav>{FEATURE_GROUPS.map(group=><section className="nav-group" key={group}><h2>{group}</h2>{FEATURES.filter(feature=>feature.group===group).map(feature=><a key={feature.key} href={`#/${feature.key}`} className={page===feature.key?"active":""}><i>{feature.icon}</i><span>{feature.shortLabel}</span></a>)}</section>)}</nav></aside>
@@ -77,7 +80,8 @@ function GlobalFightStrip({status,enabled}:{status:GlobalStatusSnapshot;enabled:
  useEffect(()=>{const timer=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(timer)},[]);
  if(!enabled)return null;
  const recent=status.damageEncounters.filter(row=>pinned||now-parsedTime(row.lastDamageAt)<30000);
- const rows=sortLiveEncountersByPlayerTarget(recent,status.activeCharacter);
+ const preferred=status.preferredTargetCharacter?.toLowerCase()===status.activeCharacter?.toLowerCase()?status.preferredTargetEncounterId:undefined;
+ const rows=sortLiveEncountersByPlayerTarget(recent,status.activeCharacter,preferred);
  if(!rows.length)return null;
  const signature=rows.map(row=>row.id+":"+row.hitCount+":"+(row.incomingHitCount||0)).join("|");
  if(signature===closed)return null;
@@ -91,7 +95,7 @@ function GlobalFightRow({row,character,now}:{row:DamageEncounter;character:strin
  const weapons=row.weapons.length?row.weapons.join(" / "):"Weapons pending";
  return <article><div className="fight-target"><strong>{character} <span>vs</span> {row.mobName}</strong><small>{weapons}</small></div><dl><div><dt>Combat</dt><dd>{formatCombatClock(durationSeconds)}</dd></div><div><dt>My DPS</dt><dd>{Math.round((player?.totalDamage||0)/durationSeconds)}</dd></div><div><dt>My damage</dt><dd>{(player?.totalDamage||0).toLocaleString()}</dd></div><div><dt>Group DPS</dt><dd>{Math.round(group/durationSeconds)}</dd></div><div><dt>Group damage</dt><dd>{group.toLocaleString()}</dd></div>{(row.incomingDamage||0)>0&&<div><dt>Incoming</dt><dd>{row.incomingDamage!.toLocaleString()}</dd></div>}</dl></article>;
 }
-function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"activity-history":return <ActivityHistoryPage data={data} run={run}/>;case"death-reports":return <DeathReportsPage data={data} run={run}/>;case"damage":return <DamageTrackerPage data={data} run={run}/>;case"dot-lab":return <DotTrainingPage activeCharacter={data.settings.active_character}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"database":return <DatabaseManagementPage run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion} schemaVersion={status?.schemaVersion}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
+function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"activity-history":return <ActivityHistoryPage data={data} run={run}/>;case"death-reports":return <DeathReportsPage data={data} run={run}/>;case"damage":return <DamageTrackerPage data={data} run={run}/>;case"dot-lab":return <DotTrainingPage activeCharacter={data.settings.active_character}/>;case"ch-lab":return <ChTrainingPage activeCharacter={data.settings.active_character}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"database":return <DatabaseManagementPage run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion} schemaVersion={status?.schemaVersion}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
 const Loading=()=> <section className="loading"><div className="spinner"/><h2>Opening your workspace</h2><p>Loading the local database—no sample data is shown.</p></section>;
 const Card=({title,sub,actions,children,className=""}:{title:string;sub?:string;actions?:ReactNode;children:ReactNode;className?:string})=><section className={`card ${className}`}><header><div><h2>{title}</h2>{sub&&<p>{sub}</p>}</div>{actions&&<div className="card-actions">{actions}</div>}</header>{children}</section>;
 const Stats=({items,className=""}:{items:[string,string,string?][];className?:string})=><section className={`stats ${className}`.trim()}>{items.map(([l,v,s])=><article key={l}><span>{l}</span><strong>{v}</strong>{s&&<small>{s}</small>}</article>)}</section>;
@@ -163,10 +167,17 @@ function SplitsV3({data,run}:{data:AppSnapshot;run:Runner}){
  const[historyEdit,setHistoryEdit]=useState<History|null>(null);
  const[breakdown,setBreakdown]=useState<PersonPayoutSummary|null>(null);
  const[selected,setSelected]=useState<Set<string|number>>(new Set());
+ const[pendingSelected,setPendingSelected]=useState<Set<string|number>>(new Set());
+ const[potentialCopyStatus,setPotentialCopyStatus]=useState("");
+ const[soldCopyStatus,setSoldCopyStatus]=useState("");
+ const[fullDetailOpen,setFullDetailOpen]=useState(false);
  const payout=buildSplitPayoutSummary(data.splits,data.history,data.aliases);
  const potentialIncome=payout.people.filter(person=>person.heldItems>0).sort((a,b)=>b.heldSharePp-a.heldSharePp||a.name.localeCompare(b.name));
  const pending=data.history.filter(row=>row.disposition==="sold"&&row.payoutStatus!=="completed");
  const completed=data.history.filter(row=>row.disposition==="consumed"||(row.disposition==="sold"&&row.payoutStatus==="completed"));
+ const selectedPendingRows=pending.filter(row=>pendingSelected.has(row.id));
+ const selectedPayout=buildSplitPayoutSummary([],selectedPendingRows,data.aliases);
+ const selectedPayoutPeople=selectedPayout.people.filter(person=>person.pendingSharePp>0);
  const aliasNames=new Map(data.aliases.map(alias=>[alias.alias.trim().toLowerCase(),alias.canonical.trim()]));
  const canonical=(name:string)=>aliasNames.get(name.trim().toLowerCase())||name.trim();
  const participantCount=(names:string[])=>Math.max(1,new Set(names.map(name=>canonical(name).toLowerCase())).size);
@@ -197,6 +208,9 @@ function SplitsV3({data,run}:{data:AppSnapshot;run:Runner}){
  data.splits.forEach(row=>{if(!row.looterName)return;const name=canonical(row.looterName),key=name.toLowerCase(),entry=heldBy.get(key)||{name,items:[],value:0};entry.items.push(row.itemName);entry.value+=row.payoutValuePp??row.marketValuePp??0;heldBy.set(key,entry)});
  const lootedBy=new Map<string,{name:string;items:string[];value:number;completed:number}>();
  [...data.splits.map(row=>({name:row.looterName,item:row.itemName,value:row.payoutValuePp??row.marketValuePp??0,completed:false})),...data.history.map(row=>({name:row.looterName,item:row.itemName,value:row.valuePp,completed:true}))].forEach(row=>{if(!row.name)return;const name=canonical(row.name),key=name.toLowerCase(),entry=lootedBy.get(key)||{name,items:[],value:0,completed:0};entry.items.push(row.item);entry.value+=row.value;if(row.completed)entry.completed+=1;lootedBy.set(key,entry)});
+ const copyPotentialPayouts=async(message:string,status:string)=>{try{await navigator.clipboard.writeText(message);setPotentialCopyStatus(status)}catch{setPotentialCopyStatus("Copy failed")}window.setTimeout(()=>setPotentialCopyStatus(""),2200)};
+ const copySoldItems=async()=>{try{await navigator.clipboard.writeText(discordSoldItemsSummary(pending,data.aliases));setSoldCopyStatus("Discord list copied")}catch{setSoldCopyStatus("Copy failed")}window.setTimeout(()=>setSoldCopyStatus(""),2200)};
+ const markPayoutRowsPaid=async(ids:(string|number)[])=>{if(!ids.length)return;const result=await run("history.payout.rows.complete",{ids:ids.map(Number)});if(result!==null)setPendingSelected(new Set())};
  return <>
   <section className="split-phase-nav" aria-label="Split tracking phases">
    <button className={tab==="held"?"active":""} onClick={()=>setTab("held")}><b>1</b><span><strong>Item looted</strong><small>{payout.heldCount} held / {money(payout.heldValuePp)}</small></span></button>
@@ -207,17 +221,21 @@ function SplitsV3({data,run}:{data:AppSnapshot;run:Runner}){
    <button className={tab==="summary"?"active summary":""} onClick={()=>setTab("summary")}><span><strong>Payout summary</strong><small>Audit people and items</small></span></button>
   </section>
   {tab==="held"&&<>
-   <Card title="Potential income by player" sub="Estimated share of unsold loot after aliases are consolidated. Actual payouts may change when items sell.">
+   <Card title="Potential income by player" sub="Estimated share of unsold loot after aliases are consolidated. Actual payouts may change when items sell." actions={<><span className="copy-status" role="status">{potentialCopyStatus}</span><button className="summary-copy-action" disabled={!potentialIncome.length} onClick={()=>copyPotentialPayouts(discordPotentialPayoutBriefSummary(payout),"Brief summary copied")}>Copy brief</button><button className="summary-copy-action" disabled={!potentialIncome.length} onClick={()=>copyPotentialPayouts(discordPotentialPayoutSummary(payout),"Detailed summary copied")}>Copy detailed</button></>}>
     <div className="pending-player-cards">
-     {potentialIncome.map(person=><button key={person.name} onClick={()=>setBreakdown(person)}>
-      <span className="pending-player-copy"><small>Player</small><strong>{person.name}</strong><em>{person.heldItems} held item{person.heldItems===1?"":"s"}</em></span>
-      <span className="pending-player-balance"><small>Potential income</small><strong>{money(person.heldSharePp)}</strong></span>
-      <span className="pending-player-open" aria-hidden="true">{"\u2192"}</span>
-      <span className="pending-player-items"><small>Unsold items</small><em>{person.contributions.filter(item=>item.status==="held").slice(0,2).map(item=>item.itemName).join(" / ")}{person.heldItems>2?` +${person.heldItems-2} more`:""}</em></span>
-     </button>)}
+     {potentialIncome.map(person=><article className="pending-player-card" key={person.name}>
+      <button className="pending-player-main" onClick={()=>setBreakdown(person)}>
+       <span className="pending-player-copy"><small>Player</small><strong>{person.name}</strong><em>{person.heldItems} held item{person.heldItems===1?"":"s"}</em></span>
+       <span className="pending-player-balance"><small>Potential income</small><strong>{money(person.heldSharePp)}</strong></span>
+       <span className="pending-player-open" aria-hidden="true">{"\u2192"}</span>
+       <span className="pending-player-items"><small>Unsold items</small><em>{person.contributions.filter(item=>item.status==="held").slice(0,2).map(item=>item.itemName).join(" / ")}{person.heldItems>2?` +${person.heldItems-2} more`:""}</em></span>
+      </button>
+      <IconButton icon="clipboard" label={`Copy ${person.name}'s potential payout`} className="pending-player-copy-action" onClick={()=>copyPotentialPayouts(discordPlayerPotentialPayoutSummary(person),`${person.name} summary copied`)}/>
+     </article>)}
      {!potentialIncome.length&&<div className="pending-player-empty">No potential split income is currently tracked.</div>}
     </div>
    </Card>
+   <SaleReconciliation splits={data.splits} run={run}/>
    <Card title="Phase 1: Looted and held" sub="Items remain here while a group member is holding them for sale." actions={<IconButton icon="add" label="Add split" className="primary" onClick={()=>setForm({itemName:"",mobName:"",looterName:"",attendees:data.members.filter(member=>member.active).map(member=>member.name),payoutValuePp:undefined})}/>}>
     <DataTable rows={data.splits} columns={heldColumns} rowKey={r=>r.key} actions={row=><><IconButton icon="edit" label="Edit held item" onClick={()=>setForm(row)}/><IconButton icon="coin" label="Mark sold and create pending payouts" onClick={()=>setSaleForm(row)}/><IconButton icon="flame" label="Mark consumed" onClick={()=>run("split.complete",{key:row.key,valuePp:row.payoutValuePp??row.marketValuePp??0,disposition:"consumed",note:prompt("Consumption note","")||""})}/><IconButton icon="trash" label="Delete split" className="danger" onClick={()=>run("split.delete",{key:row.key})}/></>}/>
    </Card>
@@ -232,14 +250,25 @@ function SplitsV3({data,run}:{data:AppSnapshot;run:Runner}){
       <span className="pending-player-items"><small>Pending items</small><em>{person.contributions.filter(item=>item.status==="pending").slice(0,2).map(item=>item.itemName).join(" / ")}{person.pendingItems>2?` +${person.pendingItems-2} more`:""}</em></span>
      </button>)}
      {!payout.people.some(person=>person.pendingSharePp>0)&&<div className="pending-player-empty">No player payouts are currently outstanding.</div>}
-    </div>
+   </div>
    </Card>
-   <Card className="pending-payout-table" title="Phase 2: Sold, payouts pending" sub="Actual sale proceeds are owed to the listed split participants. Use each player's check to record payouts independently.">
-    <DataTable rows={pending} columns={pendingColumns} rowKey={r=>r.id} actions={row=><><IconButton icon="edit" label="Edit sale" onClick={()=>setHistoryEdit(row)}/><IconButton icon="trash" label="Delete sale record" className="danger" onClick={()=>run("history.delete",{ids:[row.id]})}/></>}/>
+   {selectedPendingRows.length>1&&<Card className="selected-payout-summary" title={`Selected payout summary - ${selectedPendingRows.length} items`} sub={`${money(selectedPayout.pendingValuePp)} outstanding across the selected rows. Previously paid shares are excluded.`} actions={<IconButton icon="close" label="Clear pending payout selection" onClick={()=>setPendingSelected(new Set())}/>}>
+    <div className="pending-player-cards">
+     {selectedPayoutPeople.map(person=><button key={person.name} onClick={()=>setBreakdown(person)}>
+      <span className="pending-player-copy"><small>Player</small><strong>{person.name}</strong><em>{person.pendingItems} selected item{person.pendingItems===1?"":"s"}</em></span>
+      <span className="pending-player-balance"><small>Selected payout</small><strong>{money(person.pendingSharePp)}</strong></span>
+      <span className="pending-player-open" aria-hidden="true">{"\u2192"}</span>
+      <span className="pending-player-items"><small>Selected items</small><em>{person.contributions.filter(item=>item.status==="pending").slice(0,3).map(item=>item.itemName).join(" / ")}{person.pendingItems>3?` +${person.pendingItems-3} more`:""}</em></span>
+     </button>)}
+     {!selectedPayoutPeople.length&&<div className="pending-player-empty">The selected rows have no outstanding player payouts.</div>}
+    </div>
+   </Card>}
+   <Card className="pending-payout-table" title="Phase 2: Sold, payouts pending" sub="Actual sale proceeds are owed to the listed split participants. Use each player's check to record payouts independently, or complete whole rows." actions={<><span className="copy-status" role="status">{soldCopyStatus}</span><IconButton icon="check" label={`Mark selected rows paid (${pendingSelected.size})`} className="success" disabled={!pendingSelected.size} onClick={()=>void markPayoutRowsPaid([...pendingSelected])}/><IconButton icon="clipboard" label="Copy concise sold item list for Discord" disabled={!pending.length} onClick={()=>void copySoldItems()}/><IconButton icon="download" label="Open compact or full-detail Discord messages" disabled={!pending.length} onClick={()=>setFullDetailOpen(true)}/></>}>
+    <DataTable rows={pending} columns={pendingColumns} rowKey={r=>r.id} selected={pendingSelected} onSelected={setPendingSelected} actions={row=><><IconButton icon="check" label="Mark entire row paid" className="success" onClick={()=>void markPayoutRowsPaid([row.id])}/><IconButton icon="edit" label="Edit sale" onClick={()=>setHistoryEdit(row)}/><IconButton icon="refresh" label="Unsell and return to held loot" onClick={()=>confirm(`Return ${row.itemName} to held split loot? Any recorded payouts for this sale will be cleared.`)&&run("history.unsell",{id:row.id})}/><IconButton icon="trash" label="Delete sale record" className="danger" onClick={()=>run("history.delete",{ids:[row.id]})}/></>}/>
    </Card>
   </>}
   {tab==="paid"&&<Card title="Phase 3: Payouts completed" sub="Paid sales and terminal consumed items. Use the player payout controls to reopen only the person who needs correction." actions={<IconButton icon="trash" label={`Delete selected (${selected.size})`} className="danger" disabled={!selected.size} onClick={()=>{run("history.delete",{ids:[...selected]});setSelected(new Set())}}/>}>
-   <DataTable rows={completed} columns={historyColumns} rowKey={r=>r.id} selected={selected} onSelected={setSelected} actions={row=><IconButton icon="edit" label="Edit completed record" onClick={()=>setHistoryEdit(row)}/>}/>
+   <DataTable rows={completed} columns={historyColumns} rowKey={r=>r.id} selected={selected} onSelected={setSelected} actions={row=><><IconButton icon="edit" label="Edit completed record" onClick={()=>setHistoryEdit(row)}/>{row.disposition==="sold"&&<IconButton icon="refresh" label="Unsell and return to held loot" onClick={()=>confirm(`Return ${row.itemName} to held split loot? Any recorded payouts for this sale will be cleared.`)&&run("history.unsell",{id:row.id})}/>}</>}/>
   </Card>}
   {tab==="summary"&&<div className="payout-summary-stack">
    <Stats items={[
@@ -276,6 +305,7 @@ function SplitsV3({data,run}:{data:AppSnapshot;run:Runner}){
   {form&&<SplitEditor value={form} data={data} close={()=>setForm(null)} save={async payload=>{await run(form.key?"split.save":"split.add",payload);setForm(null)}}/>}
   {saleForm&&<SplitSaleEditor split={saleForm} close={()=>setSaleForm(null)} save={async payload=>{await run("split.complete",payload);setSaleForm(null);setTab("pending")}}/>}
   {historyEdit&&<HistoryEditor value={historyEdit} data={data} close={()=>setHistoryEdit(null)} save={async payload=>{await run("history.save",payload);setHistoryEdit(null)}}/>}
+  {fullDetailOpen&&<SoldItemsFullDetailExport history={pending} aliases={data.aliases} close={()=>setFullDetailOpen(false)}/>}
   {breakdown&&<PayoutBreakdownPanel person={breakdown} run={run} close={()=>setBreakdown(null)}/>}
  </>;
 }
