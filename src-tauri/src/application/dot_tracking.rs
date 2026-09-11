@@ -46,6 +46,7 @@ struct PendingProc {
     happened_at: NaiveDateTime,
     target_name: String,
     spell_name: String,
+    source_name: Option<String>,
     direct_damage: Option<u64>,
     preceding_non_melee: Option<RecentNonMelee>,
     damage_per_tick: Option<u64>,
@@ -286,6 +287,7 @@ impl DotTracker {
                         happened_at,
                         target_name: target.clone(),
                         spell_name: profile.spell_name.clone(),
+                        source_name: profile.observed_source_name.clone(),
                         direct_damage: profile.direct_damage,
                         preceding_non_melee,
                         damage_per_tick: profile.damage_per_tick,
@@ -780,15 +782,16 @@ fn record_proc_occurrence(
         caster,
         &pending.spell_name,
         "proc",
-        None,
+        pending.source_name.as_deref(),
     )?;
     connection
         .execute(
             "UPDATE combat_spell_activity
-             SET caster_name=?,source_kind='proc',source_name=NULL,attribution_source_offset=?
+             SET caster_name=?,source_kind='proc',source_name=?,attribution_source_offset=?
              WHERE source_file=? AND landing_source_offset=? AND spell_name=? COLLATE NOCASE",
             params![
                 caster,
+                pending.source_name,
                 attribution_source_offset,
                 pending.source,
                 pending.source_offset,
@@ -915,7 +918,7 @@ mod tests {
 
     fn hundred_blows_profile() -> CombatSpellProfile {
         CombatSpellProfile {
-            spell_name: "Hundred Blows".into(),
+            spell_name: "One Hundred Blows".into(),
             cast_on_other: "Someone begins to spin from one hundred blows.".into(),
             damage_kind: "direct".into(),
             direct_damage: Some(1),
@@ -1164,7 +1167,10 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(occurrence, ("Valmez".into(), "Hundred Blows".into(), 120));
+        assert_eq!(
+            occurrence,
+            ("Valmez".into(), "One Hundred Blows".into(), 120)
+        );
         let fighter_damage: i64 = connection
             .query_row(
                 "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Valmez'",
@@ -1224,7 +1230,10 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(occurrence, ("Valmez".into(), "Hundred Blows".into(), 120));
+        assert_eq!(
+            occurrence,
+            ("Valmez".into(), "One Hundred Blows".into(), 120)
+        );
         let fighter: (i64, i64) = connection
             .query_row(
                 "SELECT total_damage,hit_count FROM damage_participant_summaries WHERE attacker_name='Valmez'",

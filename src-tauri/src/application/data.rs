@@ -738,6 +738,14 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
         )
         .optional()
         .map_err(|error| error.to_string())?;
+    let theme = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='theme'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
     let preferred_target_character = connection
         .query_row(
             "SELECT value FROM app_settings WHERE key='damage_target_character'",
@@ -802,7 +810,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
         connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
             [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
     Ok(
-        json!({"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
+        json!({"theme":theme,"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
     )
 }
 
@@ -3245,7 +3253,8 @@ mod tests {
             .execute_batch(
                 "INSERT INTO app_settings(key,value) VALUES('active_character','Test');
              INSERT INTO app_settings(key,value) VALUES('damage_target_character','Test');
-             INSERT INTO app_settings(key,value) VALUES('damage_target_encounter_id','1');",
+             INSERT INTO app_settings(key,value) VALUES('damage_target_encounter_id','1');
+             INSERT INTO app_settings(key,value) VALUES('theme','soft-dark');",
             )
             .unwrap();
         drop(connection);
@@ -3255,6 +3264,7 @@ mod tests {
         assert_eq!(status["damageEncounters"][0]["mobName"], "a test mob");
         assert_eq!(status["preferredTargetCharacter"], "Test");
         assert_eq!(status["preferredTargetEncounterId"], 1);
+        assert_eq!(status["theme"], "soft-dark");
         assert_eq!(
             status["damageEncounters"][0]["damageTargets"][0]["name"],
             "Test"

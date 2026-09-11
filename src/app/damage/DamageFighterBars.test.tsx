@@ -19,8 +19,8 @@ describe("shared damage fighter bars",()=>{
  it("fills rows relative to the total-damage leader",()=>{
   const html=renderToStaticMarkup(<DamageFighterBars fighters={[fighter,{...fighter,name:"Balbazak",rank:2,totalDamage:375,dps:140,mine:false}]}/>);
   expect(html).toContain("is-damage-leader");
-  expect(html).toContain("width:100%");
-  expect(html).toContain("width:50%");
+  expect(html).toContain("--meter-fill:1");
+  expect(html).toContain("--meter-fill:0.5");
   expect(html).toContain("50.0% of the leading total damage");
  });
  it("renders the common live and training metrics from one typed row",()=>{

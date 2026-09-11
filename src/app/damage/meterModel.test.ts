@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {DamageEncounter,DamageEvent,DamageParticipant} from "../../shared/contracts";
-import {buildMeterTrend,buildRollingDpsTrend,damageComposition,formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,rankProccers,summarizePlayerEffects,summarizeSpellMetrics} from "./meterModel";
+import {buildMeterTrend,buildRollingDpsTrend,damageComposition,formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,rankMobsByPerformance,rankProccers,summarizePlayerEffects,summarizeSpellMetrics} from "./meterModel";
 
 const player=(name:string,totalDamage:number):DamageParticipant=>({
  name,totalDamage,hitCount:2,firstDamageAt:"2026-09-05 10:00:00",lastDamageAt:"2026-09-05 10:00:10",
@@ -102,4 +102,20 @@ describe("damage meter model",()=>{
   expect(damageComposition({totalDamage:1000,meleeDamage:400,spellDamage:600,dotDamage:250})).toEqual({
    melee:400,direct:350,dot:250,total:1000,meleePercent:40,directPercent:35,dotPercent:25,
   });
- });});
+ });
+ it("ranks mobs independently by combined damage and weighted DPS",()=>{
+  const encounter=(mobName:string,totalDamage:number,start:string,end:string,players=[{name:"Tester"}])=>({mobName,totalDamage,startedAt:start,lastDamageAt:end,character:"Tester",players} as DamageEncounter);
+  const rankings=rankMobsByPerformance([
+   encounter("A dragon",600,"2026-09-05 10:00:00","2026-09-05 10:01:00"),
+   encounter("a dragon",400,"2026-09-05 11:00:00","2026-09-05 11:00:40"),
+   encounter("Fast giant",800,"2026-09-05 12:00:00","2026-09-05 12:00:20"),
+   encounter("Player victim",5000,"2026-09-05 12:00:00","2026-09-05 12:00:01",[{name:"an attacking npc"}]),
+  ]);
+  expect(rankings.byDamage.map(row=>[row.mob,row.damage,row.count,row.dps])).toEqual([
+   ["Player victim",5000,1,5000],
+   ["A dragon",1000,2,10],
+   ["Fast giant",800,1,40],
+  ]);
+  expect(rankings.byDps.map(row=>row.mob)).toEqual(["Fast giant","A dragon"]);
+ });
+});

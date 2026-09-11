@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS spell_source_rules (
 );
 INSERT OR IGNORE INTO spell_source_rules(spell_name,observed_source_kind,source_name)
 VALUES('Curse of the Spirits','item_click_only','Spear of Fate');
+INSERT OR IGNORE INTO spell_source_rules(spell_name,observed_source_kind,source_name)
+VALUES('One Hundred Blows','proc_only','Tranquil Staff');
 "#;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -295,9 +297,11 @@ impl SpellCatalog {
                         r.observed_source_kind,r.source_name
                  FROM spell_info i
                  LEFT JOIN spell_source_rules r ON r.spell_name=i.spell_name COLLATE NOCASE
-                 WHERE i.damage_kind IN ('direct','dot','hybrid') AND i.cast_on_other<>''
-                   AND (i.direct_damage IS NOT NULL OR
-                        (i.damage_per_tick IS NOT NULL AND i.tick_count IS NOT NULL))",
+                 WHERE i.cast_on_other<>''
+                   AND ((i.damage_kind IN ('direct','dot','hybrid') AND
+                         (i.direct_damage IS NOT NULL OR
+                          (i.damage_per_tick IS NOT NULL AND i.tick_count IS NOT NULL)))
+                        OR r.observed_source_kind='proc_only')",
             )
             .map_err(|error| error.to_string())?;
         let rows = statement
@@ -940,6 +944,34 @@ mod tests {
         assert_eq!(
             profile.observed_source_name.as_deref(),
             Some("Spear of Fate")
+        );
+    }
+
+    #[test]
+    fn combat_profiles_include_tranquil_staff_proc_despite_non_damage_wiki_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spell-info.db")).unwrap();
+        let one_hundred_blows = r#"{{Spellpage|
+| slots = {{SpellSlotRow | 1 | Stun (1.00 sec) }}
+| duration = Instant
+| msg_cast_on_other = Someone begins to spin from one hundred blows.
+}}"#;
+        catalog
+            .save(&parse_spell_template("One Hundred Blows", one_hundred_blows).unwrap())
+            .unwrap();
+
+        let profile = catalog
+            .combat_profiles()
+            .unwrap()
+            .into_iter()
+            .find(|profile| profile.spell_name == "One Hundred Blows")
+            .unwrap();
+        assert_eq!(profile.damage_kind, "non_damage");
+        assert_eq!(profile.direct_damage, None);
+        assert_eq!(profile.observed_source_kind.as_deref(), Some("proc_only"));
+        assert_eq!(
+            profile.observed_source_name.as_deref(),
+            Some("Tranquil Staff")
         );
     }
 

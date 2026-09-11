@@ -11,8 +11,8 @@ describe("incoming damage bars",()=>{
  it("renders a proportional leader bar with player and pet detail",()=>{
   const html=renderToStaticMarkup(<DamageIncomingBars targets={targets} activeCharacter="Tank"/>);
   expect(html).toContain("is-damage-leader");
-  expect(html).toContain("width:100%");
-  expect(html).toContain("width:33.33333333333333%");
+  expect(html).toContain("--meter-fill:1");
+  expect(html).toContain("--meter-fill:0.3333333333333333");
   expect(html).toContain("6 hits · max 120");
   expect(html).toContain("Pet");
   expect(html).toContain("ME");

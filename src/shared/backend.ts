@@ -10,7 +10,7 @@ export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_p
 export const getActivityHistorySnapshot=()=>desktop()?invoke<ActivityHistorySnapshot>("activity_history_snapshot"):Promise.resolve({loot:[],mobs:[],offers:[],levels:[]});
 export const getDatabaseStats=()=>desktop()?invoke<DatabaseStats>("database_stats"):Promise.reject(new Error("Database statistics are available in the desktop app."));
 export const getCombatCleanupPreview=(keepDays:number)=>desktop()?invoke<DatabaseCleanupPreview>("database_cleanup_preview",{keepDays}):Promise.reject(new Error("Cleanup previews are available in the desktop app."));export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
-export const getGlobalStatus=()=>desktop()?invoke<GlobalStatusSnapshot>("global_status_snapshot"):Promise.resolve({tasks:[],damageEncounters:[]});
+export const getGlobalStatus=():Promise<GlobalStatusSnapshot>=>desktop()?invoke<GlobalStatusSnapshot>("global_status_snapshot"):Promise.resolve({tasks:[],damageEncounters:[]});
 export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDetail>("death_report_details",{id}):Promise.reject(new Error("Death reports are available in the desktop app."));
 export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;

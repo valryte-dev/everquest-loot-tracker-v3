@@ -576,6 +576,8 @@ pub(super) fn correct_encounter_target(
         encounter_id
     };
 
+    remove_corrected_target_from_meters(&transaction, corrected_id, corrected)?;
+
     transaction
         .execute(
             "INSERT INTO app_settings(key,value) VALUES('damage_target_character',?)
@@ -592,6 +594,89 @@ pub(super) fn correct_encounter_target(
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(corrected_id)
+}
+
+fn remove_corrected_target_from_meters(
+    connection: &Connection,
+    encounter_id: i64,
+    target_name: &str,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "DELETE FROM proc_occurrences
+             WHERE encounter_id=? AND caster_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM dot_applications
+             WHERE encounter_id=? AND caster_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM combat_spell_activity
+             WHERE encounter_id=? AND caster_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM damage_spell_summaries
+             WHERE encounter_id=? AND caster_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM damage_events
+             WHERE encounter_id=? AND attacker_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM damage_participant_summaries
+             WHERE encounter_id=? AND attacker_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM damage_received_events
+             WHERE encounter_id=? AND target_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM damage_target_summaries
+             WHERE encounter_id=? AND target_name=? COLLATE NOCASE",
+            params![encounter_id, target_name],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "UPDATE damage_encounters SET
+                total_damage=COALESCE((SELECT SUM(damage) FROM damage_events WHERE encounter_id=?),0),
+                melee_damage=COALESCE((SELECT SUM(CASE WHEN damage_type='melee' THEN damage ELSE 0 END) FROM damage_events WHERE encounter_id=?),0),
+                spell_damage=COALESCE((SELECT SUM(CASE WHEN damage_type<>'melee' THEN damage ELSE 0 END) FROM damage_events WHERE encounter_id=?),0),
+                hit_count=COALESCE((SELECT COUNT(*) FROM damage_events WHERE encounter_id=?),0),
+                max_hit=COALESCE((SELECT MAX(damage) FROM damage_events WHERE encounter_id=?),0)
+             WHERE id=?",
+            params![
+                encounter_id,
+                encounter_id,
+                encounter_id,
+                encounter_id,
+                encounter_id,
+                encounter_id
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 #[cfg(test)]
 mod tests {
@@ -737,7 +822,9 @@ mod tests {
         let grenn_id = connection.last_insert_rowid();
         connection.execute("INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'2026-09-09 10:00:01','melee','hit',100,'pet hit','eqlog_Valmezz.txt',2,'Valmezz')",[mistaken_id]).unwrap();
         connection.execute("INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'2026-09-09 10:00:03','melee','hit',200,'player hit','eqlog_Valmezz.txt',11,'Valmezz')",[grenn_id]).unwrap();
+        connection.execute("INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'2026-09-09 10:00:04','melee','hit',75,'misclassified target hit','eqlog_Valmezz.txt',12,'Grenn')",[grenn_id]).unwrap();
         connection.execute("INSERT INTO damage_received_events(encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,raw_line,source_file,source_offset) VALUES(?,'2026-09-09 10:00:04','Grenn','Valmezz','hit',50,'incoming','eqlog_Valmezz.txt',13)",[mistaken_id]).unwrap();
+        connection.execute("INSERT INTO damage_received_events(encounter_id,happened_at,attacker_name,target_name,attack_kind,damage,raw_line,source_file,source_offset) VALUES(?,'2026-09-09 10:00:04','Other Mob','Grenn','hit',25,'misclassified incoming target','eqlog_Valmezz.txt',15)",[grenn_id]).unwrap();
         connection.execute("INSERT INTO damage_spell_summaries(encounter_id,caster_name,spell_name,proc_count,direct_proc_damage) VALUES(?,'Valmezz','Test Proc',1,20)",[mistaken_id]).unwrap();
         connection.execute("INSERT INTO damage_spell_summaries(encounter_id,caster_name,spell_name,proc_count,direct_proc_damage) VALUES(?,'Valmezz','Test Proc',2,40)",[grenn_id]).unwrap();
         connection.execute("INSERT INTO combat_spell_activity(encounter_id,spell_name,target_name,caster_name,source_kind,happened_at,source_file,landing_source_offset) VALUES(?,'Test Proc','Treasure Chest','Valmezz','proc','2026-09-09 10:00:05','eqlog_Valmezz.txt',14)",[mistaken_id]).unwrap();
@@ -753,7 +840,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(encounter, ("Grenn".into(), 300, 5, 100));
+        assert_eq!(encounter, ("Grenn".into(), 300, 2, 200));
         assert_eq!(
             connection
                 .query_row(
@@ -792,6 +879,26 @@ mod tests {
         assert_eq!(incoming_total, (50, 1));
         let spell: (i64, i64) = connection.query_row("SELECT proc_count,direct_proc_damage FROM damage_spell_summaries WHERE encounter_id=? AND spell_name='Test Proc'",[grenn_id],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
         assert_eq!(spell, (3, 60));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM damage_participant_summaries WHERE encounter_id=? AND attacker_name='Grenn'",
+                    [grenn_id],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM damage_target_summaries WHERE encounter_id=? AND target_name='Grenn'",
+                    [grenn_id],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
         let activity: (i64, String) = connection
             .query_row(
                 "SELECT encounter_id,target_name FROM combat_spell_activity",
@@ -827,19 +934,41 @@ mod tests {
         let mut connection = database.connect().unwrap();
         connection.execute("INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,source_file,first_source_offset,last_source_offset) VALUES('Valmezz','Treasure Chest','2026-09-09 10:00:00','2026-09-09 10:00:06','eqlog_Valmezz.txt',1,3)",[]).unwrap();
         let id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'2026-09-09 10:00:01','melee','hit',100,'player hit','eqlog_Valmezz.txt',2,'Valmezz')",[id]).unwrap();
+        connection.execute("INSERT INTO damage_events(encounter_id,happened_at,damage_type,attack_kind,damage,raw_line,source_file,source_offset,attacker_name) VALUES(?,'2026-09-09 10:00:02','melee','hit',50,'misclassified target hit','eqlog_Valmezz.txt',3,'Grenn')",[id]).unwrap();
+        connection.execute("UPDATE damage_encounters SET total_damage=150,melee_damage=150,hit_count=2,max_hit=100 WHERE id=?",[id]).unwrap();
+        connection.execute("INSERT INTO damage_spell_summaries(encounter_id,caster_name,spell_name,proc_count,direct_proc_damage) VALUES(?,'Grenn','Wrong Proc',1,50)",[id]).unwrap();
         assert_eq!(
             correct_encounter_target(&mut connection, id, "Grenn").unwrap(),
             id
         );
+        let corrected: (String, i64, i64, i64) = connection
+            .query_row(
+                "SELECT mob_name,total_damage,hit_count,max_hit FROM damage_encounters WHERE id=?",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(corrected, ("Grenn".into(), 100, 1, 100));
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT mob_name FROM damage_encounters WHERE id=?",
+                    "SELECT COUNT(*) FROM damage_participant_summaries WHERE encounter_id=? AND attacker_name='Grenn'",
                     [id],
-                    |row| row.get::<_, String>(0)
+                    |row| row.get::<_, i64>(0)
                 )
                 .unwrap(),
-            "Grenn"
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM damage_spell_summaries WHERE encounter_id=? AND caster_name='Grenn'",
+                    [id],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
         );
     }
 }

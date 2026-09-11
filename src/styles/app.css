@@ -284,6 +284,7 @@
 .cleric-chain-stack{display:grid;gap:10px}
 .cleric-chain-live>header,.cleric-chain-history>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .cleric-chain-actions{display:flex;align-items:center;gap:7px}.cleric-chain-actions>strong{color:var(--accent2);font-size:11px}.cleric-chain-live.is-pinned{border-color:color-mix(in srgb,var(--accent2) 58%,var(--line));box-shadow:inset 3px 0 0 var(--accent2)}.cleric-chain-actions .active{border-color:var(--accent2);color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,var(--panel2))}
+.cleric-chain-gap-controls{display:grid;grid-template-columns:minmax(190px,1fr) repeat(2,minmax(112px,150px)) minmax(130px,auto);align-items:end;gap:10px;margin:0 14px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:color-mix(in srgb,var(--panel2) 82%,transparent)}.cleric-chain-gap-controls>div>strong,.cleric-chain-gap-controls>div>small{display:block}.cleric-chain-gap-controls>div>strong{margin-top:2px;color:var(--accent2);font-size:13px}.cleric-chain-gap-controls>div>small{margin-top:2px;color:var(--muted);font-size:8px}.cleric-chain-gap-controls>label{display:grid;gap:4px}.cleric-chain-gap-controls>label>span:first-child{color:var(--muted);font-size:7px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.cleric-gap-input{display:flex;align-items:center;gap:5px}.cleric-gap-input input{box-sizing:border-box;width:100%;min-width:0;padding:7px 8px;border-radius:8px;font-size:10px;font-variant-numeric:tabular-nums}.cleric-gap-input b{color:var(--muted);font-size:9px}.cleric-chain-gap-controls .cleric-slow-toggle{display:flex;align-items:center;gap:8px;min-height:34px;padding:5px 9px;border:1px solid var(--line);border-radius:9px;background:var(--bg);cursor:pointer}.cleric-slow-toggle input{margin:0;accent-color:var(--accent2)}.cleric-slow-toggle span strong,.cleric-slow-toggle span small{display:block}.cleric-slow-toggle span strong{font-size:9px}.cleric-slow-toggle span small{margin-top:1px;color:var(--muted);font-size:7px}.cleric-slow-toggle.active{border-color:color-mix(in srgb,var(--accent2) 60%,var(--line));background:color-mix(in srgb,var(--accent2) 10%,var(--panel2))}
 .cleric-chain-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;padding:10px 14px 0}
 .cleric-chain-stats>div{padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
 .cleric-chain-stats span{display:block;color:var(--muted);font-size:8px;letter-spacing:.09em;text-transform:uppercase}
@@ -301,6 +302,8 @@
 .cleric-chain-history{overflow:hidden}
 @media(max-width:850px){.cleric-chain-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:560px){.cleric-chain-stats{grid-template-columns:1fr 1fr}.cleric-chain-live>header{display:grid}}
+@media(max-width:850px){.cleric-chain-gap-controls{grid-template-columns:1fr 1fr}.cleric-chain-gap-controls>div{grid-column:1/-1}}
+@media(max-width:520px){.cleric-chain-gap-controls{grid-template-columns:1fr}}
 
 
 /* Detached damage meter widget */
@@ -473,3 +476,16 @@
 /* Pasted sold-item reconciliation */
 .split-sale-reconcile>header>button{white-space:nowrap}.split-reconcile-body{display:grid;gap:12px;padding:14px}.split-reconcile-input{display:grid;grid-template-columns:minmax(190px,.35fr) minmax(420px,1fr);gap:11px}.split-reconcile-input .wide textarea{min-height:145px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}.split-reconcile-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:7px}.split-reconcile-actions>span{margin-right:auto;color:var(--muted);font-size:10px}.split-reconcile-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.split-reconcile-summary>div{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}.split-reconcile-summary span,.split-reconcile-summary strong{display:block}.split-reconcile-summary span{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.06em}.split-reconcile-summary strong{margin-top:3px;font-size:16px}.split-reconcile-summary .warn strong{color:var(--warn)}.split-reconcile-summary .good strong{color:var(--good)}.split-sale-reconcile .data-grid{overflow:hidden;border:1px solid var(--line);border-radius:11px}.split-sale-reconcile td select{min-width:260px;max-width:390px}.split-reconcile-commit{display:flex;align-items:center;justify-content:flex-end;gap:16px;padding-top:2px}.split-reconcile-commit p{margin:0 auto 0 0;color:var(--muted);font-size:10px}.split-reconcile-body>.alert{margin:0}@media(max-width:850px){.split-reconcile-input{grid-template-columns:1fr}.split-reconcile-summary{grid-template-columns:1fr 1fr}.split-reconcile-commit{align-items:stretch;flex-direction:column}.split-reconcile-commit button{align-self:flex-end}}
 .sold-detail-message-list pre{font-size:10px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+
+/* Keep large live meters responsive: transformed fills avoid layout and offscreen rows skip paint. */
+.meter-player,.meter-incoming-bars>article{contain:layout paint style;content-visibility:auto;contain-intrinsic-size:auto 68px}
+.meter-contribution,.meter-incoming-bars>article>i{inset:0;width:100%;transform:scaleX(var(--meter-fill,0));transform-origin:left center;transition:transform .22s ease-out;will-change:transform}
+
+/* Damage history rankings: damage and weighted DPS remain paired at wide sizes. */
+.damage-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+.damage-composition-card{grid-column:1/-1}
+.damage-composition-card .damage-composition{grid-template-columns:150px minmax(0,420px);justify-content:center}
+.damage-dps-ranking>div{grid-template-columns:24px minmax(140px,.8fr) minmax(120px,1.5fr) 92px}
+.damage-dps-ranking>div>i em{background:linear-gradient(90deg,var(--good),var(--accent2))}
+.damage-dps-ranking>div>strong{color:var(--accent2)}
+@media(max-width:1050px){.damage-overview{grid-template-columns:1fr}.damage-composition-card{grid-column:auto}}

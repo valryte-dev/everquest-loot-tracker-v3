@@ -6,4 +6,6 @@ describe("CH chain pulse",()=>{
  it("learns a robust median and identifies an overdue open gap",()=>{const pulse=buildChainPulse(calls([9,10,10,11,20]),14);expect(pulse.medianSeconds).toBe(10);expect(pulse.points.at(-1)?.tone).toBe("late");expect(pulse.openGapTone).toBe("overdue")});
  it("reports a stable cadence and steady trend for consistent gaps",()=>{const pulse=buildChainPulse(calls([9.8,10.1,10,9.9,10.2,10]),5);expect(pulse.stabilityScore).toBeGreaterThan(98);expect(pulse.stabilityLabel).toBe("Locked in");expect(pulse.trend).toBe("Steady");expect(pulse.openGapTone).toBe("on-pace")});
  it("stays in learning mode until a completed gap exists",()=>expect(buildChainPulse(calls([]),3)).toMatchObject({stabilityScore:null,stabilityLabel:"Learning",openGapTone:"learning"}));
+ it("uses a configured expected gap instead of the learned median for timing",()=>{const pulse=buildChainPulse(calls([7,7,7]),10,18,12);expect(pulse.medianSeconds).toBe(7);expect(pulse.targetSeconds).toBe(12);expect(pulse.usesExpectedGap).toBe(true);expect(pulse.openGapTone).toBe("due")});
+ it("can guide the first call from a configured expected gap",()=>expect(buildChainPulse(calls([]),14,18,10)).toMatchObject({targetSeconds:10,usesExpectedGap:true,openGapTone:"overdue"}));
 });

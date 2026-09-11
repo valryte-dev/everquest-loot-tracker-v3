@@ -13,12 +13,31 @@ describe("live fight target correction candidates",()=>{
  it("offers unique targets from the same character and excludes the current mistaken target",()=>{
   const current=encounter(1,"Treasure Chest");
   const candidates=buildTargetCorrectionCandidates(current,[current,encounter(2,"Grenn","Valmezz",250,500),encounter(3,"grenn","Valmezz",100,900),encounter(4,"Tunare","Other",500,500)]);
-  expect(candidates).toEqual([{id:2,mobName:"Grenn",myDamage:250,groupDamage:500}]);
+  expect(candidates).toEqual([{id:2,mobName:"Grenn",myDamage:250,groupDamage:500,source:"encounter"}]);
  });
 
  it("puts the target the current player damaged most first",()=>{
   const current=encounter(1,"Wrong target");
   const candidates=buildTargetCorrectionCandidates(current,[encounter(2,"an add","Valmezz",20,1000),encounter(3,"Grenn","Valmezz",300,400)]);
-  expect(candidates.map(candidate=>candidate.mobName)).toEqual(["Grenn","an add"]);
+ expect(candidates.map(candidate=>candidate.mobName)).toEqual(["Grenn","an add"]);
+ });
+
+ it("offers a misclassified top fighter as a target even without a separate encounter",()=>{
+  const current={...encounter(1,"Guard McStinkles"),players:[
+   {name:"Grenn",totalDamage:800,hitCount:8,firstDamageAt:"2026-09-09 10:00:00",lastDamageAt:"2026-09-09 10:00:05"},
+   {name:"Valmezz",totalDamage:20,hitCount:1,firstDamageAt:"2026-09-09 10:00:01",lastDamageAt:"2026-09-09 10:00:02"},
+  ]};
+  expect(buildTargetCorrectionCandidates(current,[current])).toEqual([
+   {id:1,mobName:"Grenn",myDamage:0,groupDamage:800,source:"fighter"},
+  ]);
+ });
+
+ it("deduplicates a fighter when the same name also has a target encounter",()=>{
+  const current={...encounter(1,"Guard McStinkles"),players:[
+   {name:"Grenn",totalDamage:800,hitCount:8,firstDamageAt:"2026-09-09 10:00:00",lastDamageAt:"2026-09-09 10:00:05"},
+  ]};
+  expect(buildTargetCorrectionCandidates(current,[current,encounter(2,"Grenn","Valmezz",250,500)])).toEqual([
+   {id:2,mobName:"Grenn",myDamage:250,groupDamage:500,source:"encounter"},
+  ]);
  });
 });

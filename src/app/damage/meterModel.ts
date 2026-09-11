@@ -49,6 +49,17 @@ export interface DamageComposition {
  directPercent:number;
  dotPercent:number;
 }
+export interface MobPerformanceRanking {
+ mob:string;
+ damage:number;
+ durationSeconds:number;
+ count:number;
+ dps:number;
+}
+export interface MobPerformanceRankings {
+ byDamage:MobPerformanceRanking[];
+ byDps:MobPerformanceRanking[];
+}
 
 export function playerSpellMetrics(encounter:DamageEncounter,playerName:string):DamageSpellMetric[]{
  const wanted=playerName.trim().toLowerCase();
@@ -104,6 +115,30 @@ export function damageComposition(encounter:Pick<DamageEncounter,"totalDamage"|"
  const melee=Math.max(0,encounter.meleeDamage);
  const total=Math.max(1,encounter.totalDamage);
  return {melee,direct,dot,total:encounter.totalDamage,meleePercent:melee/total*100,directPercent:direct/total*100,dotPercent:dot/total*100};
+}
+export function rankMobsByPerformance(encounters:DamageEncounter[],limit=8):MobPerformanceRankings{
+ const aggregate=(source:DamageEncounter[])=>{
+  const grouped=new Map<string,{mob:string;damage:number;durationSeconds:number;count:number}>();
+  for(const encounter of source){
+   const key=encounter.mobName.trim().toLowerCase();
+   const current=grouped.get(key)||{mob:encounter.mobName,damage:0,durationSeconds:0,count:0};
+   current.damage+=encounter.totalDamage;
+   current.durationSeconds+=Math.max(1,Math.round((stamp(encounter.lastDamageAt)-stamp(encounter.startedAt))/1000));
+   current.count++;
+   grouped.set(key,current);
+  }
+  return [...grouped.values()].map(row=>({...row,dps:row.damage/Math.max(1,row.durationSeconds)}));
+ };
+ const damageRows=aggregate(encounters);
+ // Incoming-only encounter fragments can carry the player victim in mobName. For
+ // DPS-by-mob, require evidence that the active log character damaged the target.
+ const confirmedTargetRows=aggregate(encounters.filter(encounter=>
+  encounter.players.some(player=>player.name.localeCompare(encounter.character,undefined,{sensitivity:"accent"})===0),
+ ));
+ return {
+  byDamage:[...damageRows].sort((a,b)=>b.damage-a.damage||b.dps-a.dps||a.mob.localeCompare(b.mob)).slice(0,limit),
+  byDps:[...confirmedTargetRows].sort((a,b)=>b.dps-a.dps||b.damage-a.damage||a.mob.localeCompare(b.mob)).slice(0,limit),
+ };
 }
 export interface RollingDpsPoint {
  second:number;

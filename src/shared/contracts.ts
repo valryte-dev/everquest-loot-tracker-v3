@@ -22,7 +22,7 @@ export interface ClericHealReplaySummary { startedAt:string; endedAt:string; dur
 export interface ClericHealReplayFile { formatVersion:number; title:string; savedAt:string; character:string; targetMob:string; summary:ClericHealReplaySummary; calls:ClericHealReplayCall[]; path?:string }
 export interface ClericHealReplayEntry extends ClericHealReplaySummary { fileName:string; path:string; title:string; savedAt:string; character:string; targetMob:string }
 export interface SystemTaskStatus { id:string; label:string; state:"running"|"completed"|"failed"; detail:string; completed?:number; total?:number; startedAt:string; finishedAt?:string }
-export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; damageEncounters:DamageEncounter[] }
+export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; theme?:string; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; damageEncounters:DamageEncounter[] }
 export interface DamageParticipant { name:string; totalDamage:number; hitCount:number; firstDamageAt:string; lastDamageAt:string }
 export interface DamageTarget extends DamageParticipant { maxHit:number }
 export interface DamageSpellMetric { playerName:string; spellName:string; procCount:number; directProcDamage:number; dotDamage:number; dotTickCount:number; procDotDamage:number; totalProcDamage:number }

@@ -53,7 +53,7 @@ export function DamageFighterBars({fighters}:{fighters:DamageFighterBarRow[]}){
   const damageFill=fighter.totalDamage/maxDamage*100;
   const damageLeader=fighter.totalDamage>0&&fighter.totalDamage===maxDamage;
   return <div key={fighter.name} className={`meter-player${fighter.mine?" is-me":""}${damageLeader?" is-damage-leader":""}`} style={{"--meter-color":damageBarColors[index%damageBarColors.length]} as CSSProperties}>
-   <div className="meter-contribution" style={{width:damageFill+"%"}} title={`${damageFill.toFixed(1)}% of the leading total damage`} aria-hidden="true"/>
+   <div className="meter-contribution" style={{"--meter-fill":fighter.totalDamage/maxDamage} as CSSProperties} title={`${damageFill.toFixed(1)}% of the leading total damage`} aria-hidden="true"/>
    <span className="meter-rank">#{fighter.rank}</span>
    <div className="meter-name"><div className="meter-identity"><strong title={fighter.name}>{fighter.name}</strong><time title={fighter.combatTimeTitle||"Time since this fighter's first outgoing hit"}>{formatFighterDuration(fighter.combatSeconds)}</time>{fighter.mine&&<em>ME</em>}</div><div className="meter-incoming" title={`Incoming damage recorded against ${fighter.name}`}><strong>{number(fighter.incomingDamage)}</strong><span>INCOMING DMG</span></div></div>
    <div className="meter-share"><span>{delta>.05?"+":delta<-.05?"-":""} {fighter.contribution.toFixed(1)}%</span><small>{fighter.shareDetail||"share"}</small></div>

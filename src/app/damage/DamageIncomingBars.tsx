@@ -16,7 +16,7 @@ export function DamageIncomingBars({targets,activeCharacter}:{targets:IncomingTa
   const fill=target.totalDamage/maxDamage*100;
   const mine=target.name.toLowerCase()===activeCharacter.toLowerCase();
   return <article key={target.name} className={`${mine?" is-me":""}${target.totalDamage===maxDamage?" is-damage-leader":""}`} style={{"--meter-color":damageBarColors[index%damageBarColors.length]} as CSSProperties}>
-   <i style={{width:fill+"%"}} title={`${fill.toFixed(1)}% of the leading incoming damage`} aria-hidden="true"/>
+   <i style={{"--meter-fill":target.totalDamage/maxDamage} as CSSProperties} title={`${fill.toFixed(1)}% of the leading incoming damage`} aria-hidden="true"/>
    <b>#{target.rank}</b>
    <div><strong title={target.name}>{target.name}</strong>{mine&&<em>ME</em>}<small>{target.hitCount} hit{target.hitCount===1?"":"s"} · max {number(target.maxHit)}</small></div>
    <span><strong>{number(target.totalDamage)}</strong><small>TAKEN</small></span>
