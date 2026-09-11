@@ -483,7 +483,41 @@ fn migrate_catalog(connection: &Connection) -> Result<(), String> {
             )
             .map_err(|error| error.to_string())?;
     }
-    set_meta_on(connection, "combat_schema_version", "2")
+    let combat_version = meta(connection, "combat_schema_version")?
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    if combat_version < 3 {
+        let mut statement = connection
+            .prepare("SELECT spell_name,description,effects_json,duration FROM spell_info")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        drop(statement);
+        for (name, description, effects_json, duration) in rows {
+            let effects =
+                serde_json::from_str::<Vec<SpellEffect>>(&effects_json).unwrap_or_default();
+            let (kind, direct, per_tick, ticks, total) =
+                classify_damage(&effects, &duration, &description);
+            connection
+                .execute(
+                    "UPDATE spell_info SET damage_kind=?,direct_damage=?,damage_per_tick=?,
+                     tick_count=?,total_dot_damage=? WHERE spell_name=? COLLATE NOCASE",
+                    params![kind, direct, per_tick, ticks, total, name],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    set_meta_on(connection, "combat_schema_version", "3")
 }
 
 fn request_json(client: &Client, query: &[(&str, &str)]) -> Result<Value, reqwest::Error> {
@@ -702,8 +736,9 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
     let cast_on_other = clean(field(&fields, "msg_cast_on_other"));
     let wears_off = clean(field(&fields, "msg_wears_off"));
     let duration = clean(field(&fields, "duration"));
+    let description = clean(field(&fields, "description"));
     let (damage_kind, direct_damage, damage_per_tick, tick_count, total_dot_damage) =
-        classify_damage(&effects, &duration);
+        classify_damage(&effects, &duration, &description);
     let canonical = clean(field(&fields, "spellname"));
     let name = if canonical.is_empty() {
         title.into()
@@ -713,7 +748,7 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
     Ok(SpellInfo {
         wiki_url: format!("https://wiki.project1999.com/{}", name.replace(' ', "_")),
         spell_name: name,
-        description: clean(field(&fields, "description")),
+        description,
         classes,
         effects,
         mana: clean(field(&fields, "mana")),
@@ -746,23 +781,50 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
 fn classify_damage(
     effects: &[SpellEffect],
     duration: &str,
+    description: &str,
 ) -> (String, Option<u64>, Option<u64>, Option<u32>, Option<u64>) {
     let dot_pattern = Regex::new(
         r"(?i)decrease hitpoints.*?by\s+(?:\d+\s*\([^)]*\)\s+to\s+)?(?<damage>\d+).*?per tick",
     )
     .expect("valid dot effect regex");
-    let direct_pattern =
-        Regex::new(r"(?i)decrease hitpoints.*?by\s+(?:\d+\s*\([^)]*\)\s+to\s+)?(?<damage>\d+)")
-            .expect("valid direct effect regex");
-    let direct_damage = effects.iter().find_map(|effect| {
+    let direct_pattern = Regex::new(
+        r"(?i)(?:decrease hitpoints.*?by\s+(?:\d+\s*\([^)]*\)\s+to\s+)?|decrease hp when cast by\s+)(?<damage>\d+)",
+    )
+    .expect("valid direct effect regex");
+    let mut direct_damage = effects.iter().find_map(|effect| {
         let lower = effect.description.to_ascii_lowercase();
-        if !lower.contains("decrease hitpoints") || lower.contains("per tick") {
+        if (!lower.contains("decrease hitpoints") && !lower.contains("decrease hp when cast by"))
+            || lower.contains("per tick")
+        {
             return None;
         }
         direct_pattern.captures(&effect.description)?["damage"]
             .parse::<u64>()
             .ok()
     });
+    // Some older wiki pages have no structured slots. Use a deliberately narrow fallback:
+    // a numeric damage statement with no tick cadence or reactive-damage language.
+    if direct_damage.is_none() && effects.is_empty() {
+        let lower = description.to_ascii_lowercase();
+        if ![
+            "every",
+            "per tick",
+            " ticks",
+            "anything that strikes",
+            "absorb damage",
+        ]
+        .iter()
+        .any(|phrase| lower.contains(phrase))
+        {
+            let description_damage = Regex::new(
+                r"(?i)(?:caus(?:e|es|ing)|do(?:es|ing)|inflicts?|burns).*?(?:between\s+)?(?:\d+\s+(?:and|to|-)\s+)?(?<damage>\d+)\s+damage",
+            )
+            .expect("valid legacy damage description regex");
+            direct_damage = description_damage
+                .captures(description)
+                .and_then(|capture| capture["damage"].parse::<u64>().ok());
+        }
+    }
     let has_direct = direct_damage.is_some();
     let damage_per_tick = effects.iter().find_map(|effect| {
         dot_pattern.captures(&effect.description)?["damage"]
@@ -915,6 +977,44 @@ mod tests {
         assert_eq!(
             spell.cast_on_other,
             "Someone staggers as the light of dawn washes over it."
+        );
+    }
+
+    #[test]
+    fn classifies_legacy_direct_damage_without_mistaking_reactive_buffs() {
+        let bone_melt = r#"{{Spellpage|
+| spellname = Bone Melt
+| description = Your target transforms into a skeleton, causing 75 damage.
+| slots = {{SpellSlotRow | 1 | Decrease HP when cast by 75 }}
+| duration = Instant
+}}"#;
+        let legacy_nuke = r#"{{Spellpage|
+| spellname = Firestrike
+| description = Ignites your target's skin, doing between 282 and 302 damage.
+| duration = Instant
+}}"#;
+        let reactive_buff = r#"{{Spellpage|
+| spellname = Shield of Thistles
+| description = Surrounds your target in a shield of thistles that cause damage to anything that strikes them.
+| duration = 5 ticks
+}}"#;
+        let bone_melt = parse_spell_template("Bone Melt", bone_melt).unwrap();
+        let legacy_nuke = parse_spell_template("Firestrike", legacy_nuke).unwrap();
+        let reactive_buff = parse_spell_template("Shield of Thistles", reactive_buff).unwrap();
+        assert_eq!(
+            (bone_melt.damage_kind.as_str(), bone_melt.direct_damage),
+            ("direct", Some(75))
+        );
+        assert_eq!(
+            (legacy_nuke.damage_kind.as_str(), legacy_nuke.direct_damage),
+            ("direct", Some(302))
+        );
+        assert_eq!(
+            (
+                reactive_buff.damage_kind.as_str(),
+                reactive_buff.direct_damage
+            ),
+            ("non_damage", None)
         );
     }
     #[test]

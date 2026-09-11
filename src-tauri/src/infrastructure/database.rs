@@ -50,6 +50,7 @@ const COMBAT_SPELL_ACTIVITY_MIGRATION: &str =
     include_str!("../migrations/030_combat_spell_activity.sql");
 const COMBAT_PET_EVIDENCE_MIGRATION: &str =
     include_str!("../migrations/031_combat_pet_evidence.sql");
+const ITEM_PROC_CATALOG_MIGRATION: &str = include_str!("../migrations/032_item_proc_catalog.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -114,6 +115,7 @@ impl Database {
             "activity_loot_history",
             "activity_offer_history",
             "linked_loot_items",
+            "item_proc_spells",
         ] {
             connection.execute(
                 &format!("UPDATE {table} SET item_id=(SELECT item_id FROM item_name_resolutions WHERE item_name={table}.item_name COLLATE NOCASE) WHERE item_id IS NULL"),
@@ -229,6 +231,10 @@ impl Database {
         if schema_version < 31 {
             transaction.execute_batch(COMBAT_PET_EVIDENCE_MIGRATION)?;
         }
+        if schema_version < 32 {
+            transaction.execute_batch(ITEM_PROC_CATALOG_MIGRATION)?;
+        }
+        super::proc_catalog::reconcile(&transaction)?;
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -266,8 +272,8 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 31);
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         for table in [
             "proc_occurrences",
@@ -290,7 +296,7 @@ mod tests {
     fn migrates_an_existing_schema_28_database_to_proc_metrics() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -322,7 +328,7 @@ mod tests {
                 .unwrap();
             assert_eq!(previous, 28);
         }
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         let tables: i64 = connection
             .query_row(
@@ -352,7 +358,7 @@ mod tests {
     fn repairs_misordered_inferred_dot_event_timestamps() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -373,7 +379,7 @@ mod tests {
                 .execute("DELETE FROM schema_migrations WHERE version>=28", [])
                 .unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         let repaired: (String, String) = connection.query_row(
             "SELECT happened_at,damage_type FROM damage_events WHERE source_file LIKE 'dot://%'",
@@ -391,7 +397,7 @@ mod tests {
     fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         {
             let connection = database.connect().unwrap();
             connection
@@ -409,7 +415,7 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         let channels: Vec<String> = connection
             .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
@@ -440,7 +446,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -472,7 +478,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 31);
+        assert_eq!(database.migrate().unwrap(), 32);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {

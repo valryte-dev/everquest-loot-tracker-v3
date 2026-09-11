@@ -3,7 +3,10 @@ use super::combat_metrics::{
 };
 use crate::{
     domain::log_events::{parse_envelope, LogEvent},
-    infrastructure::spell_catalog::{CombatSpellProfile, SpellCatalog},
+    infrastructure::{
+        proc_catalog,
+        spell_catalog::{CombatSpellProfile, SpellCatalog},
+    },
 };
 use chrono::{Duration, Local, NaiveDateTime};
 use regex::Regex;
@@ -215,13 +218,12 @@ impl DotTracker {
             .filter_map(|compiled| {
                 let captures = compiled.landing.captures(body)?;
                 Some((
-                    &compiled.profile,
+                    compiled.profile.clone(),
                     captures.name("target")?.as_str().trim().to_owned(),
                 ))
             })
             .collect::<Vec<_>>();
-        if matches.len() == 1 {
-            let (profile, target) = &matches[0];
+        if !matches.is_empty() {
             let glow_caster = self.recent_glow.as_ref().filter(|glow| {
                 glow.owner_name.eq_ignore_ascii_case(character)
                     && (0..=GLOW_WINDOW_SECONDS).contains(
@@ -230,69 +232,159 @@ impl DotTracker {
                             .num_seconds(),
                     )
             });
-            let direct_cast = self.recent_cast.as_ref().is_some_and(|cast| {
-                cast_resolution_matches(cast, &profile.spell_name, happened_at)
+            let candidate_names = matches
+                .iter()
+                .map(|(profile, _)| profile.spell_name.clone())
+                .collect::<Vec<_>>();
+            let direct_cast_name = self.recent_cast.as_ref().and_then(|cast| {
+                matches
+                    .iter()
+                    .find(|(profile, _)| {
+                        cast_resolution_matches(cast, &profile.spell_name, happened_at)
+                    })
+                    .map(|(profile, _)| profile.spell_name.clone())
             });
+            let clicked = glow_caster.and_then(|glow| {
+                proc_catalog::resolve_item_spell(connection, &glow.item_name, &candidate_names)
+                    .ok()
+                    .flatten()
+            });
+            let equipped = if preceding_non_melee.is_some() {
+                proc_catalog::resolve_source(connection, character, &candidate_names)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let selected_name = direct_cast_name
+                .as_deref()
+                .or_else(|| clicked.as_ref().map(|value| value.spell_name.as_str()))
+                .or_else(|| equipped.as_ref().map(|value| value.spell_name.as_str()));
+            let selected = selected_name
+                .and_then(|name| {
+                    matches
+                        .iter()
+                        .find(|(profile, _)| profile.spell_name.eq_ignore_ascii_case(name))
+                })
+                .cloned()
+                .or_else(|| (matches.len() == 1).then(|| matches[0].clone()));
 
-            let has_glow = glow_caster.is_some();
-            if has_glow || direct_cast {
-                let (attribution_method, source_kind, source_name) = if let Some(glow) = glow_caster
-                {
-                    ("item_glow", "item_click", Some(glow.item_name.as_str()))
-                } else {
-                    ("direct_cast", "direct", None)
-                };
-                changed += record_confirmed_landing(
-                    connection,
-                    source,
-                    source_offset,
-                    character,
-                    happened_at,
-                    target,
-                    character,
-                    attribution_method,
-                    &profile.spell_name,
-                    source_kind,
-                    source_name,
-                    profile.damage_per_tick,
-                    profile.tick_interval_seconds,
-                    profile.tick_count,
-                )?;
-            }
-            self.recent_glow = None;
-            if direct_cast {
-                self.recent_cast = None;
-            }
-            if !has_glow && !direct_cast {
-                let preceding_non_melee = preceding_non_melee.filter(|damage| {
-                    damage.source == source
-                        && damage.target_name.eq_ignore_ascii_case(target)
-                        && happened_at >= damage.happened_at
-                });
-                if profile.observed_source_kind.as_deref() == Some("item_click_only") {
-                    changed += record_unattributed_landing(
+            if let Some((profile, target)) = selected {
+                let direct_cast = direct_cast_name
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(&profile.spell_name));
+                let has_glow = glow_caster.is_some();
+                if has_glow || direct_cast {
+                    let (attribution_method, source_kind, source_name) =
+                        if let Some(glow) = glow_caster {
+                            ("item_glow", "item_click", Some(glow.item_name.as_str()))
+                        } else {
+                            ("direct_cast", "direct", None)
+                        };
+                    changed += record_confirmed_landing(
                         connection,
                         source,
                         source_offset,
                         character,
                         happened_at,
-                        target,
+                        &target,
+                        character,
+                        attribution_method,
                         &profile.spell_name,
-                        profile.observed_source_name.as_deref(),
+                        source_kind,
+                        source_name,
+                        profile.damage_per_tick,
+                        profile.tick_interval_seconds,
+                        profile.tick_count,
                     )?;
                 } else {
+                    let matched_damage = preceding_non_melee.clone().filter(|damage| {
+                        damage.source == source
+                            && damage.target_name.eq_ignore_ascii_case(&target)
+                            && happened_at >= damage.happened_at
+                    });
+                    if profile.observed_source_kind.as_deref() == Some("item_click_only") {
+                        changed += record_unattributed_landing(
+                            connection,
+                            source,
+                            source_offset,
+                            character,
+                            happened_at,
+                            &target,
+                            &profile.spell_name,
+                            profile.observed_source_name.as_deref(),
+                        )?;
+                    } else {
+                        let resolved_source = equipped
+                            .as_ref()
+                            .or(clicked.as_ref())
+                            .map(|value| value.item_name.clone())
+                            .or_else(|| {
+                                proc_catalog::resolve_source(
+                                    connection,
+                                    character,
+                                    std::slice::from_ref(&profile.spell_name),
+                                )
+                                .ok()
+                                .flatten()
+                                .map(|value| value.item_name)
+                            })
+                            .or(profile.observed_source_name.clone());
+                        self.pending_proc = Some(PendingProc {
+                            source: source.to_owned(),
+                            source_offset,
+                            happened_at,
+                            target_name: target,
+                            spell_name: profile.spell_name,
+                            source_name: resolved_source,
+                            direct_damage: profile.direct_damage,
+                            preceding_non_melee: matched_damage,
+                            damage_per_tick: profile.damage_per_tick,
+                            tick_interval_seconds: profile.tick_interval_seconds,
+                            tick_count: profile.tick_count,
+                        });
+                    }
+                }
+                self.recent_glow = None;
+                if direct_cast {
+                    self.recent_cast = None;
+                }
+            } else {
+                let same_target =
+                    matches
+                        .first()
+                        .map(|(_, target)| target.clone())
+                        .filter(|target| {
+                            matches
+                                .iter()
+                                .all(|(_, other)| other.eq_ignore_ascii_case(target))
+                        });
+                let proc_candidate = candidate_names
+                    .iter()
+                    .any(|name| proc_catalog::is_known_proc(connection, name).unwrap_or(false));
+                let includes_item_click_only = matches.iter().any(|(profile, _)| {
+                    profile.observed_source_kind.as_deref() == Some("item_click_only")
+                });
+                if let Some(target) =
+                    same_target.filter(|_| proc_candidate && !includes_item_click_only)
+                {
+                    let matched_damage = preceding_non_melee.filter(|damage| {
+                        damage.source == source
+                            && damage.target_name.eq_ignore_ascii_case(&target)
+                            && happened_at >= damage.happened_at
+                    });
                     self.pending_proc = Some(PendingProc {
                         source: source.to_owned(),
                         source_offset,
                         happened_at,
-                        target_name: target.clone(),
-                        spell_name: profile.spell_name.clone(),
-                        source_name: profile.observed_source_name.clone(),
-                        direct_damage: profile.direct_damage,
-                        preceding_non_melee,
-                        damage_per_tick: profile.damage_per_tick,
-                        tick_interval_seconds: profile.tick_interval_seconds,
-                        tick_count: profile.tick_count,
+                        target_name: target,
+                        spell_name: "Unidentified direct proc".to_owned(),
+                        source_name: None,
+                        direct_damage: None,
+                        preceding_non_melee: matched_damage,
+                        damage_per_tick: None,
+                        tick_interval_seconds: 6,
+                        tick_count: None,
                     });
                 }
             }
@@ -916,6 +1008,21 @@ mod tests {
         }
     }
 
+    fn lifetap_profile() -> CombatSpellProfile {
+        CombatSpellProfile {
+            spell_name: "Lifetap".into(),
+            cast_on_other: "Someone staggers.".into(),
+            damage_kind: "direct".into(),
+            direct_damage: Some(5),
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: Some(3.0),
+            observed_source_kind: None,
+            observed_source_name: None,
+        }
+    }
+
     fn hundred_blows_profile() -> CombatSpellProfile {
         CombatSpellProfile {
             spell_name: "One Hundred Blows".into(),
@@ -1482,6 +1589,73 @@ mod tests {
             })
             .unwrap();
         assert_eq!(occurrence_count, 1);
+    }
+
+    #[test]
+    fn equipped_weapon_resolves_a_colliding_proc_landing() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![
+                compile_profile(essence_tap_profile()).unwrap(),
+                compile_profile(lifetap_profile()).unwrap(),
+            ],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO character_weapon_loadouts(
+                    character_name,captured_at,primary_weapon_name,source_file
+                 ) VALUES('Asquatii','2026-03-23 16:00:00','Essence Mace','inventory.txt')",
+                [],
+            )
+            .unwrap();
+        for (offset, line) in [
+            (
+                1,
+                "[Mon Mar 23 16:00:01 2026] Yeldema was hit by non-melee for 80 points of damage.",
+            ),
+            (2, "[Mon Mar 23 16:00:01 2026] Yeldema staggers."),
+            (
+                3,
+                "[Mon Mar 23 16:00:01 2026] You crush Yeldema for 51 points of damage.",
+            ),
+        ] {
+            let event = crate::domain::log_events::parse_log_event(line, "Asquatii");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Asquatii.txt",
+                    offset,
+                    line,
+                    "Asquatii",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let occurrence = connection
+            .query_row(
+                "SELECT spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap();
+        assert_eq!(occurrence, ("Essence Tap".to_owned(), 80));
+        let source_name = connection
+            .query_row("SELECT source_name FROM combat_spell_activity", [], |row| {
+                row.get::<_, Option<String>>(0)
+            })
+            .unwrap();
+        assert_eq!(source_name.as_deref(), Some("Essence Mace"));
     }
 
     #[test]

@@ -20,10 +20,13 @@ The architecture work was delivered as additive, independently tagged checkpoint
 | `architecture-phase-7-contracts` | Typed frontend contracts and safe online database backup/restore |
 | database-management-preview | Read-only database statistics and cleanup previews |
 | pre-folder-reconcile-lock-fix-2026-09-06 | Rollback point before startup writer sequencing and runtime transaction coordination |
+| `pre-normalized-proc-catalog-2026-09-11` | Verified baseline immediately before the canonical 340-row item-to-proc catalog and broader direct-damage classification |
 
 ## Combat schema compatibility
 
 Schema 31 adds the derived `combat_pet_evidence` table used to classify multi-word and otherwise-unowned pets as separate outgoing fighters. It contains no user-authored data and is rebuilt by a Damage Tracker rescan. Builds before schema 31 ignore this additive table.
+
+Schema 32 adds `item_proc_spells`. It is reference data bundled from the Project 1999 Weapon Procs table and reconciled to nullable `master_items.item_id` values. It does not replace or mutate loot, inventory, split, encounter, or damage records. Builds before schema 32 ignore it. The separate `spell-info.db` cache advances its derived combat classifier to version 3 and can be safely rebuilt from the wiki catalog if needed.
 ## CH replay compatibility
 
 CH encounter replay is additive and does not change the SQLite schema. Portable `.eqch.json` files live in the `ch-chain-replays` application-data directory. Rolling back the application leaves those files untouched; older builds ignore them. Copy that directory before removing or editing replay files manually.
