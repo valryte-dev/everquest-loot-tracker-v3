@@ -252,7 +252,11 @@ where
         .map_err(|error| error.to_string())?;
     let mut files = Vec::new();
     let mut textures = BTreeSet::new();
-    textures.extend(SUPPLEMENTAL_TEXTURES.iter().map(|value| (*value).to_owned()));
+    textures.extend(
+        SUPPLEMENTAL_TEXTURES
+            .iter()
+            .map(|value| (*value).to_owned()),
+    );
     let mut model_files: Vec<String> = BASE_MODELS
         .iter()
         .flat_map(|model| [format!("{model}.glb"), format!("{model}he00.glb")])
