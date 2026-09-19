@@ -49,6 +49,26 @@ impl TaskRegistry {
             t.total = total;
         }
     }
+    pub fn transition(
+        &self,
+        id: &str,
+        label: &str,
+        detail: &str,
+        completed: Option<u64>,
+        total: Option<u64>,
+    ) {
+        if let Some(task) = self
+            .tasks
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get_mut(id)
+        {
+            task.label = label.into();
+            task.detail = detail.into();
+            task.completed = completed;
+            task.total = total;
+        }
+    }
     pub fn finish(&self, id: &str, result: &Result<serde_json::Value, String>, detail: &str) {
         if let Some(t) = self
             .tasks
@@ -98,5 +118,27 @@ mod tests {
             (s[0].state.as_str(), s[0].completed),
             ("completed", Some(4))
         );
+    }
+
+    #[test]
+    fn transition_changes_the_visible_phase_without_restarting_the_task() {
+        let registry = TaskRegistry::default();
+        registry.start("purge", "Backing up database", "Copying pages", Some(20));
+        let started_at = registry.snapshot()[0].started_at.clone();
+
+        registry.transition(
+            "purge",
+            "Purging old combat fights",
+            "Deleting eligible fights",
+            Some(0),
+            Some(4000),
+        );
+
+        let task = registry.snapshot().remove(0);
+        assert_eq!(task.label, "Purging old combat fights");
+        assert_eq!(task.detail, "Deleting eligible fights");
+        assert_eq!(task.completed, Some(0));
+        assert_eq!(task.total, Some(4000));
+        assert_eq!(task.started_at, started_at);
     }
 }

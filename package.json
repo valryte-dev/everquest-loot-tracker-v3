@@ -1,7 +1,7 @@
 {
   "name": "everquest-loot-tracker",
   "private": true,
-  "version": "3.17.0",
+  "version": "3.18.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,9 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@babylonjs/core": "7.2.1",
+    "@babylonjs/loaders": "7.2.1",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2.5.0",
+    "babylonjs-gltf2interface": "7.25.1",
     "html-to-image": "^1.11.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

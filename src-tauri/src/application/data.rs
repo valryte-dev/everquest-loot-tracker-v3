@@ -44,13 +44,29 @@ fn page_fields(page: &str) -> &'static [&'static str] {
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
-        "damage" => &["damageEncounters", "clericHealCalls"],
+        "damage" => &["damageEncounters", "clericHealCalls", "guildSlowCalls"],
         "merchant" => &["merchant"],
         "splits" => &["splits", "history", "aliases", "items", "mobs"],
-        "compounds" => &["compound", "items", "inventory", "members"],
-        "characters" => &["inventory", "spells", "items", "compound"],
+        "compounds" => &[
+            "compound",
+            "items",
+            "inventory",
+            "members",
+            "splits",
+            "aliases",
+            "wts",
+        ],
+        "characters" => &[
+            "inventory",
+            "spells",
+            "items",
+            "compound",
+            "characterProfiles",
+        ],
+        "wardrobe" => &["items"],
         "spells" => &["spells", "items"],
         "gems" => &["inventory"],
+        "quest-items" => &["inventory", "questCatalog"],
         "imports" => &["imports"],
         "wts" => &["wts", "inventory", "items"],
         "items" => &["items"],
@@ -183,10 +199,14 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
         "SELECT m.item_id,m.item_name,COALESCE(rv.value_pp,0),COALESCE(rv.sample_count,0),
                 COALESCE(rv.last_seen,m.updated_at),COALESCE(rv.is_manual,0),m.source,rv.value_basis
          FROM master_items m LEFT JOIN resolved_item_values rv ON rv.item_id=m.item_id
-         ORDER BY m.item_name COLLATE NOCASE LIMIT 10000",
+        ORDER BY m.item_name COLLATE NOCASE LIMIT 10000",
         |row| {
+            let item_id = row.get::<_, i64>(0)?;
+            let item_name = row.get::<_, String>(1)?;
+            let icon_id =
+                crate::infrastructure::item_icon_catalog::icon_id(Some(item_id), &item_name);
             Ok(
-                json!({"id":row.get::<_,i64>(0)?,"name":row.get::<_,String>(1)?,"valuePp":row.get::<_,i64>(2)?,
+                json!({"id":item_id,"name":item_name,"iconId":icon_id,"valuePp":row.get::<_,i64>(2)?,
             "count30d":row.get::<_,i64>(3)?,"lastSeen":row.get::<_,String>(4)?,"manual":row.get::<_,bool>(5)?,
             "source":row.get::<_,String>(6)?,"valueBasis":row.get::<_,Option<String>>(7)?}),
             )
@@ -201,11 +221,25 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
          LEFT JOIN item_name_resolutions ni ON ni.item_name=i.item_name COLLATE NOCASE
          LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(i.item_id,ni.item_id)
          ORDER BY c.name COLLATE NOCASE,i.sort_order",
-        |row| Ok(json!({"character":row.get::<_,String>(0)?,"importedAt":row.get::<_,String>(1)?,"id":row.get::<_,i64>(2)?,
-            "location":row.get::<_,String>(3)?,"itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
-            "count":row.get::<_,i64>(6)?,"slots":row.get::<_,Option<i64>>(7)?,"valuePp":row.get::<_,Option<i64>>(8)?,
-            "valueBasis":row.get::<_,Option<String>>(9)?,"valueSamples":row.get::<_,i64>(10)?})),
+        |row| {
+            let item_name = row.get::<_, String>(4)?;
+            let item_id = row.get::<_, Option<i64>>(5)?;
+            let icon_id = crate::infrastructure::item_icon_catalog::icon_id(item_id, &item_name);
+            let appearance = crate::infrastructure::item_appearance_catalog::appearance(item_id, &item_name);
+            Ok(json!({"character":row.get::<_,String>(0)?,"importedAt":row.get::<_,String>(1)?,"id":row.get::<_,i64>(2)?,
+                "location":row.get::<_,String>(3)?,"itemName":item_name,"itemId":item_id,"iconId":icon_id,
+                "material":appearance.as_ref().map(|value| value.material),"idFile":appearance.as_ref().and_then(|value| value.id_file.clone()),
+                "color":appearance.as_ref().map(|value| value.color),
+                "itemType":appearance.as_ref().and_then(|value| value.item_type),
+                "count":row.get::<_,i64>(6)?,"slots":row.get::<_,Option<i64>>(7)?,"valuePp":row.get::<_,Option<i64>>(8)?,
+                "valueBasis":row.get::<_,Option<String>>(9)?,"valueSamples":row.get::<_,i64>(10)?}))
+        },
     )?;
+    let quest_catalog = if wants("questCatalog") {
+        super::quest_catalog::snapshot(&connection)?
+    } else {
+        Vec::new()
+    };
 
     let spells = query_values_if(wants("spells"),
         &connection,
@@ -213,6 +247,54 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
          JOIN spellbook_spells s ON s.character_id=c.id ORDER BY c.name COLLATE NOCASE,s.sort_order",
         |row| Ok(json!({"character":row.get::<_,String>(0)?,"importedAt":row.get::<_,String>(1)?,
             "slot":row.get::<_,Option<i64>>(2)?,"spellName":row.get::<_,String>(3)?})),
+    )?;
+    let character_profiles = query_values_if(
+        wants("characterProfiles"),
+        &connection,
+        "WITH character_names(name) AS (
+             SELECT name FROM inventory_characters
+             UNION SELECT name FROM spellbook_characters
+             UNION SELECT character_name FROM activity_level_history
+             UNION SELECT character_name FROM character_profiles
+         ),
+         latest_levels AS (
+             SELECT character_name,level,happened_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY character_name COLLATE NOCASE
+                        ORDER BY happened_at DESC,id DESC
+                    ) AS position
+             FROM activity_level_history
+         )
+         SELECT n.name,
+                COALESCE(p.race_code,'hu'),
+                COALESCE(p.gender,'m'),
+                COALESCE(p.class_code,''),
+                p.level_override,
+                l.level,
+                COALESCE(p.level_override,l.level),
+                CASE WHEN p.level_override IS NOT NULL THEN 'manual'
+                     WHEN l.level IS NOT NULL THEN 'logs'
+                     ELSE 'unknown' END,
+                p.updated_at,
+                l.happened_at
+         FROM character_names n
+         LEFT JOIN character_profiles p ON p.character_name=n.name COLLATE NOCASE
+         LEFT JOIN latest_levels l ON l.character_name=n.name COLLATE NOCASE AND l.position=1
+         ORDER BY n.name COLLATE NOCASE",
+        |row| {
+            Ok(json!({
+                "character":row.get::<_,String>(0)?,
+                "race":row.get::<_,String>(1)?,
+                "gender":row.get::<_,String>(2)?,
+                "classCode":row.get::<_,String>(3)?,
+                "levelOverride":row.get::<_,Option<i64>>(4)?,
+                "parsedLevel":row.get::<_,Option<i64>>(5)?,
+                "level":row.get::<_,Option<i64>>(6)?,
+                "levelSource":row.get::<_,String>(7)?,
+                "updatedAt":row.get::<_,Option<String>>(8)?,
+                "levelObservedAt":row.get::<_,Option<String>>(9)?
+            }))
+        },
     )?;
 
     let wts = query_values_if(wants("wts"),
@@ -317,6 +399,21 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
             }))
         },
     )?;
+    let guild_slow_calls = query_values_if(
+        wants("guildSlowCalls"),
+        &connection,
+        "SELECT id,happened_at,character_name,speaker_name,mob_name,message,source_file
+         FROM guild_slow_calls
+         ORDER BY happened_at DESC,id DESC LIMIT 500",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
+                "mobName":row.get::<_,String>(4)?,"message":row.get::<_,String>(5)?,
+                "sourceFile":row.get::<_,String>(6)?
+            }))
+        },
+    )?;
     let death_reports = query_values_if(
         wants("deathReports"),
         &connection,
@@ -352,6 +449,11 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
         )
     } else {
         (0, 0)
+    };
+    let damage_attack_types = if wants("damageEncounters") {
+        super::damage_analytics::attack_type_metrics(&connection)?
+    } else {
+        Vec::new()
     };
 
     let mut damage_encounters = query_values_if(wants("damageEncounters"),
@@ -395,7 +497,7 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                     WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_target_summaries WHERE encounter_id=e.id)
                     GROUP BY target_name COLLATE NOCASE
                     ORDER BY total_damage DESC,target_name COLLATE NOCASE
-                ))
+                )),e.is_protected,e.protected_at
          FROM damage_encounters e ORDER BY e.started_at DESC,e.id DESC LIMIT 5000",
         |row| {
             Ok(json!({
@@ -415,7 +517,9 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
                 "incomingMaxHit":row.get::<_,i64>(17)?,
                 "damageTargets":row.get::<_,Option<String>>(18)?
                     .and_then(|value|serde_json::from_str::<Value>(&value).ok())
-                    .unwrap_or_else(||json!([]))
+                    .unwrap_or_else(||json!([])),
+                "isProtected":row.get::<_,bool>(19)?,
+                "protectedAt":row.get::<_,Option<String>>(20)?
             }))
         },
     )?;
@@ -471,12 +575,14 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
 
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
-        "items":items,"inventory":inventory,"spells":spells,"wts":wts,"aliases":aliases,"mobs":mobs,
+        "items":items,"inventory":inventory,"questCatalog":quest_catalog,"spells":spells,"characterProfiles":character_profiles,
+        "wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
         "deathReports":death_reports,"damageEncounters":damage_encounters,
         "damageEncounterCount":damage_encounter_count,
         "damageDistinctMobCount":damage_distinct_mob_count,
-        "clericHealCalls":cleric_heal_calls,
+        "damageAttackTypes":damage_attack_types,
+        "clericHealCalls":cleric_heal_calls,"guildSlowCalls":guild_slow_calls,
         "currentWeaponLoadout":current_weapon_loadout,"compound":compound}),
     )
 }
@@ -633,7 +739,7 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                     WHERE encounter_id=e.id AND NOT EXISTS(SELECT 1 FROM damage_target_summaries WHERE encounter_id=e.id)
                     GROUP BY target_name COLLATE NOCASE
                     ORDER BY total_damage DESC,target_name COLLATE NOCASE
-                                    ))
+                                    )),e.is_protected,e.protected_at
              FROM damage_encounters e WHERE e.id=?",
             [id],
             |row| {
@@ -654,7 +760,9 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
                 "incomingMaxHit":row.get::<_,i64>(17)?,
                 "damageTargets":row.get::<_,Option<String>>(18)?
                     .and_then(|value|serde_json::from_str::<Value>(&value).ok())
-                    .unwrap_or_else(||json!([]))
+                    .unwrap_or_else(||json!([])),
+                "isProtected":row.get::<_,bool>(19)?,
+                "protectedAt":row.get::<_,Option<String>>(20)?
                 }))
             },
         )
@@ -1028,6 +1136,58 @@ fn save_compound_workspace(
     Ok(())
 }
 
+fn sell_compound_project(
+    connection: &mut rusqlite::Connection,
+    payload: &Value,
+) -> Result<(), String> {
+    let normalized = normalize_compound(
+        payload
+            .get("workspace")
+            .cloned()
+            .ok_or("workspace is required")?,
+    );
+    let allocations = payload
+        .get("sourceSplits")
+        .and_then(Value::as_array)
+        .ok_or("sourceSplits is required")?;
+    let project_name = required(payload, "projectName")?;
+    let sale_value = integer(payload, "saleValuePp")?;
+    let user_note = payload.get("note").and_then(Value::as_str).unwrap_or("");
+    let note = if user_note.trim().is_empty() {
+        format!("Sold as part of compound project {project_name} ({sale_value} pp total sale)")
+    } else {
+        format!(
+            "Sold as part of compound project {project_name} ({sale_value} pp total sale): {}",
+            user_note.trim()
+        )
+    };
+    let raw = serde_json::to_string(&normalized).map_err(|error| error.to_string())?;
+    let transaction = connection.transaction().map_err(err)?;
+    let mut seen = HashSet::new();
+    for allocation in allocations {
+        let key = required(allocation, "key")?;
+        if !seen.insert(key.clone()) {
+            return Err(format!("Duplicate compound source split: {key}"));
+        }
+        complete_split(
+            &transaction,
+            &json!({
+                "key":key,
+                "valuePp":integer(allocation,"valuePp")?,
+                "disposition":"sold",
+                "note":note,
+            }),
+        )?;
+    }
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('compound_workspace',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [raw],
+    ).map_err(err)?;
+    sync_compound_snapshot(&transaction, &normalized)?;
+    transaction.commit().map_err(err)?;
+    Ok(())
+}
+
 pub fn sync_normalized_models(database: &Database) -> Result<(), String> {
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let raw = connection
@@ -1247,10 +1407,75 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
             let encounter_id = payload.get("id").and_then(Value::as_i64);
             super::combat_metrics::set_preferred_target(&mut connection, &character, encounter_id)?;
         }
+        "clericChain.target" => {
+            let character = required(payload, "character")?;
+            let first_call_id = integer(payload, "firstCallId")?;
+            let encounter_id = payload.get("id").and_then(Value::as_i64);
+            let manual_name = payload.get("mobName").and_then(Value::as_str);
+            super::combat_metrics::set_cleric_chain_target(
+                &mut connection,
+                &character,
+                first_call_id,
+                encounter_id,
+                manual_name,
+            )?;
+        }
         "setting.save" => {
             let key = required(payload, "key")?;
             let value = required(payload, "value")?;
             connection.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key,value]).map_err(err)?;
+        }
+        "character.profile.save" => {
+            let character = required(payload, "character")?;
+            let race = required(payload, "race")?;
+            let gender = required(payload, "gender")?;
+            let class_code = payload
+                .get("classCode")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            const RACES: &[&str] = &[
+                "ba", "da", "dw", "el", "er", "gn", "ha", "hi", "ho", "hu", "ik", "og", "tr",
+            ];
+            const CLASSES: &[&str] = &[
+                "", "war", "clr", "pal", "rng", "shd", "dru", "mnk", "brd", "rog", "shm", "nec",
+                "wiz", "mag", "enc",
+            ];
+            if !RACES.contains(&race.as_str()) {
+                return Err("Unsupported character race".to_owned());
+            }
+            if gender != "m" && gender != "f" {
+                return Err("Unsupported character gender".to_owned());
+            }
+            if !CLASSES.contains(&class_code) {
+                return Err("Unsupported character class".to_owned());
+            }
+            connection.execute(
+                "INSERT INTO character_profiles(character_name,race_code,gender,class_code,updated_at)
+                 VALUES(?1,?2,?3,?4,CURRENT_TIMESTAMP)
+                 ON CONFLICT(character_name) DO UPDATE SET
+                    race_code=excluded.race_code,
+                    gender=excluded.gender,
+                    class_code=excluded.class_code,
+                    updated_at=CURRENT_TIMESTAMP",
+                params![character,race,gender,class_code],
+            ).map_err(err)?;
+        }
+        "character.level.save" => {
+            let character = required(payload, "character")?;
+            let level = payload.get("level").and_then(Value::as_i64);
+            if level.is_some_and(|value| !(1..=255).contains(&value)) {
+                return Err("Character level must be between 1 and 255".to_owned());
+            }
+            connection
+                .execute(
+                    "INSERT INTO character_profiles(character_name,level_override,updated_at)
+                 VALUES(?1,?2,CURRENT_TIMESTAMP)
+                 ON CONFLICT(character_name) DO UPDATE SET
+                    level_override=excluded.level_override,
+                    updated_at=CURRENT_TIMESTAMP",
+                    params![character, level],
+                )
+                .map_err(err)?;
         }
         "member.add" => {
             let name = required(payload, "name")?;
@@ -1374,6 +1599,7 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
                 payload.get("workspace").unwrap_or(&json!({})),
             )?;
         }
+        "compound.sell" => sell_compound_project(&mut connection, payload)?,
         "wts.save" => save_wts(&mut connection, payload)?,
         "wts.delete" => {
             connection
@@ -1469,6 +1695,7 @@ pub fn mutate(database: &Database, action: &str, payload: &Value) -> Result<Valu
             | "split.delete"
             | "split.complete"
             | "split.reconcileSales"
+            | "compound.sell"
             | "history.save"
             | "history.unsell"
             | "history.payout.member.complete"
@@ -2408,12 +2635,36 @@ fn err(error: rusqlite::Error) -> String {
 mod tests {
     use super::{
         activity_history_snapshot, damage_encounter_details, global_combat_snapshot, mutate,
-        normalize_compound, page_snapshot, snapshot,
+        normalize_compound, page_fields, page_snapshot, snapshot,
     };
     use crate::infrastructure::database::Database;
     use rusqlite::params;
     use serde_json::json;
     use std::io::Write;
+
+    #[test]
+    fn compounds_page_loads_every_dataset_used_by_its_workflows() {
+        let fields = page_fields("compounds");
+        for required in [
+            "compound",
+            "items",
+            "inventory",
+            "members",
+            "splits",
+            "aliases",
+            "wts",
+        ] {
+            assert!(
+                fields.contains(&required),
+                "missing compounds page field: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn wardrobe_page_loads_shared_master_values_without_roster_payloads() {
+        assert_eq!(page_fields("wardrobe"), &["items"]);
+    }
 
     #[test]
     fn normalizes_v2_compound_components_without_losing_metadata() {
@@ -2588,6 +2839,15 @@ mod tests {
             loadout,
             (Some("A Blue Crown".into()), Some("Offhand Test".into()))
         );
+        drop(connection);
+        let value = snapshot(&database).unwrap();
+        let crown = value["inventory"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["itemName"] == "A Blue Crown")
+            .unwrap();
+        assert_eq!(crown["iconId"], 653);
     }
 
     #[test]
@@ -3218,17 +3478,29 @@ mod tests {
              VALUES('Test','a test mob','2026-09-06 12:00:00','2026-09-06 12:00:01',10,10,0,1,10,'slain','eqlog_Test_P1999Green.txt',2,2)",
             [],
         ).unwrap();
+        connection.execute(
+            "INSERT INTO guild_slow_calls(happened_at,character_name,speaker_name,mob_name,message,raw_line,source_file,source_offset)
+             VALUES('2026-09-06 12:00:00','Test','Shaman','a test mob','slow a test mob','slow a test mob','eqlog_Test_P1999Green.txt',3)",
+            [],
+        ).unwrap();
         drop(connection);
 
         let live = page_snapshot(&database, "live").unwrap();
         assert_eq!(live["loot"].as_array().unwrap().len(), 1);
         assert!(live["damageEncounters"].as_array().unwrap().is_empty());
+        assert!(live["questCatalog"].as_array().unwrap().is_empty());
         assert_eq!(live["damageEncounterCount"], 0);
 
         let damage = page_snapshot(&database, "damage").unwrap();
         assert!(damage["loot"].as_array().unwrap().is_empty());
         assert_eq!(damage["damageEncounters"].as_array().unwrap().len(), 1);
+        assert_eq!(damage["guildSlowCalls"][0]["mobName"], "a test mob");
         assert_eq!(damage["damageEncounterCount"], 1);
+
+        let quests = page_snapshot(&database, "quest-items").unwrap();
+        assert_eq!(quests["questCatalog"].as_array().unwrap().len(), 917);
+        assert!(quests["loot"].as_array().unwrap().is_empty());
+        assert!(quests["damageEncounters"].as_array().unwrap().is_empty());
 
         let complete = snapshot(&database).unwrap();
         assert_eq!(complete["loot"].as_array().unwrap().len(), 1);
@@ -3303,6 +3575,62 @@ mod tests {
             )
             .unwrap();
         assert_eq!(component, (101, 2, 1));
+    }
+    #[test]
+    fn compound_sale_atomically_moves_linked_splits_to_pending_payouts() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        mutate(
+            &database,
+            "split.add",
+            &json!({
+                "itemName":"A Blue Throne","looterName":"Holder","payoutValuePp":25000,
+                "attendees":["Main","Friend"]
+            }),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let split_id: i64 = connection
+            .query_row("SELECT id FROM manual_split_list_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        drop(connection);
+        let key = format!("manual:{split_id}");
+        let workspace = json!({
+            "projects":[{"id":"flowers","itemId":null,"name":"Full Flower Set","note":"","status":"sold",
+                "soldAt":"2026-09-13T20:00:00Z","saleValuePp":50000,"saleNote":"Tunnel",
+                "templates":[],"components":[{"id":"blue","itemId":null,"itemName":"A Blue Throne",
+                    "required":1,"received":1,"valuePp":25000,"source":"split","sourceRef":key,
+                    "contributors":["Main","Friend"],"note":""}]}],
+            "templates":[],"activeId":"flowers"
+        });
+        mutate(
+            &database,
+            "compound.sell",
+            &json!({
+                "workspace":workspace,"projectName":"Full Flower Set","saleValuePp":50000,
+                "note":"Tunnel","sourceSplits":[{"key":key,"valuePp":50000}]
+            }),
+        )
+        .unwrap();
+        let connection = database.connect().unwrap();
+        let result:(i64,i64,String,i64,i64)=connection.query_row(
+            "SELECT (SELECT COUNT(*) FROM manual_split_list_items),COUNT(*),disposition,value_pp,
+                    (SELECT COUNT(*) FROM completed_split_members)
+             FROM completed_split_items",
+            [],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))
+        ).unwrap();
+        assert_eq!(result, (0, 1, "sold".into(), 50000, 2));
+        let saved: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='compound_workspace'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(saved.contains("\"status\":\"sold\""));
     }
     #[test]
     fn split_lifecycle_snapshots_preserve_each_transition_and_individual_payouts() {
@@ -3430,5 +3758,72 @@ mod tests {
         assert_eq!(snapshot_count, 4);
         assert_eq!(final_phase, "paid");
         assert_eq!(legacy_history_count, 1);
+    }
+
+    #[test]
+    fn character_profiles_persist_appearance_and_prefer_manual_level_only_when_set() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection
+            .execute(
+                "INSERT INTO inventory_characters(name,source_file,imported_at)
+             VALUES('Testtoon','Testtoon-Inventory.txt','2026-09-16 12:00:00')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO activity_level_history(
+                happened_at,character_name,level,direction,raw_line,source_file,source_offset
+             ) VALUES(
+                '2026-09-16 12:01:00','Testtoon',54,'gained','level raw',
+                'eqlog_Testtoon_P1999Green.txt',1
+             )",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let parsed = page_snapshot(&database, "characters").unwrap();
+        assert_eq!(parsed["characterProfiles"][0]["level"], 54);
+        assert_eq!(parsed["characterProfiles"][0]["levelSource"], "logs");
+
+        mutate(
+            &database,
+            "character.profile.save",
+            &json!({"character":"Testtoon","race":"ik","gender":"f","classCode":"shm"}),
+        )
+        .unwrap();
+        mutate(
+            &database,
+            "character.level.save",
+            &json!({"character":"Testtoon","level":55}),
+        )
+        .unwrap();
+        let manual = page_snapshot(&database, "characters").unwrap();
+        let profile = &manual["characterProfiles"][0];
+        assert_eq!(
+            (
+                profile["race"].as_str(),
+                profile["gender"].as_str(),
+                profile["classCode"].as_str()
+            ),
+            (Some("ik"), Some("f"), Some("shm"))
+        );
+        assert_eq!(profile["level"], 55);
+        assert_eq!(profile["parsedLevel"], 54);
+        assert_eq!(profile["levelSource"], "manual");
+
+        mutate(
+            &database,
+            "character.level.save",
+            &json!({"character":"Testtoon","level":null}),
+        )
+        .unwrap();
+        let reset = page_snapshot(&database, "characters").unwrap();
+        assert_eq!(reset["characterProfiles"][0]["level"], 54);
+        assert_eq!(reset["characterProfiles"][0]["levelSource"], "logs");
     }
 }

@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {History} from "../../shared/contracts";
-import {buildSplitPayoutSummary,discordPlayerPotentialPayoutSummary,discordPotentialPayoutBriefSummary,discordPotentialPayoutSummary,discordSoldItemsSummary,groupSplitPeople,soldItemsCompactMessages,soldItemsFullDetailMessages} from "./model";
+import {buildSplitPayoutSummary,discordPlayerPotentialPayoutSummary,discordPotentialPayoutBriefSummary,discordPotentialPayoutSummary,discordSoldItemsSummary,groupSplitPeople,soldItemsCompactMessages,soldItemsFullDetailMessages,splitPayoutCompactMessages,splitPayoutFullDetailMessages} from "./model";
 
 describe("buildSplitPayoutSummary",()=>{
  it("tracks payments independently per canonical participant",()=>{
@@ -101,5 +101,22 @@ describe("discordSoldItemsSummary",()=>{
   expect(message).toContain("- **Sold Item 239** - Sale price: **901 pp** - Split toons: Main, Friend");
   expect(message).not.toContain("Dropped by:");
   expect(message).not.toContain("private note");
+ });
+});
+
+describe("phase-aware payout Discord messages",()=>{
+ it("combines held, pending, and paid records while excluding consumed items",()=>{
+  const held=[{key:"held:1",itemName:"Held Crown",addedAt:"2026-09-10",payoutValuePp:1200,attendees:["Alt","Friend"]}];
+  const history:History[]=[
+   {id:1,itemName:"Pending Robe",valuePp:900,disposition:"sold",payoutStatus:"pending",note:"Tunnel",completedAt:"2026-09-11",attendees:["Alt","Friend"],payouts:[]},
+   {id:2,itemName:"Paid Staff",valuePp:600,disposition:"sold",payoutStatus:"completed",note:"Done",completedAt:"2026-09-12",paidAt:"2026-09-13",attendees:["Alt"],payouts:[{name:"Alt",paidAt:"2026-09-13"}]},
+   {id:3,itemName:"Consumed Gem",valuePp:50,disposition:"consumed",payoutStatus:"completed",note:"Quest",completedAt:"2026-09-12",attendees:["Alt"],payouts:[]},
+  ];
+  const aliases=[{alias:"Alt",canonical:"Main"}];
+  const compact=splitPayoutCompactMessages(held,history,aliases,"All split phases").join("\n");
+  const full=splitPayoutFullDetailMessages(held,history,aliases,"All split phases").join("\n");
+  expect(compact).toContain("Phase: **held**");expect(compact).toContain("Phase: **pending**");expect(compact).toContain("Phase: **paid**");
+  expect(compact).toContain("Split toons: Main, Friend");expect(compact).not.toContain("Consumed Gem");
+  expect(full).toContain("Main [potential]");expect(full).toContain("Main [pending]");expect(full).toContain("Main [paid]");
  });
 });

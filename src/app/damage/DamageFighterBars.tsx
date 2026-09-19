@@ -26,11 +26,15 @@ export interface DamageFighterEffects {
  spellDotDamage:number;
 }
 
+export const calculateProcDps=(effects:Pick<DamageFighterEffects,"procDirectDamage"|"procDotDamage">,durationSeconds:number)=>
+ (effects.procDirectDamage+effects.procDotDamage)/Math.max(1,durationSeconds);
+
 export interface DamageFighterBarRow {
  name:string;
  rank:number;
  totalDamage:number;
  dps:number;
+ procDps:number;
  combatSeconds:number;
  contribution:number;
  contributionDelta?:number;
@@ -61,7 +65,7 @@ export function DamageFighterBars({fighters}:{fighters:DamageFighterBarRow[]}){
     <span><b>PROCS {effect.procCount}</b><i>/ DD {number(effect.procDirectDamage)}</i><em>/ DOT {number(effect.procDotDamage)}</em></span>
     {(effect.spellCount>0||effect.spellDirectDamage>0||effect.spellDotDamage>0)&&<span><b>SPELL {effect.spellCount}</b><i>/ DD {number(effect.spellDirectDamage)}</i><em>/ DOT {number(effect.spellDotDamage)}</em></span>}
    </div>
-   <div className="meter-stat"><span>{fighter.dps.toFixed(1)}<small>DPS</small></span><strong>{number(fighter.totalDamage)}<small>DMG</small></strong></div>
+   <div className="meter-stat"><span>{fighter.dps.toFixed(1)}<small>DPS</small></span><span className="meter-proc-dps">{fighter.procDps.toFixed(1)}<small>PROC DPS</small></span><strong>{number(fighter.totalDamage)}<small>DMG</small></strong></div>
   </div>;
  })}</div>;
 }

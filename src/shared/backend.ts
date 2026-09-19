@@ -1,18 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo, DotTrainingReport, ChTrainingReport, ReplayFile, ReplayFileEntry, ClericHealReplayCall, ClericHealReplayFile, ClericHealReplayEntry, ProcCoachStatus, ProcCoachReview, ProcCoachSavedReview } from "./contracts";
+import type { ActivityHistorySnapshot, AppSnapshot, BootstrapStatus, DamageEncounterDetail, DatabaseCleanupPreview, DatabaseStats, DeathReportDetail, GlobalStatusSnapshot, SpellCatalogStatus, SpellInfo, DotTrainingReport, ChTrainingReport, ReplayFile, ReplayFileEntry, ClericHealReplayCall, ClericHealReplayFile, ClericHealReplayEntry, ProcCoachStatus, ProcCoachReview, ProcCoachSavedReview, FightPurgePreview, ProtectedFight, ProcEvidenceReport, ModelPackStatus, WardrobeCatalogItem, WardrobeSetItem, WardrobeSetSummary } from "./contracts";
 
 const previewStatus:BootstrapStatus={appVersion:"3.2.0",platform:"browser-preview",databasePath:"Desktop app required",databaseReady:false,schemaVersion:0,legacyDatabase:false};
-const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],spells:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,compound:{projects:[],templates:[],activeId:null}};
+const previewSnapshot:AppSnapshot={settings:{theme:"midnight",merchant_mode_enabled:"false"},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],questCatalog:[],spells:[],characterProfiles:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,damageAttackTypes:[],compound:{projects:[],templates:[],activeId:null}};
 const desktop=()=>"__TAURI_INTERNALS__" in window;
 export const bootstrapStatus=()=>desktop()?invoke<BootstrapStatus>("bootstrap_status"):Promise.resolve(previewStatus);
+export const getModelPackStatus=():Promise<ModelPackStatus>=>desktop()?invoke<ModelPackStatus>("model_pack_status"):Promise.resolve({installed:false,valid:false,modelCount:0,fileCount:0,bytes:0});
 export const getSnapshot=()=>desktop()?invoke<AppSnapshot>("app_snapshot"):Promise.resolve(previewSnapshot);
 export const getPageSnapshot=(page:string)=>desktop()?invoke<AppSnapshot>("app_page_snapshot",{page}):Promise.resolve(previewSnapshot);
 export const getActivityHistorySnapshot=()=>desktop()?invoke<ActivityHistorySnapshot>("activity_history_snapshot"):Promise.resolve({loot:[],mobs:[],offers:[],levels:[]});
+export const getWardrobeCatalogItems=(slotBit:number,classBit:number,raceBit:number)=>desktop()?invoke<WardrobeCatalogItem[]>("wardrobe_catalog_items",{slotBit,classBit,raceBit}):Promise.resolve([]);
+export const getWardrobeCatalogSets=()=>desktop()?invoke<WardrobeSetSummary[]>("wardrobe_catalog_sets"):Promise.resolve([]);
+export const getWardrobeSetItems=(setName:string,classBit:number,raceBit:number)=>desktop()?invoke<WardrobeSetItem[]>("wardrobe_catalog_set_items",{setName,classBit,raceBit}):Promise.resolve([]);
 export const getDatabaseStats=()=>desktop()?invoke<DatabaseStats>("database_stats"):Promise.reject(new Error("Database statistics are available in the desktop app."));
 export const getCombatCleanupPreview=(keepDays:number)=>desktop()?invoke<DatabaseCleanupPreview>("database_cleanup_preview",{keepDays}):Promise.reject(new Error("Cleanup previews are available in the desktop app."));export const getRevision=()=>desktop()?invoke<number>("app_revision"):Promise.resolve(0);
+export const getFightPurgePreview=(keepDays:number)=>desktop()?invoke<FightPurgePreview>("database_fight_purge_preview",{keepDays}):Promise.reject(new Error("Fight purge previews are available in the desktop app."));
+export const getProtectedFights=()=>desktop()?invoke<ProtectedFight[]>("database_protected_fights"):Promise.resolve([]);
 export const getGlobalStatus=():Promise<GlobalStatusSnapshot>=>desktop()?invoke<GlobalStatusSnapshot>("global_status_snapshot"):Promise.resolve({tasks:[],damageEncounters:[]});
 export const getDeathReportDetails=(id:number)=>desktop()?invoke<DeathReportDetail>("death_report_details",{id}):Promise.reject(new Error("Death reports are available in the desktop app."));
 export const getDamageEncounterDetails=(id:number)=>desktop()?invoke<DamageEncounterDetail>("damage_encounter_details",{id}):Promise.reject(new Error("Damage encounters are available in the desktop app."));
+export const getDamageProcEvidence=(encounterId:number,playerName:string)=>desktop()?invoke<ProcEvidenceReport>("damage_proc_evidence",{encounterId,playerName}):Promise.reject(new Error("Proc evidence is available in the desktop app."));
 export const mutate=async(action:string,payload:Record<string,unknown>={})=>desktop()?invoke<unknown>("mutate_app",{request:{action,payload}}):null;
 export const getSpellInfo=(spellName:string)=>desktop()?invoke<SpellInfo>("spell_info",{spellName}):Promise.reject(new Error("Spell information is available in the desktop app."));
 export const getSpellCatalogEntries=()=>desktop()?invoke<SpellInfo[]>("spell_catalog_entries"):Promise.resolve([]);

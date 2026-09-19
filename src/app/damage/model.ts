@@ -5,6 +5,23 @@ export interface DamageBurstPoint { second:number; group:number; me:number }
 
 const timestamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 
+export function damageEncounterSnapshotChanged(
+ pageRows:DamageEncounter[],
+ liveRows:DamageEncounter[],
+):boolean{
+ const current=new Map(pageRows.map(row=>[row.id,row]));
+ return liveRows.some(row=>{
+  const page=current.get(row.id);
+  return !page
+   ||page.lastDamageAt!==row.lastDamageAt
+   ||page.totalDamage!==row.totalDamage
+   ||page.hitCount!==row.hitCount
+   ||(page.incomingDamage||0)!==(row.incomingDamage||0)
+   ||(page.incomingHitCount||0)!==(row.incomingHitCount||0)
+   ||page.outcome!==row.outcome;
+ });
+}
+
 export function buildLiveDpsSeries(
  events:DamageEvent[],
  character:string,
@@ -124,7 +141,7 @@ export function buildClericChainTimeline(
  });
 }
 
-export function discordHealChainSummary(calls:TimedClericHealCall[],targetMob?:string):string{
+export function discordHealChainSummary(calls:TimedClericHealCall[],tankName?:string):string{
  if(!calls.length)return "**Complete Heal Chain Summary**\n_No active calls to summarize._";
  const ordered=[...calls].sort((a,b)=>timestamp(a.happenedAt)-timestamp(b.happenedAt)||a.id-b.id);
  const gaps=ordered.flatMap(call=>call.gapSeconds===undefined?[]:[call.gapSeconds]);
@@ -139,7 +156,7 @@ export function discordHealChainSummary(calls:TimedClericHealCall[],targetMob?:s
  const range=gaps.length?`${Math.min(...gaps).toFixed(1)}s - ${Math.max(...gaps).toFixed(1)}s`:"Awaiting a second call";
  return [
   "**Complete Heal Chain Summary**",
-  `**Target:** ${targetMob?.trim()||"Unknown mob"}`,
+  `**Tank:** ${tankName?.trim()||"Unknown tank"}`,
   `**${ordered.length} calls - ${healerCount} anonymous healer${healerCount===1?"":"s"} - ${duration} elapsed**`,
   `- Average gap: **${average.toFixed(1)}s**`,
   `- Median gap: **${median.toFixed(1)}s**`,
@@ -152,14 +169,14 @@ export function discordHealChainSummary(calls:TimedClericHealCall[],targetMob?:s
  ].join("\n");
 }
 export function latestHealChainBoundary(
- encounters:DamageEncounter[],
- character:string|undefined,
+ _encounters:DamageEncounter[],
+ _character:string|undefined,
  manualClearedAt:string|undefined,
 ):number{
  const manual=manualClearedAt?timestamp(manualClearedAt):Number.NaN;
- const deaths=encounters
-  .filter(row=>row.outcome==="slain"&&!!row.endedAt&&(!character||row.character.toLowerCase()===character.toLowerCase()))
-  .map(row=>timestamp(row.endedAt!))
-  .filter(Number.isFinite);
- return Math.max(Number.isFinite(manual)?manual:0,0,...deaths);
+ // A character can observe many simultaneous fights during a raid. Treating
+ // every slain mob as the end of the CH chain hides valid calls whenever
+ // unrelated trash dies. The live chain already has a 15-second inactivity
+ // boundary, while this value represents only an explicit user clear.
+ return Number.isFinite(manual)?manual:0;
 }

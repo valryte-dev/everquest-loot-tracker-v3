@@ -42,7 +42,7 @@ export function ChTrainingPage({activeCharacter}:{activeCharacter?:string}){
  ];
  const savedColumns:Column<ClericHealReplayEntry>[]=[
   {key:"time",label:"Saved",value:row=>row.savedAt,render:row=>when(row.savedAt)},
-  {key:"mob",label:"Target Mob",value:row=>row.targetMob},
+  {key:"mob",label:"Tank",value:row=>row.targetMob},
   {key:"character",label:"Log Toon",value:row=>row.character},
   {key:"calls",label:"Calls",value:row=>row.callCount},
   {key:"healers",label:"Healers",value:row=>row.healerCount},

@@ -225,7 +225,7 @@ pub fn analyze(
     }
     let unknown = applications
         .iter()
-        .filter(|dot| dot.caster_name == "Unknown")
+        .filter(|dot| dot.caster_name == "Unknown" || dot.caster_name == "Unidentified player")
         .count();
     if unknown > 0 {
         warnings.push(format!(
@@ -465,7 +465,13 @@ fn interpret_lines(
         let landed: Vec<_> = applications.iter().filter(|dot|dot.source_offset==*offset).collect();
         let direct: Vec<_> = events.iter().filter(|event|!event.inferred&&event.source_offset==*offset).collect();
         let landed_procs: Vec<_> = procs.iter().filter(|proc|proc.landing_source_offset==*offset).collect();
-        let confirmed_procs: Vec<_> = procs.iter().filter(|proc|proc.attribution_source_offset==*offset).collect();
+        let confirmed_procs: Vec<_> = procs
+            .iter()
+            .filter(|proc| {
+                proc.attribution_source_offset == *offset
+                    && proc.attribution_source_offset != proc.landing_source_offset
+            })
+            .collect();
         let mut decisions = Vec::new();
         for dot in &landed {
             decisions.push(format!("Matched {} from its cached Cast on Other message; target = {}.", dot.spell_name, dot.target_name));
@@ -486,7 +492,15 @@ fn interpret_lines(
                             && mob_name.eq_ignore_ascii_case(&proc.target_name)
                             && amount == proc.direct_damage
                 ));
-            decisions.push(format!("Matched {} from the spell catalog on {}; this became a proc only after the immediately following attack/riposte identified {}.", proc.spell_name, proc.target_name, proc.caster_name));
+            decisions.push(if proc.attribution_source_offset == proc.landing_source_offset
+                && proc.caster_name != "Unidentified player"
+            {
+                format!("Matched {} on {}; the immediately preceding same-timestamp named self-effect message explicitly identified {} as the proc caster.", proc.spell_name, proc.target_name, proc.caster_name)
+            } else if proc.caster_name == "Unidentified player" {
+                format!("Matched {} from the spell catalog on {}; the immediately following same-target attack/riposte confirmed a proc, but did not prove which player caused it.", proc.spell_name, proc.target_name)
+            } else {
+                format!("Matched {} from the spell catalog on {}; the immediately following same-target attack/riposte identified {}.", proc.spell_name, proc.target_name, proc.caster_name)
+            });
             if proc.direct_damage > 0 {
                 decisions.push(if preceding_non_melee {
                     format!("Assigned {} logged non-melee damage to the active character's proc; the following melee damage remains separate.", proc.direct_damage)
@@ -496,7 +510,11 @@ fn interpret_lines(
             }
         }
         for proc in &confirmed_procs {
-            decisions.push(format!("This same-target attack/riposte confirmed {} as {}'s weapon proc (landing offset {}).", proc.spell_name, proc.caster_name, proc.landing_source_offset));
+            decisions.push(if proc.caster_name == "Unidentified player" {
+                format!("This same-target attack/riposte confirmed {} as a weapon proc, but caster attribution remains unidentified (landing offset {}).", proc.spell_name, proc.landing_source_offset)
+            } else {
+                format!("This same-target attack/riposte confirmed {} as {}'s weapon proc (landing offset {}).", proc.spell_name, proc.caster_name, proc.landing_source_offset)
+            });
         }
         if let Some(LogEvent::SpellCastStarted { happened_at, spell_name }) = parsed.as_ref() {
             if let Some(seconds) = combat_profiles
@@ -670,6 +688,7 @@ fn event_kind(event: &LogEvent) -> &'static str {
         LogEvent::TradeOffer { .. } => "tradeOffer",
         LogEvent::LinkedItems { .. } => "linkedItems",
         LogEvent::ClericHealCall { .. } => "clericHealCall",
+        LogEvent::GuildSlowCall { .. } => "guildSlowCall",
     }
 }
 
@@ -791,11 +810,11 @@ mod tests {
         assert_eq!(observed_dot_proc_report.encounters[0].dots.len(), 1);
         assert_eq!(
             observed_dot_proc_report.encounters[0].procs[0].caster_name,
-            "Balbazak"
+            "Unidentified player"
         );
         assert_eq!(
             observed_dot_proc_report.encounters[0].dots[0].caster_name,
-            "Balbazak"
+            "Unidentified player"
         );
         assert_eq!(
             observed_dot_proc_report.encounters[0].dots[0].attribution_method,

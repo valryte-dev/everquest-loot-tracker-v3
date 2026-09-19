@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useMemo,useState} from "react";
-import {getCombatCleanupPreview,getDatabaseStats} from "../../shared/backend";
-import type {DatabaseCleanupPreview,DatabaseStats,DatabaseStorageCategory,LoadingState,Runner} from "../../shared/contracts";
-import {DataTable,when,type Column} from "../ui";
+import {getCombatCleanupPreview,getDatabaseStats,getFightPurgePreview,getProtectedFights} from "../../shared/backend";
+import type {DatabaseCleanupPreview,DatabaseStats,DatabaseStorageCategory,FightPurgePreview,FightPurgeResult,LoadingState,ProtectedFight,Runner} from "../../shared/contracts";
+import {DataTable,IconButton,Modal,when,type Column} from "../ui";
 
 const retentionChoices=[30,90,180,365,730];
 
@@ -16,11 +16,22 @@ export function formatBytes(value:number):string {
 export function DatabaseManagementPage({run}:{run:Runner}){
  const[state,setState]=useState<LoadingState<DatabaseStats>>({kind:"loading"});
  const[keepDays,setKeepDays]=useState(180);
+ const[fightKeepDays,setFightKeepDays]=useState(365);
  const[preview,setPreview]=useState<LoadingState<DatabaseCleanupPreview>|null>(null);
+ const[fightPreview,setFightPreview]=useState<LoadingState<FightPurgePreview>|null>(null);
+ const[protectedFights,setProtectedFights]=useState<ProtectedFight[]>([]);
+ const[selected,setSelected]=useState<Set<string|number>>(new Set());
+ const[confirm,setConfirm]=useState<"purge"|"delete"|null>(null);
+ const[working,setWorking]=useState(false);
+ const[actionMessage,setActionMessage]=useState("");
  const[backupMessage,setBackupMessage]=useState("");
- const load=useCallback(()=>{setState({kind:"loading"});getDatabaseStats().then(value=>setState({kind:"ready",value})).catch(error=>setState({kind:"error",message:String(error)}))},[]);
+ const load=useCallback(()=>{setState({kind:"loading"});Promise.all([getDatabaseStats(),getProtectedFights()]).then(([value,fights])=>{setState({kind:"ready",value});setProtectedFights(fights);setSelected(new Set())}).catch(error=>setState({kind:"error",message:String(error)}))},[]);
  useEffect(()=>{load()},[load]);
  const previewRetention=()=>{setPreview({kind:"loading"});getCombatCleanupPreview(keepDays).then(value=>setPreview({kind:"ready",value})).catch(error=>setPreview({kind:"error",message:String(error)}))};
+ const previewFightPurge=()=>{setFightPreview({kind:"loading"});getFightPurgePreview(fightKeepDays).then(value=>setFightPreview({kind:"ready",value})).catch(error=>setFightPreview({kind:"error",message:String(error)}))};
+ const toggleProtection=async(row:ProtectedFight)=>{setWorking(true);await run("database.fightProtection",{id:row.id,protected:false});setWorking(false);load()};
+ const executePurge=async()=>{setWorking(true);setConfirm(null);setActionMessage("Creating backup, then purging eligible fights...");const value=await run("database.combatPurge",{keepDays:fightKeepDays});setWorking(false);if(isPurgeResult(value)){setActionMessage(`${value.deletedEncounters.toLocaleString()} fights purged. Backup: ${value.backupPath||"created"}`);setFightPreview(null);load()}else setActionMessage("Purge did not complete. Check Application Logs for details.")};
+ const deleteProtected=async()=>{setWorking(true);setConfirm(null);const value=await run("database.deleteProtectedFights",{ids:[...selected].map(Number)});setWorking(false);if(isPurgeResult(value)){setActionMessage(`${value.deletedEncounters.toLocaleString()} protected fights permanently deleted.`);load()}else setActionMessage("Protected fight deletion did not complete. Check Application Logs for details.")};
  const backup=async()=>{setBackupMessage("Creating a consistent online backup…");const result=await run("database.backup");if(isBackupResult(result))setBackupMessage(`Backup created: ${result.path}`);else setBackupMessage("Backup did not complete. Check Application Logs for details.")};
  if(state.kind==="loading")return <section className="db-loading" role="status"><div className="spinner"/><h2>Analyzing database</h2><p>Counting records and sampling storage without changing any data.</p></section>;
  if(state.kind==="error")return <section className="db-error"><h2>Database analysis failed</h2><p>{state.message}</p><button className="primary" onClick={load}>Try again</button></section>;
@@ -41,6 +52,16 @@ export function DatabaseManagementPage({run}:{run:Runner}){
 
   <StorageBreakdown rows={data.categories} databaseBytes={data.databaseBytes}/>
 
+  <section className="db-retention db-fight-retention">
+   <header><div><span className="eyebrow">Saved combat fights</span><h2>Purge encounters by age</h2><p>Deletes complete encounter records and all attached hit, proc, spell, and incoming-damage detail. Protected fights are always skipped, and an automatic backup is created first.</p></div><span className="pill success">Protected fights survive</span></header>
+   <div className="db-retention-controls"><label><span>Keep combat fights for</span><select value={fightKeepDays} onChange={event=>{setFightKeepDays(Number(event.target.value));setFightPreview(null)}}>{retentionChoices.map(days=><option key={days} value={days}>{days} days</option>)}</select></label><button onClick={previewFightPurge} disabled={working}>Preview purge</button>{fightPreview?.kind==="ready"&&fightPreview.value.eligibleEncounters>0&&<button className="danger" onClick={()=>setConfirm("purge")} disabled={working}>Purge eligible fights</button>}</div>
+   {fightPreview?.kind==="loading"&&<p className="db-preview-loading" role="status">Counting complete encounters and protected exceptions...</p>}
+   {fightPreview?.kind==="error"&&<p className="db-preview-error">{fightPreview.message}</p>}
+   {fightPreview?.kind==="ready"&&<FightPreview value={fightPreview.value}/>}
+   {actionMessage&&<p className="db-action-message" role="status">{actionMessage}</p>}
+   <ProtectedFightList rows={protectedFights} selected={selected} onSelected={setSelected} working={working} unprotect={toggleProtection} requestDelete={()=>setConfirm("delete")}/>
+  </section>
+
   <section className="db-retention">
    <header><div><span className="eyebrow">Preview only</span><h2>Combat detail retention</h2><p>Choose how much hit-by-hit detail you might keep. This calculates impact and does not delete or modify anything.</p></div><span className="pill warn">No deletion enabled</span></header>
    <div className="db-retention-controls"><label><span>Keep detailed hits for</span><select value={keepDays} onChange={event=>{setKeepDays(Number(event.target.value));setPreview(null)}}>{retentionChoices.map(days=><option key={days} value={days}>{days} days</option>)}</select></label><button className="primary" onClick={previewRetention}>Preview impact</button></div>
@@ -54,7 +75,23 @@ export function DatabaseManagementPage({run}:{run:Runner}){
    <article><h3>What old-detail cleanup would remove</h3><ul><li>Individual hit rows before the cutoff</li><li>Old encounter event timelines</li><li>Per-hit raw diagnostic text</li><li>Per-hit weapon references for that old detail</li></ul></article>
    <article><h3>Why the file will not shrink immediately</h3><p>Deletion creates reusable pages inside SQLite. A separate optimize-and-shrink operation is required to reduce the file on disk and needs temporary free space plus an automatic backup.</p></article>
   </section>
+  {confirm==="purge"&&fightPreview?.kind==="ready"&&<Modal title="Purge old combat fights?" onClose={()=>setConfirm(null)} footer={<><button onClick={()=>setConfirm(null)}>Cancel</button><button className="danger" onClick={()=>void executePurge()}>Back up and purge</button></>}><div className="db-confirm"><p>This will delete <strong>{fightPreview.value.eligibleEncounters.toLocaleString()}</strong> complete fights older than {fightPreview.value.cutoff.slice(0,10)} and their detailed records.</p><p><strong>{fightPreview.value.protectedEncounters.toLocaleString()} protected fights will survive.</strong> Purge tombstones prevent a later log rescan from recreating deleted fights.</p></div></Modal>}
+  {confirm==="delete"&&<Modal title="Delete protected fights?" onClose={()=>setConfirm(null)} footer={<><button onClick={()=>setConfirm(null)}>Cancel</button><button className="danger" onClick={()=>void deleteProtected()}>Delete selected</button></>}><div className="db-confirm"><p>This permanently deletes <strong>{selected.size.toLocaleString()}</strong> selected protected fights and their details.</p><p>The source ranges will remain remembered so a later rescan does not recreate them.</p></div></Modal>}
  </div>;
+}
+
+function FightPreview({value}:{value:FightPurgePreview}){return <div className="db-preview"><article><span>Eligible fights</span><strong>{value.eligibleEncounters.toLocaleString()}</strong><small>Complete, unprotected encounters</small></article><article><span>Protected survivors</span><strong>{value.protectedEncounters.toLocaleString()}</strong><small>Older fights excluded from purge</small></article><article><span>Attached hit rows</span><strong>{(value.outgoingRows+value.incomingRows).toLocaleString()}</strong><small>{value.outgoingRows.toLocaleString()} outgoing / {value.incomingRows.toLocaleString()} incoming</small></article><article><span>Cutoff</span><strong>{value.cutoff.slice(0,10)}</strong><small>Active fights are also excluded</small></article></div>}
+
+function ProtectedFightList({rows,selected,onSelected,working,unprotect,requestDelete}:{rows:ProtectedFight[];selected:Set<string|number>;onSelected:(value:Set<string|number>)=>void;working:boolean;unprotect:(row:ProtectedFight)=>void;requestDelete:()=>void}){
+ const columns=useMemo<Column<ProtectedFight>[]>(()=>[
+  {key:"time",label:"Fight",value:row=>row.startedAt,render:row=>when(row.startedAt)},
+  {key:"mob",label:"Mob",value:row=>row.mobName,render:row=><strong>{row.mobName}</strong>},
+  {key:"character",label:"Character",value:row=>row.character},
+  {key:"damage",label:"Damage",value:row=>row.totalDamage,render:row=>row.totalDamage.toLocaleString()},
+  {key:"events",label:"Events",value:row=>row.hitCount,render:row=>row.hitCount.toLocaleString()},
+  {key:"protected",label:"Protected",value:row=>row.protectedAt,render:row=>when(row.protectedAt)},
+ ],[]);
+ return <div className="db-protected"><header><div><h3>Protected fights</h3><p>Unpin a fight to make it eligible for a future age purge, or select protected fights for explicit permanent deletion.</p></div><button className="danger" disabled={!selected.size||working} onClick={requestDelete}>Delete selected ({selected.size})</button></header><DataTable rows={rows} columns={columns} rowKey={row=>row.id} selected={selected} onSelected={onSelected} empty="No combat fights are protected." actions={row=><IconButton icon="pin" className="active" label={`Remove purge protection from ${row.mobName}`} disabled={working} onClick={()=>unprotect(row)}/>} /></div>
 }
 
 function StorageBreakdown({rows,databaseBytes}:{rows:DatabaseStorageCategory[];databaseBytes:number}){
@@ -75,3 +112,4 @@ function PreviewResult({value}:{value:DatabaseCleanupPreview}){
 }
 
 function isBackupResult(value:unknown):value is {path:string}{return typeof value==="object"&&value!==null&&"path" in value&&typeof (value as {path?:unknown}).path==="string"}
+function isPurgeResult(value:unknown):value is FightPurgeResult{return typeof value==="object"&&value!==null&&"deletedEncounters" in value&&typeof (value as {deletedEncounters?:unknown}).deletedEncounters==="number"}

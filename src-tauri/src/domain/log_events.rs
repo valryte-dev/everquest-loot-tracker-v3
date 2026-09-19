@@ -174,6 +174,12 @@ pub enum LogEvent {
         channel: ChatChannel,
         message: String,
     },
+    GuildSlowCall {
+        happened_at: NaiveDateTime,
+        speaker_name: String,
+        mob_name: String,
+        message: String,
+    },
 }
 
 fn envelope() -> &'static Regex {
@@ -266,6 +272,42 @@ fn cleric_heal_call() -> &'static Regex {
         )
         .expect("valid cleric heal call regex")
     })
+}
+
+fn guild_slow_prefix() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)\bslow(?:ed)?(?:\s+landed)?(?:\s+is)?(?:\s+on)?\s*[:=-]?\s+(?<mob>[A-Za-z][A-Za-z0-9' -]{1,80})")
+            .expect("valid guild slow prefix regex")
+    })
+}
+
+fn guild_slow_suffix() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)(?<mob>[A-Za-z][A-Za-z0-9' -]{1,80}?)\s+(?:is\s+)?slowed\b")
+            .expect("valid guild slow suffix regex")
+    })
+}
+
+fn guild_slow_mob(message: &str) -> Option<String> {
+    let captures = guild_slow_prefix()
+        .captures(message)
+        .or_else(|| guild_slow_suffix().captures(message))?;
+    let mob = captures.name("mob")?.as_str().trim_matches(|value: char| {
+        value.is_whitespace()
+            || matches!(value, '.' | '!' | '?' | ',' | ':' | ';' | '-' | '\'' | '"')
+    });
+    let mob = [" now", " please", " inc", " incoming"]
+        .iter()
+        .find_map(|suffix| {
+            mob.to_ascii_lowercase()
+                .strip_suffix(suffix)
+                .map(|_| &mob[..mob.len() - suffix.len()])
+        })
+        .unwrap_or(mob)
+        .trim();
+    (!mob.is_empty()).then(|| mob.to_owned())
 }
 
 fn outgoing_party_chat() -> &'static Regex {
@@ -669,6 +711,14 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
                         message: clean_message,
                     });
                 }
+                if let Some(mob_name) = guild_slow_mob(&clean_message) {
+                    return Some(LogEvent::GuildSlowCall {
+                        happened_at,
+                        speaker_name: active_character.to_owned(),
+                        mob_name,
+                        message: clean_message,
+                    });
+                }
             }
             return Some(LogEvent::LinkedItems {
                 happened_at,
@@ -702,6 +752,14 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
                     call_number: call.name("number")?.as_str().parse().ok()?,
                     target_name: call.name("target").map(|value| value.as_str().to_owned()),
                     channel,
+                    message: clean_message,
+                });
+            }
+            if let Some(mob_name) = guild_slow_mob(&clean_message) {
+                return Some(LogEvent::GuildSlowCall {
+                    happened_at,
+                    speaker_name: speaker,
+                    mob_name,
                     message: clean_message,
                 });
             }
@@ -1097,6 +1155,25 @@ mod tests {
                 channel: ChatChannel::Guild,
                 ..
             }) if cleric_name == "Youngman"
+        ));
+    }
+
+    #[test]
+    fn parses_flexible_guild_slow_calls_but_ignores_other_channels() {
+        for (line, expected_speaker, expected_mob) in [
+            ("[Sat Sep 05 16:40:29 2026] Shaman tells the guild, 'slow a mortiferous golem'", "Shaman", "a mortiferous golem"),
+            ("[Sat Sep 05 16:40:30 2026] Shaman tells the guild, 'Slow landed on Tunare!'", "Shaman", "Tunare"),
+            ("[Sat Sep 05 16:40:31 2026] You say to your guild, 'Derek the Vindicator is slowed'", "Tester", "Derek the Vindicator"),
+        ] {
+            let event = parse_log_event(line, "Tester");
+            assert!(matches!(event, Some(LogEvent::GuildSlowCall { ref speaker_name, ref mob_name, .. }) if speaker_name == expected_speaker && mob_name == expected_mob));
+        }
+        assert!(!matches!(
+            parse_log_event(
+                "[Sat Sep 05 16:40:32 2026] Shaman tells the group, 'slow Tunare'",
+                "Tester"
+            ),
+            Some(LogEvent::GuildSlowCall { .. })
         ));
     }
 

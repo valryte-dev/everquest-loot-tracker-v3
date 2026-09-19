@@ -768,14 +768,8 @@ pub fn rescan_damage(
         let connection = database.connect().map_err(|error| error.to_string())?;
         connection
             .execute_batch(
-                "DELETE FROM combat_pet_evidence;
-                 DELETE FROM damage_spell_summaries;
-                 DELETE FROM proc_occurrences;
-                 DELETE FROM dot_applications;
-                 DELETE FROM cleric_heal_calls;
-                 DELETE FROM damage_received_events;
-                 DELETE FROM damage_events;
-                 DELETE FROM damage_encounters;
+                "DELETE FROM cleric_heal_calls;
+                 DELETE FROM damage_encounters WHERE is_protected=0;
                  DELETE FROM damage_scan_cursors;",
             )
             .map_err(|error| error.to_string())?;
@@ -1132,6 +1126,8 @@ fn scan_damage_file_internal(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    let suppressed_ranges =
+        load_suppressed_combat_ranges(&transaction, &source, line_offset as i64)?;
     let mut inserted = 0;
     let mut line_bytes = Vec::new();
     loop {
@@ -1145,7 +1141,11 @@ fn scan_damage_file_internal(
         let text = String::from_utf8_lossy(&line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
         let event = parse_log_event(line, &character);
-        if let Some(event) = event.clone() {
+        let suppressed = offset_in_ranges(&suppressed_ranges, line_offset as i64);
+        if let Some(event) = event
+            .clone()
+            .filter(|event| !suppressed || !is_combat_event(event))
+        {
             match event {
                 LogEvent::Damage {
                     happened_at,
@@ -1246,6 +1246,24 @@ fn scan_damage_file_internal(
                         &message,
                     )?;
                 }
+                LogEvent::GuildSlowCall {
+                    happened_at,
+                    speaker_name,
+                    mob_name,
+                    message,
+                } => {
+                    inserted += record_guild_slow_call(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        happened_at,
+                        &speaker_name,
+                        &mob_name,
+                        &message,
+                    )?;
+                }
                 LogEvent::MobSlain {
                     happened_at,
                     mob_name,
@@ -1289,15 +1307,17 @@ fn scan_damage_file_internal(
                 _ => {}
             }
         }
-        if let Some(tracker) = dot_tracker.as_deref_mut() {
-            inserted += tracker.process_line(
-                &transaction,
-                &source,
-                line_offset as i64,
-                line,
-                &character,
-                event.as_ref(),
-            )?;
+        if !suppressed {
+            if let Some(tracker) = dot_tracker.as_deref_mut() {
+                inserted += tracker.process_line(
+                    &transaction,
+                    &source,
+                    line_offset as i64,
+                    line,
+                    &character,
+                    event.as_ref(),
+                )?;
+            }
         }
         line_offset += bytes_read as u64;
     }
@@ -1346,6 +1366,37 @@ fn record_cleric_heal_call(
                 call_number as i64,
                 target_name,
                 channel,
+                message,
+                raw,
+                source,
+                source_offset
+            ],
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_guild_slow_call(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    happened_at: NaiveDateTime,
+    speaker_name: &str,
+    mob_name: &str,
+    message: &str,
+) -> Result<usize, String> {
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO guild_slow_calls(
+                happened_at,character_name,speaker_name,mob_name,message,raw_line,source_file,source_offset
+             ) VALUES(?,?,?,?,?,?,?,?)",
+            params![
+                happened_at.to_string(),
+                character,
+                speaker_name,
+                mob_name,
                 message,
                 raw,
                 source,
@@ -1961,6 +2012,9 @@ fn process_log_internal(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    let source_file = path.display().to_string();
+    let purged_ranges =
+        load_suppressed_combat_ranges(&transaction, &source_file, line_offset as i64)?;
     for line_bytes in bytes.split_inclusive(|byte| *byte == b'\n') {
         if !line_bytes.ends_with(b"\n") {
             break;
@@ -1968,7 +2022,11 @@ fn process_log_internal(
         let text = String::from_utf8_lossy(line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
         let event = parse_log_event(line, &character);
-        if let Some(event) = event.as_ref() {
+        let purged = offset_in_ranges(&purged_ranges, line_offset as i64);
+        if let Some(event) = event
+            .as_ref()
+            .filter(|event| !purged || !is_combat_event(event))
+        {
             apply_event(
                 &transaction,
                 path,
@@ -1985,15 +2043,17 @@ fn process_log_internal(
                 &format!("Unrecognized loot line in {}: {line}", path.display()),
             );
         }
-        if let Some(tracker) = dot_tracker.as_deref_mut() {
-            tracker.process_line(
-                &transaction,
-                &path.display().to_string(),
-                line_offset as i64,
-                line,
-                &character,
-                event.as_ref(),
-            )?;
+        if !purged {
+            if let Some(tracker) = dot_tracker.as_deref_mut() {
+                tracker.process_line(
+                    &transaction,
+                    &path.display().to_string(),
+                    line_offset as i64,
+                    line,
+                    &character,
+                    event.as_ref(),
+                )?;
+            }
         }
         line_offset += line_bytes.len() as u64;
     }
@@ -2019,6 +2079,54 @@ fn process_log_internal(
     transaction.commit().map_err(|error| error.to_string())?;
     *offset = line_offset;
     Ok(before != log_data_signature(database)?)
+}
+
+fn offset_in_ranges(ranges: &[(i64, i64)], offset: i64) -> bool {
+    let index = ranges.partition_point(|(_, last)| *last < offset);
+    ranges
+        .get(index)
+        .is_some_and(|(first, last)| *first <= offset && offset <= *last)
+}
+
+fn load_suppressed_combat_ranges(
+    connection: &rusqlite::Connection,
+    source_file: &str,
+    from_offset: i64,
+) -> Result<Vec<(i64, i64)>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT first_source_offset,last_source_offset FROM purged_damage_encounter_ranges
+             WHERE source_file=? AND last_source_offset>=?
+             UNION ALL
+             SELECT first_source_offset,last_source_offset FROM damage_encounters
+             WHERE source_file=? AND is_protected=1 AND last_source_offset>=?
+             ORDER BY first_source_offset",
+        )
+        .map_err(|error| error.to_string())?;
+    let ranges = statement
+        .query_map(
+            params![source_file, from_offset, source_file, from_offset],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(ranges)
+}
+
+fn is_combat_event(event: &LogEvent) -> bool {
+    matches!(
+        event,
+        LogEvent::Damage { .. }
+            | LogEvent::ObservedMelee { .. }
+            | LogEvent::IncomingDamage { .. }
+            | LogEvent::ItemGlow { .. }
+            | LogEvent::SpellCastStarted { .. }
+            | LogEvent::SpellInterrupted { .. }
+            | LogEvent::SpellResisted { .. }
+            | LogEvent::CombatAttempt { .. }
+            | LogEvent::PetAttack { .. }
+    )
 }
 fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u64, String> {
     let source_file = path.display().to_string();
@@ -2071,7 +2179,8 @@ fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
             COALESCE((SELECT MAX(id) FROM application_logs),0),
             COALESCE((SELECT MAX(id) FROM damage_events),0),
             COALESCE((SELECT MAX(id) FROM damage_received_events),0),
-            COALESCE((SELECT MAX(id) FROM cleric_heal_calls),0),
+            COALESCE((SELECT MAX(id) FROM cleric_heal_calls),0) +
+                COALESCE((SELECT MAX(id) FROM guild_slow_calls),0),
             COALESCE((SELECT SUM(last_source_offset) FROM damage_encounters),0),
             COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),''),
             COALESCE((SELECT SUM(id+ticks_applied+CASE WHEN status='active' THEN 1 ELSE 0 END) FROM dot_applications),0)",
@@ -2341,6 +2450,24 @@ fn apply_event(
                 )
                 .map_err(|error| error.to_string())?;
             }
+        }
+        LogEvent::GuildSlowCall {
+            happened_at,
+            speaker_name,
+            mob_name,
+            message,
+        } => {
+            record_guild_slow_call(
+                c,
+                &path.display().to_string(),
+                source_offset,
+                raw,
+                &character,
+                *happened_at,
+                speaker_name,
+                mob_name,
+                message,
+            )?;
         }
         LogEvent::PlayerDeath { happened_at, .. } => {
             c.execute(
@@ -2839,6 +2966,7 @@ mod tests {
         record_damage_event, record_incoming_damage_event, record_observed_melee_event,
         resolve_linked_items, scan_damage_file, scan_death_report_file, scan_history_directory,
     };
+    use crate::application::database_management::{delete_protected_fights, set_fight_protection};
     use crate::infrastructure::database::Database;
     use chrono::NaiveDateTime;
     use std::{collections::HashMap, fs, io::Write};
@@ -2862,6 +2990,55 @@ mod tests {
         assert!(!is_log(std::path::Path::new(
             "eqlog_Youngman_P1999Green.txt.bak"
         )));
+    }
+
+    #[test]
+    fn protected_and_purged_fights_are_not_duplicated_or_recreated_by_rescan() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Tester_P1999Green.txt");
+        fs::write(&log, b"[Sat Sep 05 10:00:00 2026] You crush a frost giant for 50 points of damage.\r\n[Sat Sep 05 10:00:01 2026] You have slain a frost giant!\r\n").unwrap();
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 1);
+        let id = database
+            .connect()
+            .unwrap()
+            .query_row("SELECT id FROM damage_encounters", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        set_fight_protection(&database, id, true).unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute("DELETE FROM damage_scan_cursors", [])
+            .unwrap();
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 0);
+        assert_eq!(
+            database
+                .connect()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        delete_protected_fights(&database, &[id]).unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute("DELETE FROM damage_scan_cursors", [])
+            .unwrap();
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 0);
+        assert_eq!(
+            database
+                .connect()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -3781,6 +3958,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(call, ("Bakamore".into(), 1, Some("Forsure".into())));
+    }
+
+    #[test]
+    fn guild_slow_call_is_persisted_and_requests_an_immediate_ui_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 16:40:29 2026] Shaman tells the guild, 'slow a frost giant'\r\n",
+        )
+        .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+        let changed = process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+        assert!(
+            changed,
+            "a guild slow call must immediately refresh CH state"
+        );
+        let connection = database.connect().unwrap();
+        let evidence: (String, String, String) = connection
+            .query_row(
+                "SELECT character_name,speaker_name,mob_name FROM guild_slow_calls",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            evidence,
+            ("Youngman".into(), "Shaman".into(), "a frost giant".into())
+        );
     }
 
     #[test]

@@ -1,0 +1,918 @@
+category	class_name	quest_name	reward_name	reward_icon_id	component_name	component_icon_id	quantity	slot	faction	note	source_url
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Alluring Horn	594	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Amygdalan Tendril	596	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Chromodrac Gut	853	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Forpar's Note to Himself	860	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Kedge Backbone	907	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Maestro's Symphony Page 24 Bottom	860	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Maestro's Symphony Page 24 Top	870	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Maestro's Symphony Page 25	870	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Mahlin's Mystical Bongos	1152	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Maligar's Head	982	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Mechanical Doll	720	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Mystical Lute	551	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Mystical Lute Body	686	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Mystical Lute Head	686	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Note for Baenar	862	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Note to Forpar Fizfla	868	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Note to Maligar	862	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Onyx Drake Gut	853	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Petrified Werewolf Skull	744	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Proof of Speed	765	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Red Dragon Scales	1232	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Red Wurm Gut	853	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Ripped Qeynos Bards Guild Flyer	864	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Solusek Mining Company Invoice	860	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Torch of Misty	559	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Torch of Rathe	559	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Torch of Ro	559	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	Undead Dragongut Strings	853	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Bard	Bard Epic Quest	Singing Short Sword	882	White Dragon Scales	1088	1				https://wiki.project1999.com/Bard_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Blood Soaked Plasmatic Priest Robe	931	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Coral Statue of Tarew	895	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Damaged Goblin Crown	523	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Heart of Zordak Ragefire	1003	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Lord Bergurgle's Crown	523	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Lord Gimblox's Signet Ring	1148	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Message to Natasha	864	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Oil of Fennin Ro	697	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Orb of Clear Water	507	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Orb of Frozen Water	507	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Ornate Sea Shell	1223	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Sceptre of Ixiblat Fer	822	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Cleric	Cleric Epic Quest	Water Sprinkler of Nem Ankh	741	Shimmering Pearl	953	1				https://wiki.project1999.com/Cleric_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Ancient Pattern	504	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Ancient Rock	734	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Bag of Provisions	557	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Braided Grass Amulet	1053	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Chilled Tundra Root	583	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Chunk of Tundra	1095	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Clean Lakewater	584	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Cleansed Spirit of Antonica	507	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Cleansed Spirit of Faydwer	507	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Cleansed Spirit of Kunark	507	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Crushed Pot	1031	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Dark Metal Coin	647	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Earth Stained Note	504	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Elaborate Scimitar	1169	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Enchanted Clay	1135	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Faelin's Ring	1060	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Fleshbound Tome	865	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Froglok Essence	507	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Gleaming Unicorn Horn	593	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Green Heartwood Branch	601	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Green Tree Bark	1233	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Grocery List	504	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Hardened Mixture	949	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Jade Reaver	1164	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Kedge Cave Crystals	959	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Ocean of Tears Seavines	1200	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Platinum Speckled Powder	739	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Pod of Seawater	584	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Pulsing Green Stone	957	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Pure Lakewater	584	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Receipt	867	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Ripened Heartfruit	1037	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Rose of Firiona	721	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Runecrested Bowl	858	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Shiny Tin Bowl	858	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Silver Chained Locket	1147	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Speckled Molded Mushroom	1206	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Summoned: Firefly Globe	507	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Sweetened Mudroot	583	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Warm Pulsing Treant Heart	1003	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Warmly Glowing Stone	960	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Wood Painting	652	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Worn Dark Metal Coin	647	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Druid	Druid Epic Quest	Nature Walkers Scimitar	1169	Worn Note	864	1				https://wiki.project1999.com/Druid_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	1st Piece of Staff	686	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	2nd Piece of Staff	686	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	3rd Piece of Staff	686	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	4th Piece of Staff	686	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Bundle of Staves	978	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Chalice of Kings	1248	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Charm and Sacrifice	778	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Copy of Notes	504	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Dull Diamond	966	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Dull Emerald	958	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Dull Ruby	964	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Dull Sapphire	963	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Empty Ink Vial	585	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Enchanted Diamond	966	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Enchanted Emerald	958	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Enchanted Ruby	964	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Enchanted Sapphire	963	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Enchanters Sack	689	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Essence of a Ghost	528	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Essence of a Vampire	1075	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Gift to Bozlum	836	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Head of a Prince	1231	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Head of the Serpent	698	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Ink of the Dark	697	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Innoruuk's Word	789	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Jeb's Seal	644	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Large Muddy Sandals	666	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Lost Scroll	861	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Mechanical Pen	810	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Piece of Parchment	870	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Quill	755	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Sands of the Mystics	1076	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Scribbled Parchment	864	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Shining Metallic Robes	929	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Snow Blossoms	721	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Spoon	618	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	The One Key	1077	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	White Paper	504	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Enchanter	Enchanter Epic Quest	Staff of the Serpent	2865	Xolion Rod	811	1				https://wiki.project1999.com/Enchanter_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Blazing Wand	809	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Broom of Trilon	889	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Burning Embers	1084	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Crown of Elemental Mastery	511	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Dirt of Underfoot	767	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Element of Earth	767	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Element of Fire	964	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Element of Water	963	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Element of Wind	966	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Elemental Binder	511	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Pegasus Feather Cloak	659	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of Earth	767	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of Fire	964	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of Water	963	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of Wind	966	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of the Elements	863	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Power of the Orb	682	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Rain of Karana	963	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Shovel of Ponz	891	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Staff of Elemental Mastery: Earth	811	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Staff of Elemental Mastery: Water	811	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Tears of Erollisi	963	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Token of Mastery		1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torch of the Elements	559	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Magi'kot pg. 1	504	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Magi'kot pg. 2	504	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Magi'kot pg. 3	504	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Mastery Earth	864	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Mastery Fire	864	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Mastery Water	864	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Torn Page of Mastery Wind	864	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Words of Magi'kot	504	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Magician	Magician Epic Quest	Orb of Mastery	810	Words of Mastery	865	1				https://wiki.project1999.com/Magician_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	A Metal Pipe	601	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Book of Celestial Fists	865	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Breath of Gwan	1155	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Charred Scale	1234	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Code of Zan Fi	789	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Danl's Reference	1004	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Demon Fangs	801	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Eye of Kaiaren	917	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Immortals	865	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Needle of the Void	810	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Purple Headband	936	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Rare Robe Pattern	790	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Red Sash of Order	935	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Robe of the Lost Circle	931	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Robe of the Whistling Fists	931	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Shadow Silk	823	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Shadow Wolf Pelt	556	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Silk Swatch	823	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	The Idol	893	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Monk	Monk Epic Quest	Celestial Fists	971	Trunt's Head	920	1				https://wiki.project1999.com/Monk_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Black Silk Cape	842	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Cloak of Spiroc Feathers	658	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Eye of Innoruuk	1130	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Flowing Black Robe	1126	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Gkzzallk in a Box	836	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Manisi Herb	1196	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Rolling Stone Moss	978	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Scaled Symbol of the Serpent	648	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Silver Disc	646	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Slime Blood of Cazic Thule	526	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Necromancer	Necromancer Epic Quest	Scythe of the Shadowed Soul	2869	Spiroc Feathers	1146	1				https://wiki.project1999.com/Necromancer_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Bucket of Pure Water	1016	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Bucket of Water	1016	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Cold Plate of Beef and Bread	783	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Fiery Avenger	519	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Ghoulbane	519	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Gleaming Crested Breastplate	624	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Gleaming Crested Shield	758	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Gleaming Crested Sword	577	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Mark of Atonement	645	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Pure Crystal	507	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	SoulFire	519	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Tainted Darksteel Breastplate	624	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Tainted Darksteel Shield	758	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Paladin	Paladin Epic Quest	Fiery Defender	2864	Tainted Darksteel Sword	577	1				https://wiki.project1999.com/Paladin_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Ancient Longsword	590	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Ancient Pattern	504	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Bag of Provisions	557	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Braided Grass Amulet	1053	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Chilled Tundra Root	583	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Crushed Pot	1031	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Dark Metal Coin	647	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Dwarven Smiths Hammer	567	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Earth Stained Note	504	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Earthcaller	2875	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Enchanted Clay	1135	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Faelin's Ring	1060	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Fleshbound Tome	865	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Grocery List	504	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Hammer of the Ancients	567	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Hardened Mixture	949	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Jade Reaver	1164	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Platinum Speckled Powder	739	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Pulsing Green Stone	957	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Receipt	867	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Refined Ancient Sword	590	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Refined Mithril Blade	590	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Ripened Heartfruit	1037	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Rose of Firiona	721	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Runecrested Bowl	858	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Shattered Emerald of Corruption	958	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Shiny Tin Bowl	858	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Silver Chained Locket	1147	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Small bit of Mithril Ore	1092	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Softly Glowing Stone	960	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Soulbound Hammer	567	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Speckled Molded Mushroom	1206	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Summoned: Firefly Globe	507	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Sweetened Mudroot	583	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Swiftwind	2875	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Swirling Sphere of Color	507	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Warmly Glowing Stone	960	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Wood Painting	652	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Worn Dark Metal Coin	647	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Ranger	Ranger Epic Quest	Swiftwind + Earthcaller	2875	Worn Note	864	1				https://wiki.project1999.com/Ranger_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Book of Souls	789	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Bottle of Milk	856	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Burning Rapier	762	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Cazic Quill	574	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Combined Parchment	868	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Eyerazzia	762	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Fleshripper	568	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	General's Pouch	722	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Gigantic Zweihander	519	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Jagged Diamond Dagger	574	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Martune Rapier	762	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Painbringer	1165	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Ravenscale Mask	528	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Ravenscale Shoulderpads	798	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Robe of the Ishva	940	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Robe of the Kedge	940	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Robe of the Oracle	838	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Scribbled Parchment	864	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Sealed Box	836	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Shining Metallic Robes	929	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Stained Parchment Bottom	864	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Stained Parchment Top	864	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Stanos' Pouch	722	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Tattered Parchment	868	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Translated Parchment	682	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Rogue	Rogue Epic Quest	Ragebringer	1183	Trochilic's Skean	2456	1				https://wiki.project1999.com/Rogue_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Blade of Abrogation	603	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Blood of Kyrenna	1157	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Cell Key	1081	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Corrupted Ghoulbane	519	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Cough Elixir	584	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Dark Shroud	656	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Darkforge Breastplate	538	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Darkforge Greaves	845	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Darkforge Helm	523	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Decrepit Hide	555	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Decrepit Sheath	726	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Drake Spine	804	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Dusty Tome	778	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Enchanted Platinum Bar	1092	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Ghoulbane	519	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Glohnor wrappings	812	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Head of Glohnor	982	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Head of the Valiant	1042	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Heart of Kyrenna	1003	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Heart of the Innocent	958	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Letter to Duriek	504	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Note to Marl	866	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Platinum Bar	1092	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Seal of Kastane	1002	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Soul Leech, Dark Sword of Blood	519	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Soulcase	958	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shadow Knight	Shadow Knight Epic Quest	Innoruuk's Curse	2873	Will of Innoruuk	621	1				https://wiki.project1999.com/Shadow_Knight_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Black Dire Pelt	556	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Black Fur Boots	525	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Child's Tear	1160	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Envy	1183	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Icon of the High Scale	895	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Iksar Scale	1234	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Marr's Promise	805	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Opaque Gem	959	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Shield of Falsehood	676	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Tiny Gem	961	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Shaman	Shaman Epic Quest	Spear of Fate	1187	Woe	580	1				https://wiki.project1999.com/Shaman_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Ancient Sword Blade	890	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Ball of Everliving Golem	971	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Black Sapphire	965	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Blade of Strategy	590	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Blade of Tactics	590	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Block of Permafrost	1138	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Diamond	966	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Finely Crafted Dragon Head Hilt	1231	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Giant Sized Monocle	507	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Green Dragon Scales	1233	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Hand of the Maestro	918	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Heart of Frost	1003	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Jacinth	767	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Jagged Blade of War	1191	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Jeweled Dragon Head Hilt	1231	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Keg of Vox Tail Ale	979	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Mark of the Sword	1007	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Rebreather	1023	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Red Dragon Scales	1232	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Red Scabbard	726	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Redblade's Legacy	778	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Rejesiam Ore	1138	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Severely Damaged Dragon Head Hilt	1231	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Spiroc Wingblade	588	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Summoned: Sword of Runes	590	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Tenal's note to Kargek	861	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Tiny Lute	551	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Totem of Fiery War	894	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Totem of the Freezing War	895	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Unjeweled Dragon Head Hilt	1231	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Warrior	Warrior Epic Quest	Jagged Blade of War + Blade of Strategy + Blade of Tactics	1191	Wax Sealed Note	866	1				https://wiki.project1999.com/Warrior_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Arantir's Ring	1064	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Blue Crystal Staff	602	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Cazic's Skin	555	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Gnarled Staff	811	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Golem Sprocket	731	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Green Oil	697	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Mistletoe Powder	1075	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Note from Arantir	504	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Note to Arantir	504	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Ornate Velium Pendant	1043	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Ro's Breath	701	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Staff of Gabstik	887	1				https://wiki.project1999.com/Wizard_Epic_Quest
+epic	Wizard	Wizard Epic Quest	Staff of the Four	2870	Tiny Gem	961	1				https://wiki.project1999.com/Wizard_Epic_Quest
+plane_of_sky	Bard	Bard Test of Brass	Denon's Horn of Disaster	594	Adamantium Bands	873	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Brass	Denon's Horn of Disaster	594	Efreeti War Horn	594	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Brass	Denon's Horn of Disaster	594	Glowing Diamond	966	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Brass	Denon's Horn of Disaster	594	Saffron Spiroc Feather	1146	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Harmony	Harmonic Spear	776	Efreeti War Spear	740	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Harmony	Harmonic Spear	776	Manna Nectar	1006	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Harmony	Harmonic Spear	776	Nebulous Diamond	966	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Harmony	Harmonic Spear	776	Nebulous Emerald	958	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Pitch	Ervaj's Flute of Flight	751	Crude Wooden Flute	751	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Pitch	Ervaj's Flute of Flight	751	Phosphoric Globe	947	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Pitch	Ervaj's Flute of Flight	751	Shimmering Diamond	966	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Tone	Mask of Song	771	Light Woolen Mask	677	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Tone	Mask of Song	771	Ochre Tessera	734	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Tone	Mask of Song	771	Songbird Statuette	895	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Voice	Mantle of the Songweaver	668	Light Woolen Mantle	665	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Voice	Mantle of the Songweaver	668	Music Box	836	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Voice	Mantle of the Songweaver	668	Platinum Disc	644	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Wind	Amulet of the Fae	1043	Amulet of Woven Hair	754	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Wind	Amulet of the Fae	1043	Dull Stone	1095	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Bard	Bard Test of Wind	Amulet of the Fae	1043	Imp Statuette	894	1				https://wiki.project1999.com/Bard_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Courage	Truewind Earring	1042	Ochre Tessera	734	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Courage	Truewind Earring	1042	Silver Hoop	544	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Courage	Truewind Earring	1042	Sky Emerald	958	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Protection	Pauldrons of Piety	798	Adumbrate Globe	947	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Protection	Pauldrons of Piety	798	Faintly Glowing Diamond	966	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Protection	Pauldrons of Piety	798	Shiny Pauldrons	798	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Resolution	Necklace of Resolution	1043	Silvered Spiroc Necklace	1043	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Resolution	Necklace of Resolution	1043	Spiroc Healing Totem	894	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Resolution	Necklace of Resolution	1043	Spiroc Statuette	895	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Skill	Aegis of the Wind	758	Dark Wood	1084	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Skill	Aegis of the Wind	758	Gold Disc	645	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Skill	Aegis of the Wind	758	Small Shield	542	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of The Weak	Truwian Baton	822	Efreeti Standard	578	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of The Weak	Truwian Baton	822	Manna Nectar	1006	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of The Weak	Truwian Baton	822	Mithril Bands	675	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of The Weak	Truwian Baton	822	Shimmering Topaz	954	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Theurgy	Theurgist's Star	578	Djinni Aura	823	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Theurgy	Theurgist's Star	578	Efreeti Mace	578	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Theurgy	Theurgist's Star	578	Glowing Sapphire	963	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Cleric	Cleric Test of Theurgy	Theurgist's Star	578	Saffron Spiroc Feather	1146	1				https://wiki.project1999.com/Cleric_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Bear	Nature Walker's Mantle	668	Copper Disc	647	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Bear	Nature Walker's Mantle	668	Mantle of Woven Grass	665	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Bear	Nature Walker's Mantle	668	Nature Walker's Sky Emerald	958	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Eagle	Spiroc Banisher Focus	895	Acidic Venom	1006	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Eagle	Spiroc Banisher Focus	895	Ethereal Ruby	964	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Eagle	Spiroc Banisher Focus	895	Spiroc Elder's Totem	894	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Eagle	Spiroc Banisher Focus	895	White-tipped Spiroc Feather	1146	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Nature	Espri	1169	Efreeti Scimitar	604	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Nature	Espri	1169	Fire Sky Ruby	961	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Nature	Espri	1169	Lush Nectar	1006	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Nature	Espri	1169	Storm Sky Opal	960	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of The Bee	Honeycomb Belt	505	Divine Honeycomb	1069	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of The Bee	Honeycomb Belt	505	Efreeti Statuette	895	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of The Bee	Honeycomb Belt	505	Wilder's Girdle	560	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Tree	Shillelagh	1083	Diaphanous Globe	947	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Tree	Shillelagh	1083	Hardened Clay	1138	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Tree	Shillelagh	1083	Spiroc Battle Staff	1083	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Wolf	Drake-Hide Mask	771	Azure Tessera	734	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Wolf	Drake-Hide Mask	771	Black Face Paint	1006	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Druid	Druid Test of Wolf	Drake-Hide Mask	771	Worn Leather Mask	771	1				https://wiki.project1999.com/Druid_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Deception	Ivory Mask	770	Rugous Globe	947	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Deception	Ivory Mask	770	Silken Mask	677	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Deception	Ivory Mask	770	Sky Pearl	953	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Disillusion	Earring of Displacement	544	Adamantium Earring	534	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Disillusion	Earring of Displacement	544	Black Nebulous Sapphire	963	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Disillusion	Earring of Displacement	544	Harpy Statuette	893	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Illusion	Sphinx Hair Cord	572	Crimson Tessera	734	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Illusion	Sphinx Hair Cord	572	Darkstone Emerald	958	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Illusion	Sphinx Hair Cord	572	Finely Woven Cloth Cord	572	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Incapacitation	Rod of the Protecting Winds	811	Black Sky Diamond	965	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Incapacitation	Rod of the Protecting Winds	811	Efreeti Wind Staff	602	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Incapacitation	Rod of the Protecting Winds	811	Large Sky Sapphire	963	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Incapacitation	Rod of the Protecting Winds	811	Sweet Nectar	1006	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Memorization	Necklace of Whispering Winds	1043	Carmine Spiroc Feather	1146	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Memorization	Necklace of Whispering Winds	1043	Ganoric Poison	1006	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Memorization	Necklace of Whispering Winds	1043	Glowing Necklace	500	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Metamorphism	Wind Walker's Mantle	665	Bluish Stone	953	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Metamorphism	Wind Walker's Mantle	665	Light Cloth Mantle	665	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Enchanter	Enchanter Test of Metamorphism	Wind Walker's Mantle	665	Silver Disc	646	1				https://wiki.project1999.com/Enchanter_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Clarification	Bracelet of Clarification	1040	Crimson Tessera	734	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Clarification	Bracelet of Clarification	1040	Ethereal Sapphire	963	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Clarification	Bracelet of Clarification	1040	Feathered Cape	659	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Displacement	Staff of Elemental Mastery: Air	811	Crown of Elemental Mastery	511	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Displacement	Staff of Elemental Mastery: Air	811	Djinni Stave	601	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Displacement	Staff of Elemental Mastery: Air	811	Large Opal	959	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Displacement	Staff of Elemental Mastery: Air	811	Sweet Nectar	1006	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Empowerment	Mask of Empowerment	771	Ceramic Mask	528	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Empowerment	Mask of Empowerment	771	Gem of Empowerment	1136	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Empowerment	Mask of Empowerment	771	Iron Disc	646	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Gesticulation	Staff of The Magister	811	Efreeti Magi Staff	811	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Gesticulation	Staff of The Magister	811	Hazy Opal	894	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Gesticulation	Staff of The Magister	811	Sphinx Crown	523	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Gesticulation	Staff of The Magister	811	Sweet Nectar	1006	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Interpretation	Duennan Shielding Ring	1052	Blood Sky Amethyst	947	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Interpretation	Duennan Shielding Ring	1052	Carmine Spiroc Feather	1146	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Interpretation	Duennan Shielding Ring	1052	Golden Efreeti Ring	1040	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Shielding	Gold White Pendant	1058	Golden Coffer	609	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Shielding	Gold White Pendant	1058	Hyaline Globe	947	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Shielding	Gold White Pendant	1058	Ivory Pendant	1058	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Summoning	Drake-Hide Amice	668	Finely Woven Cloth Amice	665	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Summoning	Drake-Hide Amice	668	Harpy Statuette	893	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Magician	Magician Test of Summoning	Drake-Hide Amice	668	Large Diamond	966	1				https://wiki.project1999.com/Magician_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Fists	Wu's Fist of Mastery	971	Brass Knuckles	505	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Fists	Wu's Fist of Mastery	971	Ethereal Amethyst	960	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Fists	Wu's Fist of Mastery	971	Nebulous Sapphire	963	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Fists	Wu's Fist of Mastery	971	White Spiroc Feather	1146	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Sight	Ton Po's Eye Patch	595	Cracked Leather Eyepatch	595	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Sight	Ton Po's Eye Patch	595	Gold Disc	645	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Sight	Ton Po's Eye Patch	595	Tiny Ruby	964	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Speed	Sandals of Alacrity	558	Adumbrate Globe	947	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Speed	Sandals of Alacrity	558	Dove Slippers	761	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Speed	Sandals of Alacrity	558	Shimmering Opal	959	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Strength	Back Straps of Mastery	665	Finely Woven Gold Mesh	1062	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Strength	Back Straps of Mastery	665	Silken Strands	853	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Strength	Back Straps of Mastery	665	Verdant Tessera	734	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tears	Ton Po's Shoulder Wraps	665	Silken Wrap	853	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tears	Ton Po's Shoulder Wraps	665	Spiroc Statuette	895	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tears	Ton Po's Shoulder Wraps	665	Spiroc Talon	1067	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tranquility	Golden Sash of Tranquility	933	Aged Nectar	1006	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tranquility	Golden Sash of Tranquility	933	Tear of Quellious	966	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Monk	Monk Test of Tranquility	Golden Sash of Tranquility	933	Writ of Quellious	865	1				https://wiki.project1999.com/Monk_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Finger	Band of Wailing Winds	1148	Nebulous Ruby	962	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Finger	Band of Wailing Winds	1148	Ring of Veeshan	765	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Finger	Band of Wailing Winds	1148	White Spiroc Feather	1146	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Flight	Bloody Griffon-Hide Wrist Guard	560	Ebon Shard	967	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Flight	Bloody Griffon-Hide Wrist Guard	560	Griffon's Beak	1098	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Flight	Bloody Griffon-Hide Wrist Guard	560	Verdant Tessera	734	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Hands	Gorgon Head Staff	887	Aged Nectar	1006	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Hands	Gorgon Head Staff	887	Efreeti Great Staff	602	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Hands	Gorgon Head Staff	887	Glowing Black Pearl	767	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Hands	Gorgon Head Staff	887	Gorgon Head	985	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Heart	Sphinx Heart Amulet	1043	Imp Statuette	894	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Heart	Sphinx Heart Amulet	1043	Obsidian Amulet	752	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Heart	Sphinx Heart Amulet	1043	Pulsating Ruby	964	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Mind	Bloodsoaked Raiment	665	Djinni Blood	1006	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Mind	Bloodsoaked Raiment	665	Fine Cloth Raiment	842	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Mind	Bloodsoaked Raiment	665	Rugous Globe	947	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Power	Cloak of Spiroc Feathers	658	Black Silk Cape	842	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Power	Cloak of Spiroc Feathers	658	Silver Disc	646	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Necromancer	Necromancer Test of Power	Cloak of Spiroc Feathers	658	Spiroc Feathers	1146	1				https://wiki.project1999.com/Necromancer_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Compassion	Truvinan	519	Dulcet Nectar	1006	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Compassion	Truvinan	519	Efreeti Zweihander	519	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Compassion	Truvinan	519	Golden Hilt	973	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Compassion	Truvinan	519	Large Sky Diamond	966	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Love	Thelvorn, Blade of Light	575	Dark Spiroc Feather	1146	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Love	Thelvorn, Blade of Light	575	Ethereal Topaz	954	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Love	Thelvorn, Blade of Light	575	Sphinx Claw	801	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Sacrifice	Aldryn, Blade of the Ocean	890	Bixie Sword Blade	591	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Sacrifice	Aldryn, Blade of the Ocean	890	Griffon Statuette	894	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Sacrifice	Aldryn, Blade of the Ocean	890	Spiroc Peace Totem	894	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Spirit	Girdle of Faith	560	Diaphanous Globe	947	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Spirit	Girdle of Faith	560	Ivory Sky Diamond	966	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Paladin	Paladin Test of Spirit	Girdle of Faith	560	Silvery Girdle	563	1				https://wiki.project1999.com/Paladin_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Blade	Arydryidriyorn	575	Bitter Honey	1006	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Blade	Arydryidriyorn	575	Circlet of Brambles	505	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Blade	Arydryidriyorn	575	Efreeti Long Sword	590	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Blade	Arydryidriyorn	575	Emerald Spiroc Feather	1146	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Body	Griffon Talon Necklace	1043	Auburn Tessera	734	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Body	Griffon Talon Necklace	1043	Griffon Talon	1067	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Body	Griffon Talon Necklace	1043	Ysgaril Root	583	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Defense	Dark Cloak of the Sky	659	Fine Velvet Cloak	841	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Defense	Dark Cloak of the Sky	659	Harpy Tongue	1087	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Defense	Dark Cloak of the Sky	659	Mithril Disc	644	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Ranged Attack	Windstriker	1104	Efreeti War Bow	597	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Ranged Attack	Windstriker	1104	Shimmering Pearl	953	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Ranged Attack	Windstriker	1104	Sphinx Tallow	1017	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Ranged Attack	Windstriker	1104	Thickened Nectar	1006	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of The Earth	Earthshaker's Mantle	668	Gridelin Globe	947	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Thunder	Thunderforged Earring	619	Djinni Statuette	894	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Thunder	Thunderforged Earring	619	Spiroc Thunder Totem	894	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Ranger	Ranger Test of Thunder	Thunderforged Earring	619	White Gold Earring	535	1				https://wiki.project1999.com/Ranger_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Cunning	Crystal Mask	771	Bronze Disc	647	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Cunning	Crystal Mask	771	Jester's Mask	770	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Cunning	Crystal Mask	771	Red Face Paint	1018	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Deception	Thornstinger	574	Bixie Stinger	1123	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Deception	Thornstinger	574	Bloodsky Sapphire	963	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Deception	Thornstinger	574	Honeyed Nectar	1006	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Deception	Thornstinger	574	Lightning Rod	1137	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Silence	Griffon Wing Spauldors	668	Black Griffon Feather	1146	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Silence	Griffon Wing Spauldors	668	Pearlescent Globe	947	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Silence	Griffon Wing Spauldors	668	Spiroc Sky Totem	894	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Stealth	Scintillating Bracer of Protection	1055	Fine Wool Cloak	662	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Stealth	Scintillating Bracer of Protection	1055	Pegasus Statuette	893	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Stealth	Scintillating Bracer of Protection	1055	Prismatic Sphere	953	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Thievery	Wispy Choker of Vigor	501	Gem of Invigoration	961	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Thievery	Wispy Choker of Vigor	501	Inlaid Choker	643	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Thievery	Wispy Choker of Vigor	501	Ivory Tessera	734	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Trickery	Renard's Belt of Quickness	572	Cracked Leather Belt	564	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Trickery	Renard's Belt of Quickness	572	Mottled Spiroc Feather	1146	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Rogue	Rogue Test of Trickery	Renard's Belt of Quickness	572	Sphinxian Circlet	1054	1				https://wiki.project1999.com/Rogue_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Bash	Amulet of the Sphinx Eye	753	Ebon Tessera	734	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Bash	Amulet of the Sphinx Eye	753	Finely Crafted Amulet	753	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Bash	Amulet of the Sphinx Eye	753	Sphinx Eye Opal	959	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Disempowerment	Blood Sky Face Plate	770	Blood Sky Emerald	962	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Disempowerment	Blood Sky Face Plate	770	Griffon Statuette	894	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Disempowerment	Blood Sky Face Plate	770	Rusted Pauldrons	798	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Envenoming	Obtenebrate Mithril Guard	970	Dark Spiroc Feather	1146	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Envenoming	Obtenebrate Mithril Guard	970	Efreeti War Shield	606	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Envenoming	Obtenebrate Mithril Guard	970	Obsidian Shard (Sky)	767	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Necropotence	Khyldorn the Blood Drinker	847	Blood Sky Ruby	950	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Necropotence	Khyldorn the Blood Drinker	847	Bloodstained Hilt	973	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Necropotence	Khyldorn the Blood Drinker	847	Dulcet Nectar	1006	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Necropotence	Khyldorn the Blood Drinker	847	Efreeti War Axe	1167	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Raising of the Dead	Pearlescent Pauldrons	798	Fae Pauldrons	798	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Raising of the Dead	Pearlescent Pauldrons	798	Jar of Honey	1018	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Raising of the Dead	Pearlescent Pauldrons	798	Large Sky Pearl	953	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Raising of the Dead	Pearlescent Pauldrons	798	Sphinxian Ring	614	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Slash	Pegasus-Hide Belt	560	Diaphanous Globe	947	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Slash	Pegasus-Hide Belt	560	Dried Leather	532	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Slash	Pegasus-Hide Belt	560	Finely Woven Cloth Belt	1124	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Smash	Crimson Ring of the Djinni	872	Copper Disc	647	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Smash	Crimson Ring of the Djinni	872	Silvery Ring	675	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shadow Knight	Shadow Knight Test of Smash	Crimson Ring of the Djinni	872	Small Sapphire	963	1				https://wiki.project1999.com/Shadow_Knight_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Health	Bracelet of the Spirits	560	Ceremonial Belt	548	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Health	Bracelet of the Spirits	560	Ethereal Amber	951	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Health	Bracelet of the Spirits	560	Platinum Disc	644	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Health	Bracelet of the Spirits	560	Shimmering Amber	951	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Might	Amulet of the Fang	1043	Auburn Tessera	734	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Might	Amulet of the Fang	1043	Drake Fang	800	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Might	Amulet of the Fang	1043	Leather Cord	848	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Shrink	Warhammer of the Wind	567	Corrosive Venom	1006	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Shrink	Warhammer of the Wind	567	Djinni Statuette	894	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Shrink	Warhammer of the Wind	567	Efreeti War Club	738	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Shrink	Warhammer of the Wind	567	Wooden Bands	509	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Sight	Fairy-Hide Mantle	668	Light Damask Mantle	665	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Sight	Fairy-Hide Mantle	668	Phosphoric Globe	947	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Sight	Fairy-Hide Mantle	668	Sphinx Hide	553	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Snake	Vermilion Sky Ring	617	Bixie Essence	823	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of Snake	Vermilion Sky Ring	617	Emerald Spiroc Feather	1146	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of The Witch Doctor	Garduk	740	Efreeti War Maul	903	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of The Witch Doctor	Garduk	740	Fire Sky Ruby	961	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of The Witch Doctor	Garduk	740	Symbol of Veeshan	646	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Shaman	Shaman Test of The Witch Doctor	Garduk	740	Thickened Nectar	1006	1				https://wiki.project1999.com/Shaman_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Bash	Fangol	1167	Bottled Djinni	1006	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Bash	Fangol	1167	Efreeti Battle Axe	1164	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Bash	Fangol	1167	Ethereal Emerald	958	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Bash	Fangol	1167	Honeyed Nectar	1006	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Force	Pauldrons of the Blue Sky	798	Pearlescent Globe	947	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Force	Pauldrons of the Blue Sky	798	Silver Mesh	1062	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Force	Pauldrons of the Blue Sky	798	Spiroc Air Totem	894	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Skill	Azure Ruby Ring	612	Azure Ring	1045	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Skill	Azure Ruby Ring	612	Ivory Tessera	734	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Skill	Azure Ruby Ring	612	Small Ruby	964	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Smash	Dagas	576	Djinni War Blade	603	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Smash	Dagas	576	Mottled Spiroc Feather	1146	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Smash	Dagas	576	Virulent Poison	1018	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Strength	Runed Wind Amulet	566	Bronze Disc	647	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Strength	Runed Wind Amulet	566	Small Pick	768	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Strength	Runed Wind Amulet	566	Stone Amulet	566	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Think	Belt of the Four Winds	503	Efreeti Belt	564	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Think	Belt of the Four Winds	503	Pegasus Statuette	893	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Think	Belt of the Four Winds	503	Spiroc Wind Totem	894	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Warrior	Warrior Test of Think	Belt of the Four Winds	503	Wind Tablet	1095	1				https://wiki.project1999.com/Warrior_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Concentration	Augmentor's Mask	528	Augmentor's Gem	1136	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Concentration	Augmentor's Mask	528	Azure Tessera	734	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Concentration	Augmentor's Mask	528	Grey Damask Cloak	840	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Conception	Solidate Mithril Ring	872	Box of Winds	608	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Conception	Solidate Mithril Ring	872	Efreeti Statuette	895	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Conception	Solidate Mithril Ring	872	Mithril Air Ring	544	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Focus	Al'Kabor's Cap of Binding	641	Ethereal Opal	959	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Focus	Al'Kabor's Cap of Binding	641	Iron Disc	646	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Focus	Al'Kabor's Cap of Binding	641	Woven Skull Cap	639	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Meditation	Raiment of Thunder	665	High Quality Raiment	842	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Meditation	Raiment of Thunder	665	Hyaline Globe	947	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Meditation	Raiment of Thunder	665	Sky Topaz	954	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Preparation	Nargon's Staff	811	Copper Air Band	748	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Preparation	Nargon's Staff	811	Efreeti War Staff	601	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Preparation	Nargon's Staff	811	Large Sky Sapphire	965	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Preparation	Nargon's Staff	811	Lush Nectar	1006	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Visualization	Amulet of the Void	566	Amethyst Amulet	752	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Visualization	Amulet of the Void	566	Pulsating Sapphire	963	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+plane_of_sky	Wizard	Wizard Test of Visualization	Amulet of the Void	566	White-tipped Spiroc Feather	1146	1				https://wiki.project1999.com/Wizard_Plane_of_Sky_Tests
+velious_armor	Bard	Bard Kael Armor	Bard Kael Feet armor		Ancient Tarnished Chain Boots	844	1	Feet	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Wrist armor		Ancient Tarnished Chain Bracer	620	1	Wrist	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Head armor		Ancient Tarnished Chain Coif	625	1	Head	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Hands armor		Ancient Tarnished Chain Gauntlets	846	1	Hands	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Legs armor		Ancient Tarnished Chain Leggings	630	1	Legs	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Arms armor		Ancient Tarnished Chain Sleeves	543	1	Arms	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Kael Armor	Bard Kael Chest armor		Ancient Tarnished Chain Tunic	538	1	Chest	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Feet armor		Unadorned Chain Boots	844	1	Feet	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Wrist armor		Unadorned Chain Bracer	620	1	Wrist	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Head armor		Unadorned Chain Coif	625	1	Head	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Hands armor		Unadorned Chain Gauntlets	846	1	Hands	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Legs armor		Unadorned Chain Leggings	630	1	Legs	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Arms armor		Unadorned Chain Sleeves	543	1	Arms	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Skyshrine Armor	Bard Skyshrine Chest armor		Unadorned Chain Tunic	538	1	Chest	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Feet armor		Corroded Chain Boots	844	1	Feet	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Wrist armor		Corroded Chain Bracer	620	1	Wrist	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Head armor		Corroded Chain Coif	625	1	Head	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Hands armor		Corroded Chain Gauntlets	846	1	Hands	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Legs armor		Corroded Chain Leggings	630	1	Legs	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Arms armor		Corroded Chain Sleeves	543	1	Arms	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Bard	Bard Thurgadin Armor	Bard Thurgadin Chest armor		Corroded Chain Tunic	538	1	Chest	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Chest armor		Ancient Tarnished Breastplate	624	1	Chest	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Legs armor		Ancient Tarnished Greaves	540	1	Legs	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Feet armor		Ancient Tarnished Plate Boots	545	1	Feet	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Wrist armor		Ancient Tarnished Plate Bracelet	671	1	Wrist	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Hands armor		Ancient Tarnished Plate Gauntlets	531	1	Hands	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Head armor		Ancient Tarnished Plate Helmet	746	1	Head	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Kael Armor	Cleric Kael Arms armor		Ancient Tarnished Vambraces	546	1	Arms	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Chest armor		Unadorned Breastplate	624	1	Chest	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Feet armor		Unadorned Plate Boots	545	1	Feet	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Wrist armor		Unadorned Plate Bracer	671	1	Wrist	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Hands armor		Unadorned Plate Gauntlets	531	1	Hands	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Legs armor		Unadorned Plate Greaves	540	1	Legs	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Head armor		Unadorned Plate Helmet	746	1	Head	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Skyshrine Armor	Cleric Skyshrine Arms armor		Unadorned Plate Vambraces	546	1	Arms	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Chest armor		Corroded Breastplate	624	1	Chest	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Feet armor		Corroded Plate Boots	545	1	Feet	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Wrist armor		Corroded Plate Bracer	671	1	Wrist	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Hands armor		Corroded Plate Gauntlets	531	1	Hands	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Legs armor		Corroded Plate Greaves	540	1	Legs	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Head armor		Corroded Plate Helmet	746	1	Head	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Cleric	Cleric Thurgadin Armor	Cleric Thurgadin Arms armor		Corroded Plate Vambraces	546	1	Arms	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Feet armor		Ancient Leather Boots	633	1	Feet	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Wrist armor		Ancient Leather Bracelet	637	1	Wrist	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Head armor		Ancient Leather Cap	640	1	Head	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Hands armor		Ancient Leather Gloves	636	1	Hands	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Legs armor		Ancient Leather Leggings	635	1	Legs	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Arms armor		Ancient Leather Sleeves	634	1	Arms	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Kael Armor	Druid Kael Chest armor		Ancient Leather Tunic	632	1	Chest	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Feet armor		Unadorned Leather Boots	633	1	Feet	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Wrist armor		Unadorned Leather Bracelet	637	1	Wrist	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Head armor		Unadorned Leather Cap	640	1	Head	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Hands armor		Unadorned Leather Gloves	636	1	Hands	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Legs armor		Unadorned Leather Leggings	635	1	Legs	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Arms armor		Unadorned Leather Sleeves	634	1	Arms	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Skyshrine Armor	Druid Skyshrine Chest armor		Unadorned Leather Tunic	632	1	Chest	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Feet armor		Eroded Leather Boots	633	1	Feet	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Wrist armor		Eroded Leather Bracelet	637	1	Wrist	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Head armor		Eroded Leather Cap	640	1	Head	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Hands armor		Eroded Leather Gloves	636	1	Hands	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Legs armor		Eroded Leather Leggings	635	1	Legs	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Arms armor		Eroded Leather Sleeves	634	1	Arms	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Druid	Druid Thurgadin Armor	Druid Thurgadin Chest armor		Eroded Leather Tunic	632	1	Chest	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Feet armor		Ancient Silk Boots	633	1	Feet	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Hands armor		Ancient Silk Gloves	517	1	Hands	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Legs armor		Ancient Silk Pantaloons	631	1	Legs	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Chest armor		Ancient Silk Robe	1126	1	Chest	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Arms armor		Ancient Silk Sleeves	670	1	Arms	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Head armor		Ancient Silk Turban	1121	1	Head	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Kael Armor	Enchanter Kael Wrist armor		Ancient Silk Wristband	638	1	Wrist	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Feet armor		Tattered Silk Boots	525	1	Feet	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Hands armor		Tattered Silk Gloves	517	1	Hands	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Legs armor		Tattered Silk Pantaloons	631	1	Legs	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Chest armor		Tattered Silk Robe	1126	1	Chest	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Arms armor		Tattered Silk Sleeves	670	1	Arms	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Head armor		Tattered Silk Turban	1121	1	Head	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Skyshrine Armor	Enchanter Skyshrine Wrist armor		Tattered Silk Wristband	638	1	Wrist	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Feet armor		Torn Enchanted Silk Boots	633	1	Feet	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Hands armor		Torn Enchanted Silk Gloves	517	1	Hands	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Legs armor		Torn Enchanted Silk Pantaloons	631	1	Legs	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Chest armor		Torn Enchanted Silk Robe	1126	1	Chest	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Arms armor		Torn Enchanted Silk Sleeves	670	1	Arms	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Head armor		Torn Enchanted Silk Turban	1121	1	Head	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Enchanter	Enchanter Thurgadin Armor	Enchanter Thurgadin Wrist armor		Torn Enchanted Silk Wristband	638	1	Wrist	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Feet armor		Ancient Silk Boots	633	1	Feet	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Hands armor		Ancient Silk Gloves	517	1	Hands	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Legs armor		Ancient Silk Pantaloons	631	1	Legs	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Chest armor		Ancient Silk Robe	1126	1	Chest	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Arms armor		Ancient Silk Sleeves	670	1	Arms	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Head armor		Ancient Silk Turban	1121	1	Head	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Kael Armor	Magician Kael Wrist armor		Ancient Silk Wristband	638	1	Wrist	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Feet armor		Tattered Silk Boots	525	1	Feet	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Hands armor		Tattered Silk Gloves	517	1	Hands	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Legs armor		Tattered Silk Pantaloons	631	1	Legs	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Chest armor		Tattered Silk Robe	1126	1	Chest	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Arms armor		Tattered Silk Sleeves	670	1	Arms	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Head armor		Tattered Silk Turban	1121	1	Head	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Skyshrine Armor	Magician Skyshrine Wrist armor		Tattered Silk Wristband	638	1	Wrist	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Feet armor		Torn Enchanted Silk Boots	633	1	Feet	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Hands armor		Torn Enchanted Silk Gloves	517	1	Hands	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Legs armor		Torn Enchanted Silk Pantaloons	631	1	Legs	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Chest armor		Torn Enchanted Silk Robe	1126	1	Chest	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Arms armor		Torn Enchanted Silk Sleeves	670	1	Arms	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Head armor		Torn Enchanted Silk Turban	1121	1	Head	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Magician	Magician Thurgadin Armor	Magician Thurgadin Wrist armor		Torn Enchanted Silk Wristband	638	1	Wrist	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Feet armor		Ancient Leather Boots	633	1	Feet	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Wrist armor		Ancient Leather Bracelet	637	1	Wrist	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Head armor		Ancient Leather Cap	640	1	Head	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Hands armor		Ancient Leather Gloves	636	1	Hands	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Legs armor		Ancient Leather Leggings	635	1	Legs	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Arms armor		Ancient Leather Sleeves	634	1	Arms	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Kael Armor	Monk Kael Chest armor		Ancient Leather Tunic	632	1	Chest	Kael	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Feet armor		Unadorned Leather Boots	633	1	Feet	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Wrist armor		Unadorned Leather Bracelet	637	1	Wrist	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Head armor		Unadorned Leather Cap	640	1	Head	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Hands armor		Unadorned Leather Gloves	636	1	Hands	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Legs armor		Unadorned Leather Leggings	635	1	Legs	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Arms armor		Unadorned Leather Sleeves	634	1	Arms	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Skyshrine Armor	Monk Skyshrine Chest armor		Unadorned Leather Tunic	632	1	Chest	Skyshrine	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Feet armor		Eroded Leather Boots	633	1	Feet	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Wrist armor		Eroded Leather Bracelet	637	1	Wrist	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Head armor		Eroded Leather Cap	640	1	Head	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Hands armor		Eroded Leather Gloves	636	1	Hands	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Legs armor		Eroded Leather Leggings	635	1	Legs	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Arms armor		Eroded Leather Sleeves	634	1	Arms	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Monk	Monk Thurgadin Armor	Monk Thurgadin Chest armor		Eroded Leather Tunic	632	1	Chest	Thurgadin	leather	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Feet armor		Ancient Silk Boots	633	1	Feet	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Hands armor		Ancient Silk Gloves	517	1	Hands	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Legs armor		Ancient Silk Pantaloons	631	1	Legs	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Chest armor		Ancient Silk Robe	1126	1	Chest	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Arms armor		Ancient Silk Sleeves	670	1	Arms	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Head armor		Ancient Silk Turban	1121	1	Head	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Kael Armor	Necromancer Kael Wrist armor		Ancient Silk Wristband	638	1	Wrist	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Feet armor		Tattered Silk Boots	525	1	Feet	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Hands armor		Tattered Silk Gloves	517	1	Hands	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Legs armor		Tattered Silk Pantaloons	631	1	Legs	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Chest armor		Tattered Silk Robe	1126	1	Chest	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Arms armor		Tattered Silk Sleeves	670	1	Arms	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Head armor		Tattered Silk Turban	1121	1	Head	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Skyshrine Armor	Necromancer Skyshrine Wrist armor		Tattered Silk Wristband	638	1	Wrist	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Feet armor		Torn Enchanted Silk Boots	633	1	Feet	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Hands armor		Torn Enchanted Silk Gloves	517	1	Hands	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Legs armor		Torn Enchanted Silk Pantaloons	631	1	Legs	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Chest armor		Torn Enchanted Silk Robe	1126	1	Chest	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Arms armor		Torn Enchanted Silk Sleeves	670	1	Arms	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Head armor		Torn Enchanted Silk Turban	1121	1	Head	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Necromancer	Necromancer Thurgadin Armor	Necromancer Thurgadin Wrist armor		Torn Enchanted Silk Wristband	638	1	Wrist	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Chest armor		Ancient Tarnished Breastplate	624	1	Chest	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Legs armor		Ancient Tarnished Greaves	540	1	Legs	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Feet armor		Ancient Tarnished Plate Boots	545	1	Feet	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Wrist armor		Ancient Tarnished Plate Bracelet	671	1	Wrist	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Hands armor		Ancient Tarnished Plate Gauntlets	531	1	Hands	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Head armor		Ancient Tarnished Plate Helmet	746	1	Head	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Kael Armor	Paladin Kael Arms armor		Ancient Tarnished Vambraces	546	1	Arms	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Chest armor		Unadorned Breastplate	624	1	Chest	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Feet armor		Unadorned Plate Boots	545	1	Feet	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Wrist armor		Unadorned Plate Bracer	671	1	Wrist	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Hands armor		Unadorned Plate Gauntlets	531	1	Hands	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Legs armor		Unadorned Plate Greaves	540	1	Legs	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Head armor		Unadorned Plate Helmet	746	1	Head	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Skyshrine Armor	Paladin Skyshrine Arms armor		Unadorned Plate Vambraces	546	1	Arms	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Chest armor		Corroded Breastplate	624	1	Chest	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Feet armor		Corroded Plate Boots	545	1	Feet	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Wrist armor		Corroded Plate Bracer	671	1	Wrist	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Hands armor		Corroded Plate Gauntlets	531	1	Hands	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Legs armor		Corroded Plate Greaves	540	1	Legs	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Head armor		Corroded Plate Helmet	746	1	Head	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Paladin	Paladin Thurgadin Armor	Paladin Thurgadin Arms armor		Corroded Plate Vambraces	546	1	Arms	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Feet armor		Ancient Tarnished Chain Boots	844	1	Feet	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Wrist armor		Ancient Tarnished Chain Bracer	620	1	Wrist	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Head armor		Ancient Tarnished Chain Coif	625	1	Head	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Hands armor		Ancient Tarnished Chain Gauntlets	846	1	Hands	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Legs armor		Ancient Tarnished Chain Leggings	630	1	Legs	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Arms armor		Ancient Tarnished Chain Sleeves	543	1	Arms	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Kael Armor	Ranger Kael Chest armor		Ancient Tarnished Chain Tunic	538	1	Chest	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Feet armor		Unadorned Chain Boots	844	1	Feet	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Wrist armor		Unadorned Chain Bracer	620	1	Wrist	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Head armor		Unadorned Chain Coif	625	1	Head	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Hands armor		Unadorned Chain Gauntlets	846	1	Hands	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Legs armor		Unadorned Chain Leggings	630	1	Legs	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Arms armor		Unadorned Chain Sleeves	543	1	Arms	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Skyshrine Armor	Ranger Skyshrine Chest armor		Unadorned Chain Tunic	538	1	Chest	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Feet armor		Corroded Chain Boots	844	1	Feet	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Wrist armor		Corroded Chain Bracer	620	1	Wrist	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Head armor		Corroded Chain Coif	625	1	Head	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Hands armor		Corroded Chain Gauntlets	846	1	Hands	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Legs armor		Corroded Chain Leggings	630	1	Legs	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Arms armor		Corroded Chain Sleeves	543	1	Arms	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Ranger	Ranger Thurgadin Armor	Ranger Thurgadin Chest armor		Corroded Chain Tunic	538	1	Chest	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Feet armor		Ancient Tarnished Chain Boots	844	1	Feet	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Wrist armor		Ancient Tarnished Chain Bracer	620	1	Wrist	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Head armor		Ancient Tarnished Chain Coif	625	1	Head	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Hands armor		Ancient Tarnished Chain Gauntlets	846	1	Hands	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Legs armor		Ancient Tarnished Chain Leggings	630	1	Legs	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Arms armor		Ancient Tarnished Chain Sleeves	543	1	Arms	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Kael Armor	Rogue Kael Chest armor		Ancient Tarnished Chain Tunic	538	1	Chest	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Feet armor		Unadorned Chain Boots	844	1	Feet	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Wrist armor		Unadorned Chain Bracer	620	1	Wrist	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Head armor		Unadorned Chain Coif	625	1	Head	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Hands armor		Unadorned Chain Gauntlets	846	1	Hands	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Legs armor		Unadorned Chain Leggings	630	1	Legs	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Arms armor		Unadorned Chain Sleeves	543	1	Arms	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Skyshrine Armor	Rogue Skyshrine Chest armor		Unadorned Chain Tunic	538	1	Chest	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Feet armor		Corroded Chain Boots	844	1	Feet	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Wrist armor		Corroded Chain Bracer	620	1	Wrist	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Head armor		Corroded Chain Coif	625	1	Head	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Hands armor		Corroded Chain Gauntlets	846	1	Hands	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Legs armor		Corroded Chain Leggings	630	1	Legs	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Arms armor		Corroded Chain Sleeves	543	1	Arms	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Rogue	Rogue Thurgadin Armor	Rogue Thurgadin Chest armor		Corroded Chain Tunic	538	1	Chest	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Chest armor		Ancient Tarnished Breastplate	624	1	Chest	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Legs armor		Ancient Tarnished Greaves	540	1	Legs	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Feet armor		Ancient Tarnished Plate Boots	545	1	Feet	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Wrist armor		Ancient Tarnished Plate Bracelet	671	1	Wrist	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Hands armor		Ancient Tarnished Plate Gauntlets	531	1	Hands	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Head armor		Ancient Tarnished Plate Helmet	746	1	Head	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Kael Armor	Shadow Knight Kael Arms armor		Ancient Tarnished Vambraces	546	1	Arms	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Chest armor		Unadorned Breastplate	624	1	Chest	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Feet armor		Unadorned Plate Boots	545	1	Feet	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Wrist armor		Unadorned Plate Bracer	671	1	Wrist	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Hands armor		Unadorned Plate Gauntlets	531	1	Hands	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Legs armor		Unadorned Plate Greaves	540	1	Legs	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Head armor		Unadorned Plate Helmet	746	1	Head	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Skyshrine Armor	Shadow Knight Skyshrine Arms armor		Unadorned Plate Vambraces	546	1	Arms	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Chest armor		Corroded Breastplate	624	1	Chest	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Feet armor		Corroded Plate Boots	545	1	Feet	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Wrist armor		Corroded Plate Bracer	671	1	Wrist	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Hands armor		Corroded Plate Gauntlets	531	1	Hands	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Legs armor		Corroded Plate Greaves	540	1	Legs	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Head armor		Corroded Plate Helmet	746	1	Head	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shadow Knight	Shadow Knight Thurgadin Armor	Shadow Knight Thurgadin Arms armor		Corroded Plate Vambraces	546	1	Arms	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Feet armor		Ancient Tarnished Chain Boots	844	1	Feet	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Wrist armor		Ancient Tarnished Chain Bracer	620	1	Wrist	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Head armor		Ancient Tarnished Chain Coif	625	1	Head	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Hands armor		Ancient Tarnished Chain Gauntlets	846	1	Hands	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Legs armor		Ancient Tarnished Chain Leggings	630	1	Legs	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Arms armor		Ancient Tarnished Chain Sleeves	543	1	Arms	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Kael Armor	Shaman Kael Chest armor		Ancient Tarnished Chain Tunic	538	1	Chest	Kael	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Feet armor		Unadorned Chain Boots	844	1	Feet	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Wrist armor		Unadorned Chain Bracer	620	1	Wrist	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Head armor		Unadorned Chain Coif	625	1	Head	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Hands armor		Unadorned Chain Gauntlets	846	1	Hands	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Legs armor		Unadorned Chain Leggings	630	1	Legs	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Arms armor		Unadorned Chain Sleeves	543	1	Arms	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Skyshrine Armor	Shaman Skyshrine Chest armor		Unadorned Chain Tunic	538	1	Chest	Skyshrine	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Feet armor		Corroded Chain Boots	844	1	Feet	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Wrist armor		Corroded Chain Bracer	620	1	Wrist	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Head armor		Corroded Chain Coif	625	1	Head	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Hands armor		Corroded Chain Gauntlets	846	1	Hands	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Legs armor		Corroded Chain Leggings	630	1	Legs	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Arms armor		Corroded Chain Sleeves	543	1	Arms	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Shaman	Shaman Thurgadin Armor	Shaman Thurgadin Chest armor		Corroded Chain Tunic	538	1	Chest	Thurgadin	chain	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Chest armor		Ancient Tarnished Breastplate	624	1	Chest	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Legs armor		Ancient Tarnished Greaves	540	1	Legs	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Feet armor		Ancient Tarnished Plate Boots	545	1	Feet	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Wrist armor		Ancient Tarnished Plate Bracelet	671	1	Wrist	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Hands armor		Ancient Tarnished Plate Gauntlets	531	1	Hands	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Head armor		Ancient Tarnished Plate Helmet	746	1	Head	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Kael Armor	Warrior Kael Arms armor		Ancient Tarnished Vambraces	546	1	Arms	Kael	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Chest armor		Unadorned Breastplate	624	1	Chest	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Feet armor		Unadorned Plate Boots	545	1	Feet	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Wrist armor		Unadorned Plate Bracer	671	1	Wrist	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Hands armor		Unadorned Plate Gauntlets	531	1	Hands	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Legs armor		Unadorned Plate Greaves	540	1	Legs	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Head armor		Unadorned Plate Helmet	746	1	Head	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Skyshrine Armor	Warrior Skyshrine Arms armor		Unadorned Plate Vambraces	546	1	Arms	Skyshrine	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Chest armor		Corroded Breastplate	624	1	Chest	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Feet armor		Corroded Plate Boots	545	1	Feet	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Wrist armor		Corroded Plate Bracer	671	1	Wrist	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Hands armor		Corroded Plate Gauntlets	531	1	Hands	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Legs armor		Corroded Plate Greaves	540	1	Legs	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Head armor		Corroded Plate Helmet	746	1	Head	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Warrior	Warrior Thurgadin Armor	Warrior Thurgadin Arms armor		Corroded Plate Vambraces	546	1	Arms	Thurgadin	plate	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Feet armor		Ancient Silk Boots	633	1	Feet	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Hands armor		Ancient Silk Gloves	517	1	Hands	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Legs armor		Ancient Silk Pantaloons	631	1	Legs	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Chest armor		Ancient Silk Robe	1126	1	Chest	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Arms armor		Ancient Silk Sleeves	670	1	Arms	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Head armor		Ancient Silk Turban	1121	1	Head	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Kael Armor	Wizard Kael Wrist armor		Ancient Silk Wristband	638	1	Wrist	Kael	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Feet armor		Tattered Silk Boots	525	1	Feet	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Hands armor		Tattered Silk Gloves	517	1	Hands	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Legs armor		Tattered Silk Pantaloons	631	1	Legs	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Chest armor		Tattered Silk Robe	1126	1	Chest	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Arms armor		Tattered Silk Sleeves	670	1	Arms	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Head armor		Tattered Silk Turban	1121	1	Head	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Skyshrine Armor	Wizard Skyshrine Wrist armor		Tattered Silk Wristband	638	1	Wrist	Skyshrine	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Feet armor		Torn Enchanted Silk Boots	633	1	Feet	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Hands armor		Torn Enchanted Silk Gloves	517	1	Hands	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Legs armor		Torn Enchanted Silk Pantaloons	631	1	Legs	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Chest armor		Torn Enchanted Silk Robe	1126	1	Chest	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Arms armor		Torn Enchanted Silk Sleeves	670	1	Arms	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Head armor		Torn Enchanted Silk Turban	1121	1	Head	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor
+velious_armor	Wizard	Wizard Thurgadin Armor	Wizard Thurgadin Wrist armor		Torn Enchanted Silk Wristband	638	1	Wrist	Thurgadin	cloth	https://wiki.project1999.com/Velious_Class_Armor

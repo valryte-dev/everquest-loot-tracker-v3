@@ -34,3 +34,9 @@ pub fn database_path() -> io::Result<PathBuf> {
 pub fn spell_database_path() -> io::Result<PathBuf> {
     Ok(data_directory()?.join("spell-info.db"))
 }
+
+pub fn model_packs_directory() -> io::Result<PathBuf> {
+    let path = data_directory()?.join("model-packs");
+    std::fs::create_dir_all(&path)?;
+    Ok(path)
+}

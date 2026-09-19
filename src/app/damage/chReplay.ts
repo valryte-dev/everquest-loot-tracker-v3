@@ -28,12 +28,10 @@ export interface ClericChainEncounter {
 }
 
 const stamp=(value:string)=>{const normalized=value.includes("T")?value:value.replace(" ","T");const parsed=Date.parse(normalized);return Number.isFinite(parsed)?parsed:0};
-const encounterMob=(calls:TimedClericHealCall[],encounters:DamageEncounter[])=>{
- const start=stamp(calls[0].happenedAt),end=stamp(calls.at(-1)!.happenedAt),character=calls[0].character.toLowerCase();
- const relevant=encounters.filter(row=>row.character.toLowerCase()===character);
- const overlapping=relevant.filter(row=>stamp(row.startedAt)<=end+15000&&stamp(row.endedAt||row.lastDamageAt)>=start-15000);
- const candidates=overlapping.length?overlapping:relevant.filter(row=>stamp(row.startedAt)<=end).slice(0,20);
- return [...candidates].sort((a,b)=>Math.abs(stamp(a.lastDamageAt)-end)-Math.abs(stamp(b.lastDamageAt)-end))[0]?.mobName||"Unknown mob";
+const encounterTank=(calls:TimedClericHealCall[],_encounters:DamageEncounter[])=>{
+ const namedTank=[...calls].reverse().find(call=>call.targetName?.trim())?.targetName?.trim();
+ if(namedTank)return namedTank;
+ return "Unknown tank";
 };
 
 export function calculateClericChainStats(calls:TimedClericHealCall[]):ClericChainClericStats[]{
@@ -56,7 +54,7 @@ export function buildClericChainEncounters(calls:ClericHealCall[],damageEncounte
   const gaps=ordered.flatMap(call=>call.gapSeconds===undefined?[]:[call.gapSeconds]);
   return {
    id:`${ordered[0].character}:${ordered[0].id}:${ordered.at(-1)!.id}`,
-   character:ordered[0].character,targetMob:encounterMob(ordered,damageEncounters),startedAt:ordered[0].happenedAt,endedAt:ordered.at(-1)!.happenedAt,
+   character:ordered[0].character,targetMob:encounterTank(ordered,damageEncounters),startedAt:ordered[0].happenedAt,endedAt:ordered.at(-1)!.happenedAt,
    durationSeconds:Math.max(0,(stamp(ordered.at(-1)!.happenedAt)-stamp(ordered[0].happenedAt))/1000),callCount:ordered.length,
    healerCount:new Set(ordered.map(call=>call.clericName.toLowerCase())).size,
    averageGapSeconds:gaps.length?gaps.reduce((sum,gap)=>sum+gap,0)/gaps.length:0,longestGapSeconds:Math.max(0,...gaps),

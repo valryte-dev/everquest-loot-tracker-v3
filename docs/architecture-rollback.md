@@ -27,9 +27,17 @@ The architecture work was delivered as additive, independently tagged checkpoint
 Schema 31 adds the derived `combat_pet_evidence` table used to classify multi-word and otherwise-unowned pets as separate outgoing fighters. It contains no user-authored data and is rebuilt by a Damage Tracker rescan. Builds before schema 31 ignore this additive table.
 
 Schema 32 adds `item_proc_spells`. It is reference data bundled from the Project 1999 Weapon Procs table and reconciled to nullable `master_items.item_id` values. It does not replace or mutate loot, inventory, split, encounter, or damage records. Builds before schema 32 ignore it. The separate `spell-info.db` cache advances its derived combat classifier to version 3 and can be safely rebuilt from the wiki catalog if needed.
+
+Schema 33 adds `quest_catalog_entries` and `quest_catalog_components`. Both are rebuildable reference tables sourced from the reviewed, bundled Project 1999 quest snapshot. Loot, inventories, splits, combat records, and the master item catalog are not replaced or deleted. Components and rewards retain captured names and use nullable canonical `master_items.item_id` references. To roll back the feature code, use tag `pre-quest-item-catalog-2026-09-11`; older builds safely ignore the two new tables.
+
+Schema 37 adds `character_profiles` for durable per-character race, class, gender, and optional manual level overrides. Existing character-model settings are copied forward when available. Parsed level history remains unchanged and is preferred whenever no manual override exists. Older builds ignore this additive table and continue to read their existing settings.
 ## CH replay compatibility
 
 CH encounter replay is additive and does not change the SQLite schema. Portable `.eqch.json` files live in the `ch-chain-replays` application-data directory. Rolling back the application leaves those files untouched; older builds ignore them. Copy that directory before removing or editing replay files manually.
+
+## Character model pack compatibility
+
+Character model packs are additive filesystem assets and do not change the SQLite schema. The active path and display metadata use ordinary `app_settings` keys. Rolling back to a build without the viewer leaves downloaded packs untouched and older builds ignore those settings. To disable the feature without changing versions, use **Disconnect** on the System page; it preserves the pack and restores the online viewer fallback.
 
 ## Safest rollback workflow
 

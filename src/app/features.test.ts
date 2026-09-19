@@ -31,6 +31,8 @@ describe("feature catalog", () => {
       "logs",
       "help",
       "changes",
+      "quest-items",
+      "wardrobe",
     ]);
   });
 

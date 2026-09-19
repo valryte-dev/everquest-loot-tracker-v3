@@ -4,6 +4,8 @@ import type {DamageEncounter,DamageSpellMetric,TrackedSpellActivity} from "../..
 const colors=["#fb56a3","#a878fa","#57c7ff","#ffa357","#7bdfb2","#f37d8d"];
 const number=(value:number)=>Math.round(value).toLocaleString();
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
+const itemClickNote=(sourceName?:string)=>sourceName?.toLowerCase()==="spear of fate"?"Shaman epic":undefined;
+const isKnownUnattributedItemClick=(activity:TrackedSpellActivity)=>activity.sourceKind==="unknown"&&Boolean(activity.sourceName);
 
 export interface SpellPlayerRanking {
  name:string;
@@ -35,7 +37,7 @@ export function rankSpellPlayers(metrics:DamageSpellMetric[],activity:TrackedSpe
   row.landings+=1;
   if(cast.sourceKind==="direct")row.direct+=1;
   else if(cast.sourceKind==="proc")row.procs+=1;
-  else if(cast.sourceKind==="item_click")row.itemClicks+=1;
+  else if(cast.sourceKind==="item_click"||isKnownUnattributedItemClick(cast))row.itemClicks+=1;
   else row.unknown+=1;
   const spells=spellSets.get(key)||new Set<string>();
   spells.add(cast.spellName.toLowerCase());
@@ -51,7 +53,11 @@ export function spellSourceLabel(activity:TrackedSpellActivity):string{
  if(activity.sourceKind==="direct")return "Direct cast";
  if(activity.sourceKind==="proc")return "Proc";
  if(activity.sourceKind==="item_click")return activity.sourceName?`Item click - ${activity.sourceName}`:"Item click";
- return activity.sourceName?`Unattributed spell - possible ${activity.sourceName} item click`:"Unattributed spell";
+ if(activity.sourceName){
+  const note=itemClickNote(activity.sourceName);
+  return `Unattributed item click - ${activity.sourceName}${note?" ("+note+")":""}`;
+ }
+ return "Unattributed spell";
 }
 
 export function DamageSpellRankingBars({metrics,activity}:{metrics:DamageSpellMetric[];activity:TrackedSpellActivity[]}){

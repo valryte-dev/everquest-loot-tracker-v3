@@ -51,6 +51,13 @@ const COMBAT_SPELL_ACTIVITY_MIGRATION: &str =
 const COMBAT_PET_EVIDENCE_MIGRATION: &str =
     include_str!("../migrations/031_combat_pet_evidence.sql");
 const ITEM_PROC_CATALOG_MIGRATION: &str = include_str!("../migrations/032_item_proc_catalog.sql");
+const QUEST_ITEM_CATALOG_MIGRATION: &str = include_str!("../migrations/033_quest_item_catalog.sql");
+const PROTECTED_COMBAT_FIGHTS_MIGRATION: &str =
+    include_str!("../migrations/034_protected_combat_fights.sql");
+const DAMAGE_ATTACK_TYPE_SUMMARIES_MIGRATION: &str =
+    include_str!("../migrations/035_damage_attack_type_summaries.sql");
+const GUILD_SLOW_CALLS_MIGRATION: &str = include_str!("../migrations/036_guild_slow_calls.sql");
+const CHARACTER_PROFILES_MIGRATION: &str = include_str!("../migrations/037_character_profiles.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -116,12 +123,20 @@ impl Database {
             "activity_offer_history",
             "linked_loot_items",
             "item_proc_spells",
+            "quest_catalog_components",
         ] {
             connection.execute(
                 &format!("UPDATE {table} SET item_id=(SELECT item_id FROM item_name_resolutions WHERE item_name={table}.item_name COLLATE NOCASE) WHERE item_id IS NULL"),
                 [],
             )?;
         }
+        connection.execute(
+            "UPDATE quest_catalog_entries SET reward_item_id=(
+                SELECT item_id FROM item_name_resolutions
+                WHERE item_name=quest_catalog_entries.reward_name COLLATE NOCASE
+             ) WHERE reward_item_id IS NULL",
+            [],
+        )?;
         Ok(())
     }
     pub fn migrate(&self) -> Result<i64, DatabaseError> {
@@ -234,7 +249,38 @@ impl Database {
         if schema_version < 32 {
             transaction.execute_batch(ITEM_PROC_CATALOG_MIGRATION)?;
         }
+        if schema_version < 33 {
+            transaction.execute_batch(QUEST_ITEM_CATALOG_MIGRATION)?;
+        }
+        if schema_version < 34 {
+            let protected_exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('damage_encounters') WHERE name='is_protected'",
+                [], |row| row.get(0),
+            )?;
+            if protected_exists == 0 {
+                transaction.execute_batch("ALTER TABLE damage_encounters ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0 CHECK(is_protected IN (0,1));")?;
+            }
+            let protected_at_exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('damage_encounters') WHERE name='protected_at'",
+                [], |row| row.get(0),
+            )?;
+            if protected_at_exists == 0 {
+                transaction
+                    .execute_batch("ALTER TABLE damage_encounters ADD COLUMN protected_at TEXT;")?;
+            }
+            transaction.execute_batch(PROTECTED_COMBAT_FIGHTS_MIGRATION)?;
+        }
+        if schema_version < 35 {
+            transaction.execute_batch(DAMAGE_ATTACK_TYPE_SUMMARIES_MIGRATION)?;
+        }
+        if schema_version < 36 {
+            transaction.execute_batch(GUILD_SLOW_CALLS_MIGRATION)?;
+        }
+        if schema_version < 37 {
+            transaction.execute_batch(CHARACTER_PROFILES_MIGRATION)?;
+        }
         super::proc_catalog::reconcile(&transaction)?;
+        super::quest_catalog::reconcile(&transaction)?;
         transaction.commit()?;
         Ok(connection.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -272,14 +318,17 @@ mod tests {
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 32);
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         for table in [
             "proc_occurrences",
             "damage_spell_summaries",
             "combat_spell_activity",
             "combat_pet_evidence",
+            "quest_catalog_entries",
+            "quest_catalog_components",
+            "damage_attack_type_summaries",
         ] {
             let found: i64 = connection
                 .query_row(
@@ -296,7 +345,7 @@ mod tests {
     fn migrates_an_existing_schema_28_database_to_proc_metrics() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -328,7 +377,7 @@ mod tests {
                 .unwrap();
             assert_eq!(previous, 28);
         }
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         let tables: i64 = connection
             .query_row(
@@ -358,7 +407,7 @@ mod tests {
     fn repairs_misordered_inferred_dot_event_timestamps() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -379,7 +428,7 @@ mod tests {
                 .execute("DELETE FROM schema_migrations WHERE version>=28", [])
                 .unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         let repaired: (String, String) = connection.query_row(
             "SELECT happened_at,damage_type FROM damage_events WHERE source_file LIKE 'dot://%'",
@@ -397,7 +446,7 @@ mod tests {
     fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         {
             let connection = database.connect().unwrap();
             connection
@@ -415,7 +464,7 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         let channels: Vec<String> = connection
             .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
@@ -446,7 +495,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -478,7 +527,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {

@@ -3,7 +3,7 @@ import type {DotTrainingReport} from "../../shared/contracts";
 import {formatCombatClock,rankIncomingTargets} from "./meterModel";
 import {buildTrainingReplayFrames,createTrainingReplayTimeline,replayCursorAt} from "./trainingReplay";
 import {describeTrainingEventSource} from "./damageSources";
-import {DamageFighterBars,type DamageFighterBarRow} from "./DamageFighterBars";
+import {calculateProcDps,DamageFighterBars,type DamageFighterBarRow} from "./DamageFighterBars";
 import {DamageIncomingBars,IncomingDamageTotal} from "./DamageIncomingBars";
 
 const number=(value:number)=>Math.round(value).toLocaleString();
@@ -52,13 +52,16 @@ export function DotTrainingReplay({report}:{report:DotTrainingReport}){
 
 type Frame=ReturnType<typeof buildTrainingReplayFrames>[number];
 function ReplayFight({frame,character}:{frame:Frame;character:string}){
- const fighters:DamageFighterBarRow[]=frame.fighters.map((fighter,index)=>({
-  name:fighter.name,rank:index+1,totalDamage:fighter.totalDamage,dps:fighter.dps,
-  combatSeconds:fighter.combatSeconds,contribution:fighter.contribution,
-  incomingDamage:fighter.incomingDamage,mine:fighter.name.toLowerCase()===character.toLowerCase(),
-  shareDetail:`${fighter.hitCount} events`,
-  effects:{procCount:fighter.procCount,procDirectDamage:fighter.procDirectDamage,procDotDamage:fighter.procDotDamage,spellCount:fighter.spellCount,spellDirectDamage:fighter.spellDirectDamage,spellDotDamage:fighter.spellDotDamage},
- }));
+ const fighters:DamageFighterBarRow[]=frame.fighters.map((fighter,index)=>{
+  const effects={procCount:fighter.procCount,procDirectDamage:fighter.procDirectDamage,procDotDamage:fighter.procDotDamage,spellCount:fighter.spellCount,spellDirectDamage:fighter.spellDirectDamage,spellDotDamage:fighter.spellDotDamage};
+  return {
+   name:fighter.name,rank:index+1,totalDamage:fighter.totalDamage,dps:fighter.dps,
+   procDps:calculateProcDps(effects,fighter.combatSeconds),
+   combatSeconds:fighter.combatSeconds,contribution:fighter.contribution,
+   incomingDamage:fighter.incomingDamage,mine:fighter.name.toLowerCase()===character.toLowerCase(),
+   shareDetail:`${fighter.hitCount} events`,effects,
+  };
+ });
  const incomingTargets=rankIncomingTargets(frame.incomingTargets);
  const incomingTotal=incomingTargets.reduce((sum,target)=>sum+target.totalDamage,0);
  return <article className="dot-replay-fight"><header><div><span>Replaying</span><h3>{frame.mobName}</h3></div><div><strong>{number(frame.totalDamage)}</strong><small>damage / {formatCombatClock(frame.elapsedSeconds)}</small></div></header><div className="meter-comparison-grid"><section className="meter-ranking-panel outgoing"><header><div><span>Outgoing</span><strong>Damage dealt</strong></div><b>{number(frame.totalDamage)}</b></header><DamageFighterBars fighters={fighters}/></section><section className="meter-ranking-panel incoming"><header><div><span>Incoming</span><strong>Damage taken</strong></div><IncomingDamageTotal totalDamage={incomingTotal} durationSeconds={frame.elapsedSeconds}/></header><DamageIncomingBars targets={incomingTargets} activeCharacter={character}/></section></div></article>;

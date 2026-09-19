@@ -1,16 +1,25 @@
 mod ch_replay_library;
 mod ch_training;
 mod combat_metrics;
+mod damage_analytics;
 mod data;
 mod database_management;
 mod dot_tracking;
 mod dot_training;
+mod model_pack;
 mod proc_coach;
+mod proc_evidence;
+mod quest_catalog;
 mod replay_library;
 mod runtime;
 mod services;
 mod split_reconciliation;
 mod system_tasks;
+mod wardrobe_catalog;
+
+pub use wardrobe_catalog::{
+    wardrobe_catalog_items, wardrobe_catalog_set_items, wardrobe_catalog_sets,
+};
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -262,6 +271,19 @@ pub fn damage_encounter_details(
     data::damage_encounter_details(&state.database, id)
 }
 #[tauri::command]
+pub async fn damage_proc_evidence(
+    state: tauri::State<'_, AppState>,
+    encounter_id: i64,
+    player_name: String,
+) -> Result<proc_evidence::ProcEvidenceReport, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        proc_evidence::load(&database, encounter_id, &player_name)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+#[tauri::command]
 pub async fn dot_training_preview(
     state: tauri::State<'_, AppState>,
     text: String,
@@ -300,6 +322,29 @@ pub async fn database_cleanup_preview(
 }
 
 #[tauri::command]
+pub async fn database_fight_purge_preview(
+    state: tauri::State<'_, AppState>,
+    keep_days: u32,
+) -> Result<database_management::FightPurgePreview, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database_management::preview_fight_purge(&database, keep_days)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn database_protected_fights(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<database_management::ProtectedFight>, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || database_management::protected_fights(&database))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
     state.revision.load(Ordering::Relaxed)
 }
@@ -313,6 +358,16 @@ pub fn global_status_snapshot(state: tauri::State<'_, AppState>) -> Result<Value
 }
 
 #[tauri::command]
+pub async fn model_pack_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<model_pack::ModelPackStatus, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || model_pack::status(&database))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn mutate_app(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
@@ -321,6 +376,62 @@ pub async fn mutate_app(
     let result = match request.action.as_str() {
         "update.check" => services::check_for_update(&state.database),
         "market.refresh" => services::refresh_market(&state.database),
+        "modelPack.download" => {
+            let database = state.database.clone();
+            let tasks = state.tasks.clone();
+            let handle = app_handle.clone();
+            tasks.start(
+                "model-pack-download",
+                "Downloading character models",
+                "Preparing model pack storage",
+                None,
+            );
+            let _ = handle.emit("system-task-changed", "model-pack-download");
+            let work_tasks = tasks.clone();
+            let work_handle = handle.clone();
+            let operation = tauri::async_runtime::spawn_blocking(move || {
+                model_pack::download_base_pack(&database, |completed, total, detail| {
+                    work_tasks.progress(
+                        "model-pack-download",
+                        detail,
+                        Some(completed),
+                        Some(total),
+                    );
+                    let _ = work_handle.emit("system-task-changed", "model-pack-download");
+                })
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+            let result = operation
+                .and_then(|value| serde_json::to_value(value).map_err(|error| error.to_string()));
+            tasks.finish("model-pack-download", &result, "Character model pack ready");
+            let _ = handle.emit("system-task-changed", "model-pack-download");
+            result
+        }
+        "modelPack.activate" => {
+            let path = request
+                .payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or("path is required")?
+                .to_owned();
+            let database = state.database.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                model_pack::activate_directory(&database, &path)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .and_then(|value| serde_json::to_value(value).map_err(|error| error.to_string()))
+        }
+        "modelPack.verify" => {
+            let database = state.database.clone();
+            tauri::async_runtime::spawn_blocking(move || model_pack::verify(&database))
+                .await
+                .map_err(|error| error.to_string())?
+                .and_then(|value| serde_json::to_value(value).map_err(|error| error.to_string()))
+        }
+        "modelPack.disconnect" => model_pack::disconnect(&state.database)
+            .and_then(|value| serde_json::to_value(value).map_err(|error| error.to_string())),
         "activityHistory.scan" => {
             let database = state.database.clone();
             state.tasks.start(
@@ -388,6 +499,112 @@ pub async fn mutate_app(
                 .ok_or("id is required")?,
         ),
         "database.backup" => services::backup(&state.database),
+        "database.fightProtection" => database_management::set_fight_protection(
+            &state.database,
+            request
+                .payload
+                .get("id")
+                .and_then(Value::as_i64)
+                .ok_or("id is required")?,
+            request
+                .payload
+                .get("protected")
+                .and_then(Value::as_bool)
+                .ok_or("protected is required")?,
+        ),
+        "database.combatPurge" => {
+            let keep_days = request
+                .payload
+                .get("keepDays")
+                .and_then(Value::as_u64)
+                .ok_or("keepDays is required")? as u32;
+            let database = state.database.clone();
+            let purge_tasks = state.tasks.clone();
+            let purge_handle = app_handle.clone();
+            state.tasks.start(
+                "combat-purge",
+                "Backing up database",
+                "Creating a safety backup before combat purge",
+                None,
+            );
+            let _ = app_handle.emit("system-task-changed", "combat-purge");
+            let operation = tauri::async_runtime::spawn_blocking(move || {
+                let backup = services::backup_with_progress(&database, |completed, total| {
+                    purge_tasks.progress(
+                        "combat-purge",
+                        "Creating a safety backup",
+                        Some(completed),
+                        Some(total),
+                    );
+                    let _ = purge_handle.emit("system-task-changed", "combat-purge");
+                })?;
+                purge_tasks.transition(
+                    "combat-purge",
+                    "Purging old combat fights",
+                    "Deleting eligible fights in safe batches",
+                    Some(0),
+                    None,
+                );
+                let _ = purge_handle.emit("system-task-changed", "combat-purge");
+                let result = database_management::purge_fights_with_progress(
+                    &database,
+                    keep_days,
+                    |completed, total| {
+                        purge_tasks.progress(
+                            "combat-purge",
+                            "Deleting eligible fights in safe batches",
+                            Some(completed as u64),
+                            Some(total as u64),
+                        );
+                        let _ = purge_handle.emit("system-task-changed", "combat-purge");
+                    },
+                )?;
+                Ok::<_, String>((backup, result))
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+            let (backup, result) = match operation {
+                Ok(value) => {
+                    state.tasks.finish(
+                        "combat-purge",
+                        &Ok(serde_json::json!({"completed":true})),
+                        "Combat purge complete",
+                    );
+                    value
+                }
+                Err(error) => {
+                    state.tasks.finish(
+                        "combat-purge",
+                        &Err::<Value, _>(error.clone()),
+                        "Combat purge failed",
+                    );
+                    let _ = app_handle.emit("system-task-changed", "combat-purge");
+                    return Err(error);
+                }
+            };
+            let _ = app_handle.emit("system-task-changed", "combat-purge");
+            let backup_path = backup.get("path").cloned().unwrap_or(Value::Null);
+            let mut value = serde_json::to_value(&result).map_err(|error| error.to_string())?;
+            value["backupPath"] = backup_path;
+            Ok(value)
+        }
+        "database.deleteProtectedFights" => {
+            let ids = request
+                .payload
+                .get("ids")
+                .and_then(Value::as_array)
+                .ok_or("ids are required")?
+                .iter()
+                .map(|value| value.as_i64().ok_or("Every fight id must be a number"))
+                .collect::<Result<Vec<_>, _>>()?;
+            let database = state.database.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                database_management::delete_protected_fights(&database, &ids)
+            })
+            .await
+            .map_err(|error| error.to_string())??;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        }
         "database.restore" => services::restore(
             &state.database,
             request

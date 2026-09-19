@@ -18,5 +18,7 @@ describe("shared CH cadence graph",()=>{
   expect(html).toContain('max="600"');
   expect(html).toContain('value="15"');
   expect(html).toContain("Scale 0 to");
+  expect(html).toContain("ch-seconds-field compact chain-pulse-scale");
+  expect(html).toContain("ch-seconds-input");
  });
 });

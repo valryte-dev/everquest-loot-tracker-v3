@@ -108,8 +108,8 @@ export function discordSoldItemsSummary(history:History[],aliases:Alias[]):strin
 
 const discordDetailCell=(value:string|undefined)=>value?.replace(/[\r\n]+/g," ").trim()||"-";
 
-function soldItemsDiscordMessages(title:string,rows:History[],rowLines:string[]):string[]{
- if(!rows.length)return ["**"+title+"**\n_No sold split items to share._"];
+function soldItemsDiscordMessages(title:string,rows:{valuePp:number}[],rowLines:string[],emptyText="No sold split items to share.",valueLabel="total sale value"):string[]{
+ if(!rows.length)return ["**"+title+"**\n_"+emptyText+"_"];
  const saleTotal=rows.reduce((sum,row)=>sum+row.valuePp,0);
  const bodyLimit=1750,segments:string[]=[];
  rowLines.forEach(rowLine=>{
@@ -130,7 +130,7 @@ function soldItemsDiscordMessages(title:string,rows:History[],rowLines:string[])
  return messages.map((body,index)=>[
   "**"+title+"**",
   "_Message "+(index+1)+" of "+messages.length+"_",
-  ...(index===0?["**"+rows.length+" items | "+discordMoney(saleTotal)+" total sale value**"]:[]),
+  ...(index===0?["**"+rows.length+" items | "+discordMoney(saleTotal)+" "+valueLabel+"**"]:[]),
   body,
  ].join("\n"));
 }
@@ -138,6 +138,36 @@ function soldItemsDiscordMessages(title:string,rows:History[],rowLines:string[])
 function soldItemCanonicalizer(aliases:Alias[]){
  const aliasMap=new Map(aliases.map(alias=>[alias.alias.trim().toLowerCase(),alias.canonical.trim()]));
  return (name:string)=>aliasMap.get(name.trim().toLowerCase())||name.trim();
+}
+
+interface SplitPayoutExportRow{phase:"held"|"pending"|"paid";itemName:string;mobName?:string;looterName?:string;valuePp:number;note?:string;happenedAt:string;attendees:string[];payouts:{name:string;paidAt:string}[]}
+
+function splitPayoutExportRows(splits:Split[],history:History[]):SplitPayoutExportRow[]{
+ const held=splits.map(row=>({phase:"held" as const,itemName:row.itemName,mobName:row.mobName,looterName:row.looterName,valuePp:row.payoutValuePp??row.marketValuePp??0,happenedAt:row.addedAt,attendees:row.attendees,payouts:[]}));
+ const sold=history.filter(row=>row.disposition==="sold").map(row=>({phase:(row.payoutStatus==="completed"?"paid":"pending") as "paid"|"pending",itemName:row.itemName,mobName:row.mobName,looterName:row.looterName,valuePp:row.valuePp,note:row.note,happenedAt:row.completedAt,attendees:row.attendees,payouts:row.payouts||[]}));
+ return [...held,...sold];
+}
+
+export function splitPayoutCompactMessages(splits:Split[],history:History[],aliases:Alias[],title:string):string[]{
+ const rows=splitPayoutExportRows(splits,history),canonical=soldItemCanonicalizer(aliases);
+ const rowLines=rows.map(row=>{
+  const people=[...new Map(row.attendees.map(name=>canonical(name)).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+  const valueLabel=row.phase==="held"?"Est. value":"Sale price";
+  return "- **"+discordDetailCell(row.itemName)+"** - Phase: **"+row.phase+"** - "+valueLabel+": **"+discordMoney(row.valuePp)+"** - Split toons: "+discordDetailCell(people.join(", ")||"None");
+ });
+ return soldItemsDiscordMessages(title+" - Compact",rows,rowLines,"No split payout items in this phase.","total tracked value");
+}
+
+export function splitPayoutFullDetailMessages(splits:Split[],history:History[],aliases:Alias[],title:string):string[]{
+ const rows=splitPayoutExportRows(splits,history),canonical=soldItemCanonicalizer(aliases);
+ const rowLines=rows.map(row=>{
+  const people=[...new Map(row.attendees.map(name=>canonical(name)).filter(Boolean).map(name=>[name.toLowerCase(),name])).values()];
+  const paid=new Set(row.payouts.map(payout=>canonical(payout.name).toLowerCase()));
+  const payouts=people.map(name=>name+" ["+(row.phase==="held"?"potential":paid.has(name.toLowerCase())?"paid":"pending")+"]").join(", ")||"None";
+  const each=Math.floor(row.valuePp/Math.max(1,people.length)),valueLabel=row.phase==="held"?"Estimated value":"Sale value";
+  return "- **"+discordDetailCell(row.itemName)+"** - Phase: **"+row.phase+"** - Dropped by: "+discordDetailCell(row.mobName)+" - Held / sold by: "+discordDetailCell(row.looterName)+" - Player payouts: "+discordDetailCell(payouts)+" - "+valueLabel+": **"+discordMoney(row.valuePp)+"** - Each payout: **"+discordMoney(each)+"** - Note: "+discordDetailCell(row.note)+" - Event date: "+discordDetailCell(row.happenedAt);
+ });
+ return soldItemsDiscordMessages(title+" - Full Detail",rows,rowLines,"No split payout items in this phase.","total tracked value");
 }
 
 export function soldItemsCompactMessages(history:History[],aliases:Alias[]):string[]{

@@ -87,7 +87,7 @@ pub fn save(request: SaveClericHealReplayRequest) -> Result<ClericHealReplayEntr
         title: format!(
             "{} - {}",
             if target_mob.is_empty() {
-                "Unknown mob"
+                "Unknown tank"
             } else {
                 &target_mob
             },
@@ -96,7 +96,7 @@ pub fn save(request: SaveClericHealReplayRequest) -> Result<ClericHealReplayEntr
         saved_at: Utc::now().to_rfc3339(),
         character,
         target_mob: if target_mob.is_empty() {
-            "Unknown mob".into()
+            "Unknown tank".into()
         } else {
             target_mob
         },

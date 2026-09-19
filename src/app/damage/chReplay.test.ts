@@ -6,9 +6,9 @@ const call=(id:number,second:number,character="Tester",healer=id%2?"Alpha":"Beta
 const fight=(id:number,mobName:string,startedAt:string,lastDamageAt:string):DamageEncounter=>({id,character:"Tester",mobName,startedAt,lastDamageAt,totalDamage:1,meleeDamage:1,spellDamage:0,hitCount:1,maxHit:1,outcome:"active",sourceFile:"eqlog_Tester.txt",weapons:[],players:[]});
 
 describe("CH encounter history",()=>{
- it("groups calls by 15-second chain boundaries and assigns the nearest overlapping mob",()=>{
+ it("groups calls by 15-second chain boundaries and uses the explicitly named tank",()=>{
   const rows=buildClericChainEncounters([call(1,0),call(2,9),call(3,30)], [fight(1,"a dragon","2026-09-08 09:59:55","2026-09-08 10:00:12"),fight(2,"a giant","2026-09-08 10:00:25","2026-09-08 10:00:40")]);
-  expect(rows.map(row=>[row.targetMob,row.callCount,row.healerCount])).toEqual([["a giant",1,1],["a dragon",2,2]]);
+  expect(rows.map(row=>[row.targetMob,row.callCount,row.healerCount])).toEqual([["Tank",1,1],["Tank",2,2]]);
   expect(rows[1].averageGapSeconds).toBe(9);
  });
  it("ends an encounter at a slain-mob boundary even when the next call is within 15 seconds",()=>{

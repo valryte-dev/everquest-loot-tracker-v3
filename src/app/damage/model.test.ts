@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,damageEncounterSnapshotChanged,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
@@ -33,7 +33,7 @@ describe("cleric CH chain analytics",()=>{
    call(4,30,"Clerica",4),
   ];
   const summary=discordHealChainSummary(buildClericChainTimeline(source),"a mortiferous golem");
-  expect(summary).toContain("**Target:** a mortiferous golem");
+  expect(summary).toContain("**Tank:** a mortiferous golem");
   expect(summary).toContain("**4 calls - 2 anonymous healers - 30s elapsed**");
   expect(summary).toContain("Average gap: **10.0s**");
   expect(summary).toContain("Median gap: **10.0s**");
@@ -44,7 +44,7 @@ describe("cleric CH chain analytics",()=>{
    expect(summary).not.toContain(privateText);
   }
  });
- it("uses a 15-second inactivity boundary and the latest slain mob as a hard boundary",()=>{
+ it("uses a 15-second inactivity boundary without letting unrelated mob deaths clear the chain",()=>{
   const rows=buildClericChainTimeline([call(1,0,"Bakamore",1),call(2,15,"Clerica",2),call(3,31,"Bakamore",3)]);
   expect(rows.map(row=>row.session)).toEqual([0,0,1]);
   const encounter={
@@ -53,12 +53,23 @@ describe("cleric CH chain analytics",()=>{
    totalDamage:1,meleeDamage:1,spellDamage:0,hitCount:1,maxHit:1,
    outcome:"slain" as const,sourceFile:"eqlog_Youngman_P1999Green.txt",weapons:[],players:[],
   };
-  expect(latestHealChainBoundary([encounter],"Youngman",undefined)).toBe(Date.parse("2026-09-05T16:00:20"));
+  expect(latestHealChainBoundary([encounter],"Youngman",undefined)).toBe(0);
   expect(latestHealChainBoundary([encounter],"Other","2026-09-05T16:00:25")).toBe(Date.parse("2026-09-05T16:00:25"));
  });
 });
 
 describe("live DPS analytics",()=>{
+ it("detects when the live combat snapshot is newer than the damage page",()=>{
+  const base={
+   id:1,character:"Utrido",mobName:"Ran Walker",startedAt:"2026-09-16 15:00:00",
+   lastDamageAt:"2026-09-16 15:00:05",totalDamage:100,meleeDamage:100,spellDamage:0,
+   hitCount:2,maxHit:60,outcome:"active" as const,sourceFile:"eqlog_Utrido_P1999Green.txt",
+   weapons:[],players:[],
+  };
+  expect(damageEncounterSnapshotChanged([base],[base])).toBe(false);
+  expect(damageEncounterSnapshotChanged([base],[{...base,totalDamage:150,hitCount:3,lastDamageAt:"2026-09-16 15:00:06"}])).toBe(true);
+  expect(damageEncounterSnapshotChanged([], [base])).toBe(true);
+ });
  it("builds independent group and active-character rolling DPS",()=>{
   const points=buildLiveDpsSeries([
    event(1,0,"Youngman",100),

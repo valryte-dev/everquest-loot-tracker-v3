@@ -1,7 +1,10 @@
 use chrono::{DateTime, Local, Utc};
 use encoding_rs::WINDOWS_1252;
 use reqwest::blocking::Client;
-use rusqlite::{backup::Backup, params, Connection, OptionalExtension};
+use rusqlite::{
+    backup::{Backup, StepResult},
+    params, Connection, OptionalExtension,
+};
 use semver::Version;
 use serde_json::{json, Value};
 use std::{
@@ -17,7 +20,7 @@ use std::{
 use tauri::Emitter;
 use tiny_http::{Header, Response, Server};
 
-use super::data;
+use super::{data, model_pack};
 use crate::infrastructure::database::Database;
 
 const LATEST_RELEASE_API: &str =
@@ -455,16 +458,62 @@ fn validate_database(connection: &Connection) -> Result<(), String> {
 }
 
 pub fn backup(database: &Database) -> Result<Value, String> {
+    backup_with_progress(database, |_, _| {})
+}
+
+pub fn backup_with_progress(
+    database: &Database,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<Value, String> {
     let source_path = database_path(database)?;
     let backup_path = source_path.with_file_name(format!(
         "loot-tracker-backup-{}.db",
         Local::now().format("%Y%m%d-%H%M%S")
     ));
     let source = database.connect().map_err(|error| error.to_string())?;
-    online_backup(&source, &backup_path)?;
+    let mut destination = Connection::open(&backup_path).map_err(sql)?;
+    let backup = Backup::new(&source, &mut destination).map_err(sql)?;
+    loop {
+        let state = backup.step(256).map_err(sql)?;
+        let pages = backup.progress();
+        progress(
+            (pages.pagecount - pages.remaining).max(0) as u64,
+            pages.pagecount.max(0) as u64,
+        );
+        match state {
+            StepResult::Done => break,
+            StepResult::More | StepResult::Busy | StepResult::Locked => {
+                thread::sleep(Duration::from_millis(5))
+            }
+            _ => thread::sleep(Duration::from_millis(5)),
+        }
+    }
+    drop(backup);
+    drop(destination);
     let completed = Connection::open(&backup_path).map_err(sql)?;
     validate_database(&completed)?;
+    drop(completed);
+    prune_older_database_backups(&backup_path)?;
     Ok(json!({"path":backup_path.display().to_string()}))
+}
+
+fn prune_older_database_backups(current: &Path) -> Result<(), String> {
+    let directory = current
+        .parent()
+        .ok_or("The database backup folder could not be determined")?;
+    for entry in fs::read_dir(directory).map_err(err)? {
+        let entry = entry.map_err(err)?;
+        let path = entry.path();
+        if path == current || !path.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("loot-tracker-backup-") && name.ends_with(".db") {
+            fs::remove_file(&path).map_err(err)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn restore(database: &Database, backup_path: &str) -> Result<Value, String> {
@@ -521,6 +570,31 @@ pub fn start_web(database_path: PathBuf) {
                 let _=c.execute("INSERT INTO app_settings(key,value) VALUES('web_url','http://127.0.0.1:8765/') ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
             }
             for request in server.incoming_requests() {
+                if let Some(asset) = model_pack::read_asset(&db, request.url()) {
+                    let mut response = match asset {
+                        Ok((bytes, content_type)) => {
+                            let mut response = Response::from_data(bytes);
+                            if let Ok(header) =
+                                Header::from_bytes("Content-Type", content_type.as_bytes())
+                            {
+                                response = response.with_header(header);
+                            }
+                            if let Ok(header) = Header::from_bytes(
+                                "Cache-Control",
+                                "public, max-age=31536000, immutable",
+                            ) {
+                                response = response.with_header(header);
+                            }
+                            response
+                        }
+                        Err(error) => Response::from_string(error).with_status_code(404),
+                    };
+                    if let Ok(header) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
+                        response = response.with_header(header);
+                    }
+                    let _ = request.respond(response);
+                    continue;
+                }
                 let body = data::snapshot(&db)
                     .map(render_dashboard)
                     .unwrap_or_else(|e| format!("<h1>Loot Tracker</h1><pre>{}</pre>", escape(&e)));
@@ -691,7 +765,10 @@ fn sql(e: rusqlite::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auction_bytes, backup, output_directory, restore, version_is_newer, write_social};
+    use super::{
+        auction_bytes, backup, output_directory, prune_older_database_backups, restore,
+        version_is_newer, write_social,
+    };
     use crate::infrastructure::database::Database;
     use std::path::Path;
 
@@ -732,6 +809,33 @@ mod tests {
             )
             .unwrap();
         assert_eq!(restored, "before");
+    }
+
+    #[test]
+    fn automatic_database_backups_keep_only_the_current_validated_copy() {
+        let directory = tempfile::tempdir().unwrap();
+        let old_one = directory
+            .path()
+            .join("loot-tracker-backup-20260101-010101.db");
+        let old_two = directory
+            .path()
+            .join("loot-tracker-backup-20260202-020202.db");
+        let current = directory
+            .path()
+            .join("loot-tracker-backup-20260303-030303.db");
+        let recovery = directory
+            .path()
+            .join("loot-tracker-pre-restore-20260404-040404.db");
+        for path in [&old_one, &old_two, &current, &recovery] {
+            std::fs::write(path, b"test").unwrap();
+        }
+
+        prune_older_database_backups(&current).unwrap();
+
+        assert!(!old_one.exists());
+        assert!(!old_two.exists());
+        assert!(current.exists());
+        assert!(recovery.exists());
     }
     #[test]
     fn release_versions_are_compared_semantically() {

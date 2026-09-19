@@ -24,6 +24,8 @@ describe("spell activity rankings",()=>{
   expect(spellSourceLabel(activity(1,"Bakamore","Dawncall","item_click","Great Spear of Dawn"))).toBe("Item click - Great Spear of Dawn");
  });
  it("keeps a known item effect explicitly unattributed",()=>{
-  expect(spellSourceLabel(activity(2,"Unattributed","Curse of the Spirits","unknown","Spear of Fate"))).toBe("Unattributed spell - possible Spear of Fate item click");
+  expect(spellSourceLabel(activity(2,"Unattributed","Curse of the Spirits","unknown","Spear of Fate"))).toBe("Unattributed item click - Spear of Fate (Shaman epic)");
+  const[row]=rankSpellPlayers([],[activity(2,"Unattributed","Curse of the Spirits","unknown","Spear of Fate")]);
+  expect([row.name,row.itemClicks,row.unknown]).toEqual(["Unattributed",1,0]);
  });
 });

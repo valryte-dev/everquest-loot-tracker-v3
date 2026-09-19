@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "everquest-loot-tracker"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "chrono",
  "directories",
@@ -1139,6 +1139,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

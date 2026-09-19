@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::{fs, path::Path};
 
@@ -47,6 +47,37 @@ pub struct CleanupPreview {
     oldest_at: Option<String>,
     newest_at: Option<String>,
     encounter_summaries_preserved: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FightPurgePreview {
+    cutoff: String,
+    eligible_encounters: i64,
+    protected_encounters: i64,
+    outgoing_rows: i64,
+    incoming_rows: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectedFight {
+    id: i64,
+    character: String,
+    mob_name: String,
+    started_at: String,
+    ended_at: Option<String>,
+    total_damage: i64,
+    hit_count: i64,
+    outcome: String,
+    protected_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FightPurgeResult {
+    deleted_encounters: usize,
+    cutoff: Option<String>,
 }
 
 struct TableMeasure {
@@ -254,6 +285,229 @@ pub fn preview_combat_retention(
     })
 }
 
+pub fn preview_fight_purge(
+    database: &Database,
+    keep_days: u32,
+) -> Result<FightPurgePreview, String> {
+    validate_retention(keep_days)?;
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let modifier = format!("-{keep_days} days");
+    let cutoff: String = connection
+        .query_row("SELECT datetime('now',?)", [&modifier], |row| row.get(0))
+        .map_err(db_error)?;
+    let eligible_encounters = connection.query_row(
+        "SELECT COUNT(*) FROM damage_encounters WHERE outcome<>'active' AND is_protected=0 AND started_at<?",
+        [&cutoff], |row| row.get(0)).map_err(db_error)?;
+    let protected_encounters = connection.query_row(
+        "SELECT COUNT(*) FROM damage_encounters WHERE outcome<>'active' AND is_protected=1 AND started_at<?",
+        [&cutoff], |row| row.get(0)).map_err(db_error)?;
+    let outgoing_rows = connection.query_row(
+        "SELECT COUNT(*) FROM damage_events d JOIN damage_encounters e ON e.id=d.encounter_id WHERE e.outcome<>'active' AND e.is_protected=0 AND e.started_at<?",
+        [&cutoff], |row| row.get(0)).map_err(db_error)?;
+    let incoming_rows = connection.query_row(
+        "SELECT COUNT(*) FROM damage_received_events d JOIN damage_encounters e ON e.id=d.encounter_id WHERE e.outcome<>'active' AND e.is_protected=0 AND e.started_at<?",
+        [&cutoff], |row| row.get(0)).map_err(db_error)?;
+    Ok(FightPurgePreview {
+        cutoff,
+        eligible_encounters,
+        protected_encounters,
+        outgoing_rows,
+        incoming_rows,
+    })
+}
+
+pub fn protected_fights(database: &Database) -> Result<Vec<ProtectedFight>, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let mut statement = connection.prepare(
+        "SELECT id,character_name,mob_name,started_at,ended_at,total_damage,hit_count,outcome,COALESCE(protected_at,started_at)
+         FROM damage_encounters WHERE is_protected=1 ORDER BY started_at DESC,id DESC LIMIT 5000"
+    ).map_err(db_error)?;
+    let fights = statement
+        .query_map([], |row| {
+            Ok(ProtectedFight {
+                id: row.get(0)?,
+                character: row.get(1)?,
+                mob_name: row.get(2)?,
+                started_at: row.get(3)?,
+                ended_at: row.get(4)?,
+                total_damage: row.get(5)?,
+                hit_count: row.get(6)?,
+                outcome: row.get(7)?,
+                protected_at: row.get(8)?,
+            })
+        })
+        .map_err(db_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(db_error)?;
+    Ok(fights)
+}
+
+pub fn set_fight_protection(
+    database: &Database,
+    id: i64,
+    protected: bool,
+) -> Result<serde_json::Value, String> {
+    let _guard = database.writer_guard();
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let changed = connection.execute(
+        "UPDATE damage_encounters SET is_protected=?,protected_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id=? AND (?=0 OR outcome<>'active')",
+        params![protected, protected, id, protected]).map_err(db_error)?;
+    if changed == 0 {
+        return Err("Only completed combat fights can be protected".into());
+    }
+    Ok(serde_json::json!({"id":id,"protected":protected}))
+}
+
+pub fn purge_fights_with_progress(
+    database: &Database,
+    keep_days: u32,
+    mut progress: impl FnMut(usize, usize),
+) -> Result<FightPurgeResult, String> {
+    validate_retention(keep_days)?;
+    let _guard = database.writer_guard();
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let modifier = format!("-{keep_days} days");
+    let cutoff: String = connection
+        .query_row("SELECT datetime('now',?)", [&modifier], |row| row.get(0))
+        .map_err(db_error)?;
+    let total = connection.query_row(
+        "SELECT COUNT(*) FROM damage_encounters WHERE outcome<>'active' AND is_protected=0 AND started_at<?",
+        [&cutoff], |row| row.get::<_,i64>(0)).map_err(db_error)?.max(0) as usize;
+    let mut deleted = 0usize;
+    progress(0, total);
+    connection
+        .execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS purge_damage_encounter_ids(
+                 id INTEGER PRIMARY KEY
+             );",
+        )
+        .map_err(db_error)?;
+    loop {
+        let transaction = connection.transaction().map_err(db_error)?;
+        transaction
+            .execute("DELETE FROM purge_damage_encounter_ids", [])
+            .map_err(db_error)?;
+        let batch = transaction
+            .execute(
+                "INSERT INTO purge_damage_encounter_ids(id)
+                 SELECT id FROM damage_encounters
+                 WHERE outcome<>'active' AND is_protected=0 AND started_at<?
+                 ORDER BY started_at,id LIMIT 2000",
+                [&cutoff],
+            )
+            .map_err(db_error)?;
+        if batch == 0 {
+            transaction.commit().map_err(db_error)?;
+            break;
+        }
+
+        transaction.execute(
+            "INSERT OR IGNORE INTO purged_damage_encounter_ranges(
+                 source_file,first_source_offset,last_source_offset,character_name,mob_name,started_at,reason
+             )
+             SELECT encounter.source_file,encounter.first_source_offset,encounter.last_source_offset,
+                    encounter.character_name,encounter.mob_name,encounter.started_at,'retention'
+             FROM damage_encounters encounter
+             JOIN purge_damage_encounter_ids purge ON purge.id=encounter.id",
+            [],
+        ).map_err(db_error)?;
+
+        // Delete detail rows set-wise. Letting SQLite cascade from each parent encounter
+        // repeats foreign-key work thousands of times and is extremely slow on large logs.
+        // Proc rows go first because they can also reference DOT applications and events.
+        for table in [
+            "proc_occurrences",
+            "combat_spell_activity",
+            "damage_spell_summaries",
+            "dot_applications",
+            "damage_events",
+            "damage_received_events",
+            "damage_participant_summaries",
+            "damage_target_summaries",
+        ] {
+            transaction
+                .execute(
+                    &format!(
+                        "DELETE FROM {table} WHERE encounter_id IN \
+                         (SELECT id FROM purge_damage_encounter_ids)"
+                    ),
+                    [],
+                )
+                .map_err(db_error)?;
+        }
+        let removed = transaction
+            .execute(
+                "DELETE FROM damage_encounters WHERE id IN \
+                 (SELECT id FROM purge_damage_encounter_ids)",
+                [],
+            )
+            .map_err(db_error)?;
+        transaction.commit().map_err(db_error)?;
+        if removed != batch {
+            return Err(format!(
+                "Combat purge selected {batch} fights but removed {removed}; no further fights were changed"
+            ));
+        }
+        deleted += batch;
+        progress(deleted, total);
+    }
+    Ok(FightPurgeResult {
+        deleted_encounters: deleted,
+        cutoff: Some(cutoff),
+    })
+}
+
+pub fn delete_protected_fights(
+    database: &Database,
+    ids: &[i64],
+) -> Result<FightPurgeResult, String> {
+    if ids.is_empty() || ids.len() > 500 {
+        return Err("Choose between 1 and 500 protected fights".into());
+    }
+    let _guard = database.writer_guard();
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let transaction = connection.transaction().map_err(db_error)?;
+    let mut deleted = 0;
+    for id in ids {
+        tombstone_where(
+            &transaction,
+            "id=? AND is_protected=1 AND outcome<>'active'",
+            [id],
+        )?;
+        deleted += transaction
+            .execute(
+                "DELETE FROM damage_encounters WHERE id=? AND is_protected=1 AND outcome<>'active'",
+                [id],
+            )
+            .map_err(db_error)?;
+    }
+    transaction.commit().map_err(db_error)?;
+    Ok(FightPurgeResult {
+        deleted_encounters: deleted,
+        cutoff: None,
+    })
+}
+
+fn tombstone_where<P: rusqlite::Params>(
+    connection: &Connection,
+    clause: &str,
+    values: P,
+) -> Result<(), String> {
+    connection.execute(&format!(
+        "INSERT OR IGNORE INTO purged_damage_encounter_ranges(source_file,first_source_offset,last_source_offset,character_name,mob_name,started_at,reason)
+         SELECT source_file,first_source_offset,last_source_offset,character_name,mob_name,started_at,'retention' FROM damage_encounters WHERE {clause}"
+    ), values).map_err(db_error)?;
+    Ok(())
+}
+
+fn validate_retention(keep_days: u32) -> Result<(), String> {
+    if !(7..=3650).contains(&keep_days) {
+        Err("Retention must be between 7 and 3650 days".into())
+    } else {
+        Ok(())
+    }
+}
+
 fn preview_table(
     connection: &Connection,
     table: &str,
@@ -392,7 +646,10 @@ fn db_error(error: rusqlite::Error) -> String {
 }
 #[cfg(test)]
 mod tests {
-    use super::{preview_combat_retention, stats};
+    use super::{
+        delete_protected_fights, preview_combat_retention, preview_fight_purge, protected_fights,
+        purge_fights_with_progress, set_fight_protection, stats,
+    };
     use crate::infrastructure::database::Database;
 
     #[test]
@@ -445,5 +702,41 @@ mod tests {
             )
             .unwrap();
         assert_eq!(remaining, 4);
+    }
+
+    #[test]
+    fn fight_purge_preserves_protected_records_and_leaves_rescan_tombstones() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,total_damage,hit_count,outcome,source_file,first_source_offset,last_source_offset)
+             VALUES('Tester','purge mob',datetime('now','-400 days'),datetime('now','-400 days'),10,1,'slain','test.log',10,20),
+                   ('Tester','keep mob',datetime('now','-400 days'),datetime('now','-400 days'),20,1,'slain','test.log',30,40),
+                   ('Tester','recent mob',datetime('now','-10 days'),datetime('now','-10 days'),30,1,'slain','test.log',50,60)", [],).unwrap();
+        drop(connection);
+        set_fight_protection(&database, 2, true).unwrap();
+        let preview = preview_fight_purge(&database, 180).unwrap();
+        assert_eq!(preview.eligible_encounters, 1);
+        assert_eq!(preview.protected_encounters, 1);
+        let result = purge_fights_with_progress(&database, 180, |_, _| {}).unwrap();
+        assert_eq!(result.deleted_encounters, 1);
+        let connection = database.connect().unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(connection.query_row("SELECT COUNT(*) FROM purged_damage_encounter_ranges WHERE first_source_offset=10", [], |row| row.get::<_,i64>(0)).unwrap(), 1);
+        drop(connection);
+        let protected = protected_fights(&database).unwrap();
+        assert_eq!(protected.len(), 1);
+        assert_eq!(protected[0].mob_name, "keep mob");
+        let deleted = delete_protected_fights(&database, &[2]).unwrap();
+        assert_eq!(deleted.deleted_encounters, 1);
+        assert!(protected_fights(&database).unwrap().is_empty());
     }
 }

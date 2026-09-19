@@ -1,14 +1,18 @@
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
-import {DamageFighterBars,formatFighterDuration,type DamageFighterBarRow} from "./DamageFighterBars";
+import {calculateProcDps,DamageFighterBars,formatFighterDuration,type DamageFighterBarRow} from "./DamageFighterBars";
 
 const fighter:DamageFighterBarRow={
- name:"Asquatii",rank:1,totalDamage:750,dps:125,combatSeconds:6,contribution:100,
+ name:"Asquatii",rank:1,totalDamage:750,dps:125,procDps:24.1667,combatSeconds:6,contribution:100,
  incomingDamage:42,mine:true,shareDetail:"3 events",
  effects:{procCount:1,procDirectDamage:20,procDotDamage:125,spellCount:1,spellDirectDamage:0,spellDotDamage:625},
 };
 
 describe("shared damage fighter bars",()=>{
+ it("calculates proc DPS from direct and proc DoT damage without cast DoT damage",()=>{
+  expect(calculateProcDps(fighter.effects,6)).toBeCloseTo((20+125)/6);
+  expect(calculateProcDps(fighter.effects,0)).toBe(145);
+ });
  it("formats durations with compact units and no leading zero units",()=>{
   expect(formatFighterDuration(0)).toBe("0s");
   expect(formatFighterDuration(10)).toBe("10s");
@@ -30,6 +34,8 @@ describe("shared damage fighter bars",()=>{
   expect(html).toContain("42");
   expect(html).toContain("INCOMING DMG");
   expect(html).toContain("PROCS 1");
+  expect(html).toContain("24.2");
+  expect(html).toContain("PROC DPS");
   expect(html).toContain("SPELL 1");
   expect(html).toContain("ME");
  });

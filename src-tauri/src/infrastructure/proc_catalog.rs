@@ -165,7 +165,7 @@ mod tests {
     fn bundled_catalog_is_complete_and_resolves_canonical_ids() {
         let folder = tempdir().unwrap();
         let database = Database::open(folder.path().join("loot.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 32);
+        assert_eq!(database.migrate().unwrap(), 37);
         let connection = database.connect().unwrap();
         assert_eq!(
             connection

@@ -1,4 +1,4 @@
-export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "dot-lab" | "ch-lab" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "spells" | "gems" | "imports" | "items" | "database" | "system" | "logs" | "help" | "changes";
+export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "dot-lab" | "ch-lab" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "wardrobe" | "spells" | "gems" | "quest-items" | "imports" | "items" | "database" | "system" | "logs" | "help" | "changes";
 export type FeatureGroup = "Loot" | "Combat" | "Trading" | "Roster" | "Data" | "Application";
 export interface FeatureDefinition { key:FeatureKey; label:string; shortLabel:string; description:string; icon:string; phase:1|2|3|4; group:FeatureGroup }
 export const FEATURE_GROUPS:FeatureGroup[] = ["Loot", "Combat", "Trading", "Roster", "Data", "Application"];
@@ -25,4 +25,6 @@ export const FEATURES:FeatureDefinition[] = [
  {key:"logs",label:"Application Logs",shortLabel:"Logs",icon:"≡",phase:1,group:"Application",description:"Rolling structured diagnostics with levels, search, pause, copy and export."},
  {key:"help",label:"Help",shortLabel:"Help",icon:"?",phase:4,group:"Application",description:"Brief guides for every workflow in the application."},
  {key:"changes",label:"Change Log",shortLabel:"Change Log",icon:"↻",phase:4,group:"Application",description:"Release history and noteworthy behavior changes."},
+ {key:"quest-items",label:"Quest Item Readiness",shortLabel:"Quest Items",icon:"Q",phase:3,group:"Roster",description:"Roster-wide Plane of Sky, Velious armor, and epic quest component readiness from the P99 wiki catalog."},
+ {key:"wardrobe",label:"Wardrobe",shortLabel:"Wardrobe",icon:"W",phase:3,group:"Roster",description:"Build a race-, class-, and gender-aware outfit using the 3D model and a stat-filterable item catalog."},
 ];

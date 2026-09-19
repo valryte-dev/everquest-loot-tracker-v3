@@ -6,10 +6,9 @@ import type {DamageEncounter,DamageEncounterDetail,GlobalStatusSnapshot} from ".
 import {getDamageEncounterDetails,getGlobalStatus,getRevision} from "../../shared/backend";
 import {formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,summarizePlayerEffects} from "./meterModel";
 import {sortLiveEncountersByPlayerTarget} from "./model";
-import {DamageFighterBars,spellEffectTitle,type DamageFighterBarRow} from "./DamageFighterBars";
+import {calculateProcDps,DamageFighterBars,spellEffectTitle,type DamageFighterBarRow} from "./DamageFighterBars";
 import {DamageIncomingBars,IncomingDamageTotal} from "./DamageIncomingBars";
-import {DamageProcBars} from "./DamageProcBars";
-import {TrackedSpellsPanel} from "./DamageSpellActivity";
+import {DamageProcSpellStack} from "./DamageProcSpellStack";
 import {DamageTrendCharts} from "./DamageTrendCharts";
 
 const isDesktop=()=>"__TAURI_INTERNALS__" in window;
@@ -134,13 +133,15 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
   const mine=player.name.toLowerCase()===row.character.toLowerCase();
   const prior=shares.get(player.name);
   const effects=effectsByPlayer.get(player.name.toLowerCase());
+  const fighterEffects=effects?.effects||summarizePlayerEffects(row,[],player.name);
   return {
    name:player.name,rank:player.rank,totalDamage:player.totalDamage,dps:player.dps,
+   procDps:calculateProcDps(fighterEffects,duration),
    combatSeconds:participantCombatSeconds(player,encounterEnd),contribution:player.contribution,
    contributionDelta:prior===undefined?0:player.contribution-prior,
    incomingDamage:row.damageTargets?.find(target=>target.name.toLowerCase()===player.name.toLowerCase())?.totalDamage||0,
    mine,combatTimeTitle:`In combat since first hit at ${player.firstDamageAt}`,
-   effects:effects?.effects||summarizePlayerEffects(row,[],player.name),effectsTitle:effects?.title,
+   effects:fighterEffects,effectsTitle:effects?.title,
   };
  });
  return <article className={"meter-fight"+(embedded?" is-embedded":"")}>
@@ -152,8 +153,7 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
    <section className="meter-ranking-panel outgoing"><header><div><span>Outgoing</span><strong>Damage dealt</strong></div><b>{formatNumber(row.totalDamage)}</b></header><DamageFighterBars fighters={fighterRows}/></section>
    <section className="meter-ranking-panel incoming"><header><div><span>Incoming</span><strong>Damage taken</strong></div><IncomingDamageTotal totalDamage={row.incomingDamage||0} durationSeconds={duration}/></header><DamageIncomingBars targets={incomingTargets} activeCharacter={row.character}/></section>
   </div>
-  <DamageProcBars metrics={row.spellMetrics||[]}/>
-  {!embedded&&<TrackedSpellsPanel row={row}/>}
+  <DamageProcSpellStack row={row}/>
   <DamageTrendCharts events={detail?.events||[]} startedAt={row.startedAt} names={names} durationSeconds={duration}/>
  </article>;
 }

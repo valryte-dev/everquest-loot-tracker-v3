@@ -129,6 +129,63 @@ pub(super) fn set_preferred_target(
     }
     transaction.commit().map_err(|error| error.to_string())
 }
+
+pub(super) fn set_cleric_chain_target(
+    connection: &mut Connection,
+    character: &str,
+    first_call_id: i64,
+    encounter_id: Option<i64>,
+    manual_name: Option<&str>,
+) -> Result<(), String> {
+    let character = character.trim();
+    if character.is_empty() || first_call_id <= 0 {
+        return Err("A character and current CH chain are required to set the tank.".into());
+    }
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let target_name = if let Some(id) = encounter_id {
+        Some(transaction.query_row(
+            "SELECT mob_name FROM damage_encounters WHERE id=? AND character_name=? COLLATE NOCASE AND outcome='active'",
+            params![id, character],
+            |row| row.get::<_, String>(0),
+        ).optional().map_err(|error| error.to_string())?.ok_or_else(||
+            "The selected CH tank is no longer available for this character.".to_string()
+        )?)
+    } else {
+        manual_name
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    transaction.execute(
+        "DELETE FROM app_settings WHERE key IN ('ch_target_character','ch_target_encounter_id','ch_target_first_call_id','ch_target_name')",
+        [],
+    ).map_err(|error| error.to_string())?;
+    if let Some(target_name) = target_name {
+        for (key, value) in [
+            ("ch_target_character", character.to_string()),
+            ("ch_target_first_call_id", first_call_id.to_string()),
+            ("ch_target_name", target_name),
+        ] {
+            transaction
+                .execute(
+                    "INSERT INTO app_settings(key,value) VALUES(?,?)",
+                    params![key, value],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        if let Some(id) = encounter_id {
+            transaction
+                .execute(
+                    "INSERT INTO app_settings(key,value) VALUES('ch_target_encounter_id',?)",
+                    [id.to_string()],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    transaction.commit().map_err(|error| error.to_string())
+}
 #[allow(clippy::too_many_arguments)]
 pub(super) fn insert_or_get_damage_encounter(
     connection: &Connection,
@@ -740,6 +797,52 @@ mod tests {
         let remaining: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM app_settings WHERE key LIKE 'damage_target_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
+    }
+    #[test]
+    fn cleric_chain_target_is_scoped_to_character_and_chain() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let mut connection = database.connect().unwrap();
+        connection.execute(
+            "INSERT INTO damage_encounters(character_name,mob_name,started_at,last_damage_at,source_file,first_source_offset,last_source_offset)
+             VALUES('Cleric','Raid Target','2026-09-08 10:00:00','2026-09-08 10:00:07','test.log',1,2)",
+            [],
+        ).unwrap();
+        let id = connection.last_insert_rowid();
+
+        assert!(set_cleric_chain_target(&mut connection, "Other", 44, Some(id), None).is_err());
+        set_cleric_chain_target(&mut connection, "Cleric", 44, Some(id), None).unwrap();
+        let selected: (String, String, String, String) = connection
+            .query_row(
+                "SELECT
+             (SELECT value FROM app_settings WHERE key='ch_target_character'),
+             (SELECT value FROM app_settings WHERE key='ch_target_first_call_id'),
+             (SELECT value FROM app_settings WHERE key='ch_target_encounter_id'),
+             (SELECT value FROM app_settings WHERE key='ch_target_name')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            selected,
+            (
+                "Cleric".into(),
+                "44".into(),
+                id.to_string(),
+                "Raid Target".into()
+            )
+        );
+
+        set_cleric_chain_target(&mut connection, "Cleric", 44, None, None).unwrap();
+        let remaining: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM app_settings WHERE key LIKE 'ch_target_%'",
                 [],
                 |row| row.get(0),
             )

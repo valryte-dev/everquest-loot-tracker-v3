@@ -16,7 +16,7 @@ export function ClericChainHistory({encounters}:{encounters:ClericChainEncounter
  const load=async(row:ClericHealReplayEntry)=>{setWorking(row.path);setError("");try{const file:ClericHealReplayFile=await loadClericHealReplayFile(row.path);setReplay(encounterFromReplay(file,row.path))}catch(reason){setError(String(reason))}finally{setWorking("")}};
  const columns:Column<ClericChainEncounter>[]=[
   {key:"time",label:"Started",value:row=>row.startedAt,render:row=>when(row.startedAt)},
-  {key:"mob",label:"Target Mob",value:row=>row.targetMob,render:row=><button className="ch-encounter-link" onClick={()=>setDetail(row)}>{row.targetMob}</button>},
+  {key:"mob",label:"Tank",value:row=>row.targetMob,render:row=><button className="ch-encounter-link" onClick={()=>setDetail(row)}>{row.targetMob}</button>},
   {key:"character",label:"Log Toon",value:row=>row.character},
   {key:"calls",label:"Calls",value:row=>row.callCount},
   {key:"healers",label:"Healers",value:row=>row.healerCount},
@@ -27,7 +27,7 @@ export function ClericChainHistory({encounters}:{encounters:ClericChainEncounter
  ];
  const savedColumns:Column<ClericHealReplayEntry>[]=[
   {key:"time",label:"Saved",value:row=>row.savedAt,render:row=>when(row.savedAt)},
-  {key:"mob",label:"Target Mob",value:row=>row.targetMob},
+  {key:"mob",label:"Tank",value:row=>row.targetMob},
   {key:"character",label:"Log Toon",value:row=>row.character},
   {key:"calls",label:"Calls",value:row=>row.callCount},
   {key:"healers",label:"Healers",value:row=>row.healerCount},
@@ -56,10 +56,10 @@ function CallTable({encounter,rows=encounter.calls}:{encounter:ClericChainEncoun
  return <DataTable rows={rows} columns={columns} rowKey={row=>row.id} empty="No calls at this replay position."/>;
 }
 
-function EncounterStats({encounter}:{encounter:ClericChainEncounter}){return <div className="ch-replay-stats"><div><span>Target mob</span><strong>{encounter.targetMob}</strong></div><div><span>Calls</span><strong>{encounter.callCount}</strong></div><div><span>Healers</span><strong>{encounter.healerCount}</strong></div><div><span>Duration</span><strong>{formatCombatClock(encounter.durationSeconds)}</strong></div><div><span>Average gap</span><strong>{encounter.averageGapSeconds.toFixed(1)}s</strong></div><div><span>Longest gap</span><strong>{encounter.longestGapSeconds.toFixed(1)}s</strong></div></div>}
+function EncounterStats({encounter}:{encounter:ClericChainEncounter}){return <div className="ch-replay-stats"><div><span>Tank</span><strong>{encounter.targetMob}</strong></div><div><span>Calls</span><strong>{encounter.callCount}</strong></div><div><span>Healers</span><strong>{encounter.healerCount}</strong></div><div><span>Duration</span><strong>{formatCombatClock(encounter.durationSeconds)}</strong></div><div><span>Average gap</span><strong>{encounter.averageGapSeconds.toFixed(1)}s</strong></div><div><span>Longest gap</span><strong>{encounter.longestGapSeconds.toFixed(1)}s</strong></div></div>}
 
 function ClericConsistency({encounter}:{encounter:ClericChainEncounter}){
- if(encounter.status!=="concluded")return <section className="ch-consistency pending"><strong>Per-cleric consistency pending</strong><span>Standard deviation is finalized after 15 seconds without a CH call or when the target mob dies.</span></section>;
+ if(encounter.status!=="concluded")return <section className="ch-consistency pending"><strong>Per-cleric consistency pending</strong><span>Standard deviation is finalized after 15 seconds without a CH call or when the encounter ends.</span></section>;
  const columns:Column<ClericChainEncounter["clericStats"][number]>[]=[
   {key:"cleric",label:"Cleric",value:row=>row.name,render:row=><strong>{row.name}</strong>},
   {key:"calls",label:"Calls",value:row=>row.callCount},

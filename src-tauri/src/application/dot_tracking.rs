@@ -16,6 +16,7 @@ use std::time::{Duration as StdDuration, Instant};
 const GLOW_WINDOW_SECONDS: i64 = 3;
 const CAST_FALLBACK_WINDOW_SECONDS: i64 = 15;
 const CAST_RESOLUTION_TOLERANCE_MILLISECONDS: i64 = 2_000;
+const UNIDENTIFIED_PLAYER: &str = "Unidentified player";
 
 struct CompiledProfile {
     profile: CombatSpellProfile,
@@ -33,6 +34,7 @@ struct RecentCast {
     happened_at: NaiveDateTime,
     expected_at: Option<NaiveDateTime>,
     spell_name: String,
+    explicit_proc_caster: Option<String>,
 }
 #[derive(Clone)]
 struct RecentNonMelee {
@@ -55,6 +57,8 @@ struct PendingProc {
     damage_per_tick: Option<u64>,
     tick_interval_seconds: u32,
     tick_count: Option<u32>,
+    candidate_caster: Option<String>,
+    allow_observed_caster: bool,
 }
 
 pub struct DotTracker {
@@ -107,6 +111,17 @@ impl DotTracker {
         };
         self.refresh_profiles();
         let preceding_non_melee = self.recent_non_melee.take();
+        // Named proc-caster clues are intentionally single-use and adjacent-only. Carry the
+        // clue into this line, then clear it before processing anything else so an unrelated
+        // intervening log line cannot cause a later landing to be misattributed.
+        let explicit_proc_clue = self
+            .recent_cast
+            .as_ref()
+            .filter(|cast| cast.explicit_proc_caster.is_some())
+            .cloned();
+        if explicit_proc_clue.is_some() {
+            self.recent_cast = None;
+        }
         let mut changed = 0;
         if let Some(pending) = self.pending_proc.take() {
             if pending.source == source {
@@ -138,10 +153,24 @@ impl DotTracker {
                     _ => None,
                 };
                 if let Some(combat_actor) = combat_actor {
-                    let caster = if pending.preceding_non_melee.is_some() {
+                    let logged_proc_damage_confirms_local = pending.allow_observed_caster
+                        && pending
+                            .preceding_non_melee
+                            .as_ref()
+                            .is_some_and(|damage| pending.direct_damage == Some(damage.amount));
+                    let caster = if logged_proc_damage_confirms_local
+                        || combat_actor.eq_ignore_ascii_case(character)
+                    {
                         character
-                    } else {
+                    } else if pending.allow_observed_caster
+                        || pending
+                            .candidate_caster
+                            .as_ref()
+                            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(combat_actor))
+                    {
                         combat_actor
+                    } else {
+                        UNIDENTIFIED_PLAYER
                     };
                     changed += record_proc_occurrence(
                         connection,
@@ -196,6 +225,15 @@ impl DotTracker {
                 happened_at,
                 expected_at,
                 spell_name: spell_name.clone(),
+                explicit_proc_caster: None,
+            });
+        }
+        if let Some((caster_name, spell_name)) = explicit_proc_caster_clue(body) {
+            self.recent_cast = Some(RecentCast {
+                happened_at,
+                expected_at: Some(happened_at),
+                spell_name,
+                explicit_proc_caster: Some(caster_name),
             });
         }
         if matches!(event, Some(LogEvent::SpellInterrupted { .. })) {
@@ -237,6 +275,9 @@ impl DotTracker {
                 .map(|(profile, _)| profile.spell_name.clone())
                 .collect::<Vec<_>>();
             let direct_cast_name = self.recent_cast.as_ref().and_then(|cast| {
+                if cast.explicit_proc_caster.is_some() {
+                    return None;
+                }
                 matches
                     .iter()
                     .find(|(profile, _)| {
@@ -267,13 +308,22 @@ impl DotTracker {
                         .find(|(profile, _)| profile.spell_name.eq_ignore_ascii_case(name))
                 })
                 .cloned()
-                .or_else(|| (matches.len() == 1).then(|| matches[0].clone()));
+                .or_else(|| (matches.len() == 1).then(|| matches[0].clone()))
+                .or_else(|| unidentified_root_proc(body));
 
             if let Some((profile, target)) = selected {
                 let direct_cast = direct_cast_name
                     .as_deref()
                     .is_some_and(|name| name.eq_ignore_ascii_case(&profile.spell_name));
                 let has_glow = glow_caster.is_some();
+                let explicit_proc_caster = explicit_proc_clue.as_ref().and_then(|clue| {
+                    let age = happened_at
+                        .signed_duration_since(clue.happened_at)
+                        .num_seconds();
+                    (clue.spell_name.eq_ignore_ascii_case(&profile.spell_name) && age == 0)
+                        .then(|| clue.explicit_proc_caster.clone())
+                        .flatten()
+                });
                 if has_glow || direct_cast {
                     let (attribution_method, source_kind, source_name) =
                         if let Some(glow) = glow_caster {
@@ -297,6 +347,32 @@ impl DotTracker {
                         profile.tick_interval_seconds,
                         profile.tick_count,
                     )?;
+                } else if let Some(caster) = explicit_proc_caster {
+                    let source_name = proc_catalog::resolve_source(
+                        connection,
+                        character,
+                        std::slice::from_ref(&profile.spell_name),
+                    )
+                    .ok()
+                    .flatten()
+                    .map(|value| value.item_name)
+                    .or(profile.observed_source_name.clone());
+                    self.pending_proc = Some(PendingProc {
+                        source: source.to_owned(),
+                        source_offset,
+                        happened_at,
+                        target_name: target,
+                        spell_name: profile.spell_name,
+                        source_name,
+                        direct_damage: profile.direct_damage,
+                        preceding_non_melee: None,
+                        damage_per_tick: profile.damage_per_tick,
+                        tick_interval_seconds: profile.tick_interval_seconds,
+                        tick_count: profile.tick_count,
+                        candidate_caster: Some(caster),
+                        allow_observed_caster: false,
+                    });
+                    self.recent_cast = None;
                 } else {
                     let matched_damage = preceding_non_melee.clone().filter(|damage| {
                         damage.source == source
@@ -342,6 +418,10 @@ impl DotTracker {
                             damage_per_tick: profile.damage_per_tick,
                             tick_interval_seconds: profile.tick_interval_seconds,
                             tick_count: profile.tick_count,
+                            candidate_caster: None,
+                            allow_observed_caster: profile.observed_source_kind.as_deref()
+                                == Some("proc_only")
+                                || is_root_entwinement_landing(body),
                         });
                     }
                 }
@@ -385,6 +465,8 @@ impl DotTracker {
                         damage_per_tick: None,
                         tick_interval_seconds: 6,
                         tick_count: None,
+                        candidate_caster: None,
+                        allow_observed_caster: false,
                     });
                 }
             }
@@ -518,13 +600,67 @@ fn cast_resolution_matches(
         ),
     }
 }
+
+fn explicit_proc_caster_clue(body: &str) -> Option<(String, String)> {
+    static ESSENCE_TAP_CLUE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let captures = ESSENCE_TAP_CLUE
+        .get_or_init(|| {
+            Regex::new(
+                r#"(?i)^(?P<caster>[A-Za-z][A-Za-z'\x60-]*) says ['"]\s*Ahhh,\s*I feel much better now\\?\.{3}\s*['"]$"#,
+            )
+            .expect("Essence Tap caster clue must compile")
+        })
+        .captures(body.trim())?;
+    Some((
+        captures.name("caster")?.as_str().to_owned(),
+        "Essence Tap".to_owned(),
+    ))
+}
+
+fn is_root_entwinement_landing(body: &str) -> bool {
+    root_entwinement_target(body).is_some()
+}
+
+fn root_entwinement_target(body: &str) -> Option<String> {
+    static ROOT_LANDING: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    ROOT_LANDING
+        .get_or_init(|| {
+            Regex::new(r"(?i)^(?P<target>.+)'s feet become entwined\.$")
+                .expect("root landing must compile")
+        })
+        .captures(body.trim())?
+        .name("target")
+        .map(|value| value.as_str().trim().to_owned())
+}
+
+fn unidentified_root_proc(body: &str) -> Option<(CombatSpellProfile, String)> {
+    Some((
+        CombatSpellProfile {
+            spell_name: "Unidentified root proc".to_owned(),
+            cast_on_other: "Someone's feet become entwined.".to_owned(),
+            damage_kind: "non_damage".to_owned(),
+            direct_damage: None,
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: None,
+            observed_source_kind: Some("proc_only".to_owned()),
+            observed_source_name: None,
+        },
+        root_entwinement_target(body)?,
+    ))
+}
+
 fn compile_profile(profile: CombatSpellProfile) -> Option<CompiledProfile> {
     let escaped = regex::escape(profile.cast_on_other.trim());
     let someone = Regex::new("(?i)someone").expect("valid placeholder regex");
     if !someone.is_match(&escaped) {
         return None;
     }
-    let source = someone.replace(&escaped, "(?P<target>.+?)");
+    let source = someone
+        .replace(&escaped, "(?P<target>.+?)")
+        .replace(" 's", "'s")
+        .replace("'s", r"\s*'s");
     Regex::new(&format!("(?i)^{source}$"))
         .ok()
         .map(|landing| CompiledProfile { profile, landing })
@@ -1037,6 +1173,21 @@ mod tests {
             observed_source_name: None,
         }
     }
+
+    fn root_profile(name: &str, damage: u64) -> CombatSpellProfile {
+        CombatSpellProfile {
+            spell_name: name.into(),
+            cast_on_other: "Someone 's feet become entwined.".into(),
+            damage_kind: "direct".into(),
+            direct_damage: Some(damage),
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: Some(2.5),
+            observed_source_kind: Some("proc_only".into()),
+            observed_source_name: None,
+        }
+    }
     fn curse_of_spirits_click_profile() -> CombatSpellProfile {
         CombatSpellProfile {
             spell_name: "Curse of the Spirits".into(),
@@ -1148,6 +1299,12 @@ mod tests {
                     event.as_ref(),
                 )
                 .unwrap();
+            if offset == 1 {
+                let premature_count: i64 = connection
+                    .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| row.get(0))
+                    .unwrap();
+                assert_eq!(premature_count, 0);
+            }
         }
         let activity: (String, String, Option<String>) = connection
             .query_row(
@@ -1352,7 +1509,141 @@ mod tests {
     }
 
     #[test]
-    fn next_same_target_attack_attributes_observed_proc_but_intervening_lines_cancel() {
+    fn hundred_blows_attributes_local_and_named_dodged_proc_sequences() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut profile = hundred_blows_profile();
+        profile.direct_damage = Some(120);
+        profile.observed_source_kind = Some("proc_only".into());
+        profile.observed_source_name = Some("Tranquil Staff".into());
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(profile).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let lines = [
+            "[Sat Sep 12 15:23:26 2026] hexbone skeleton was hit by non-melee for 120 points of damage.",
+            "[Sat Sep 12 15:23:26 2026] Hexbone skeleton begins to spin from one hundred blows.",
+            "[Sat Sep 12 15:23:26 2026] Sakkai crushes hexbone skeleton for 53 points of damage.",
+            "[Sat Sep 12 15:23:35 2026] Hexbone skeleton begins to spin from one hundred blows.",
+            "[Sat Sep 12 15:23:35 2026] Sakkai tries to crush hexbone skeleton, but hexbone skeleton dodges!",
+        ];
+        for (index, line) in lines.iter().enumerate() {
+            let event = crate::domain::log_events::parse_log_event(line, "Valmezz");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Valmezz_P1999Green.txt",
+                    index as i64 + 1,
+                    line,
+                    "Valmezz",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+
+        let occurrences = connection
+            .prepare(
+                "SELECT caster_name,direct_damage FROM proc_occurrences ORDER BY landing_source_offset",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            occurrences,
+            vec![("Valmezz".into(), 120), ("Sakkai".into(), 120)]
+        );
+        let sakkai_damage: i64 = connection
+            .query_row(
+                "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Sakkai'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sakkai_damage, 120);
+    }
+
+    #[test]
+    fn divine_might_landing_uses_the_next_same_target_attacker() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let profile = CombatSpellProfile {
+            spell_name: "Divine Might Effect".into(),
+            cast_on_other: "Someone is struck by a surge of Divine Might.".into(),
+            damage_kind: "direct".into(),
+            direct_damage: Some(65),
+            damage_per_tick: None,
+            tick_count: None,
+            tick_interval_seconds: 6,
+            casting_time_seconds: None,
+            observed_source_kind: Some("proc_only".into()),
+            observed_source_name: Some("Divine Might".into()),
+        };
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(profile).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (index, line) in [
+            "[Sat Sep 12 15:44:59 2026] A helot skeleton is struck by a surge of Divine Might.",
+            "[Sat Sep 12 15:44:59 2026] Balbazak pierces a helot skeleton for 109 points of damage.",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let event = crate::domain::log_events::parse_log_event(line, "Valmezz");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Valmezz_P1999Green.txt",
+                    index as i64 + 1,
+                    line,
+                    "Valmezz",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let occurrence: (String, String, i64) = connection
+            .query_row(
+                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            occurrence,
+            ("Balbazak".into(), "Divine Might Effect".into(), 65)
+        );
+        let source_name: String = connection
+            .query_row("SELECT source_name FROM combat_spell_activity", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(source_name, "Divine Might");
+    }
+
+    #[test]
+    fn next_same_target_attack_confirms_observed_proc_without_guessing_the_caster() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1459,7 +1750,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             attributions,
-            vec![("A frost giant".into(), "Legiteral".into(), "proc".into())]
+            vec![(
+                "A frost giant".into(),
+                "Unidentified player".into(),
+                "proc".into()
+            )]
         );
         let activity_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM combat_spell_activity", [], |row| {
@@ -1473,6 +1768,148 @@ mod tests {
             .unwrap();
         assert_eq!((activity_count, proc_count), (1, 1));
     }
+    #[test]
+    fn root_landing_uses_the_next_same_target_attacker_as_the_likely_proccer() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: ["Engulfing Roots", "Ensnaring Roots"]
+                .into_iter()
+                .map(|name| compile_profile(root_profile(name, 160)).unwrap())
+                .collect(),
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let lines = [
+            "[Fri Sep 11 22:53:46 2026] A sepulcher spirit's feet become entwined.",
+            "[Fri Sep 11 22:53:46 2026] Tokuo slashes a sepulcher spirit for 174 points of damage.",
+        ];
+        for (offset, raw) in lines.iter().enumerate() {
+            let event = crate::domain::log_events::parse_log_event(raw, "Derpscleric");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Derpscleric.txt",
+                    offset as i64,
+                    raw,
+                    "Derpscleric",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let proc: (String, String, i64) = connection
+            .query_row(
+                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(proc, ("Tokuo".into(), "Unidentified root proc".into(), 0));
+    }
+
+    #[test]
+    fn active_root_cast_is_not_counted_as_a_proc() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: ["Engulfing Roots", "Ensnaring Roots"]
+                .into_iter()
+                .map(|name| compile_profile(root_profile(name, 160)).unwrap())
+                .collect(),
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        for (offset, raw) in [
+            "[Fri Sep 11 22:53:43 2026] You begin casting Engulfing Roots.",
+            "[Fri Sep 11 22:53:46 2026] A sepulcher spirit's feet become entwined.",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let event = crate::domain::log_events::parse_log_event(raw, "Derpscleric");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Derpscleric.txt",
+                    offset as i64,
+                    raw,
+                    "Derpscleric",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let source_kind: String = connection
+            .query_row("SELECT source_kind FROM combat_spell_activity", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((proc_count, source_kind), (0, "direct".into()));
+    }
+
+    #[test]
+    fn essence_tap_self_effect_and_following_attack_identify_the_named_proc_caster() {
+        use crate::infrastructure::database::Database;
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spells.db")).unwrap();
+        let mut tracker = DotTracker {
+            catalog,
+            profiles: vec![compile_profile(essence_tap_profile()).unwrap()],
+            loaded_at: Some(Instant::now()),
+            recent_glow: None,
+            recent_cast: None,
+            recent_non_melee: None,
+            pending_proc: None,
+        };
+        let connection = database.connect().unwrap();
+        let lines = [
+            "[Fri Sep 11 21:09:22 2026] Tokuo says 'Ahhh, I feel much better now\\...'",
+            "[Fri Sep 11 21:09:22 2026] A bottomless devourer staggers.",
+            "[Fri Sep 11 21:09:22 2026] Tokuo slashes a bottomless devourer for 174 points of damage.",
+        ];
+        for (offset, raw) in lines.iter().enumerate() {
+            let event = crate::domain::log_events::parse_log_event(raw, "Derpscleric");
+            tracker
+                .process_line(
+                    &connection,
+                    "eqlog_Derpscleric.txt",
+                    offset as i64,
+                    raw,
+                    "Derpscleric",
+                    event.as_ref(),
+                )
+                .unwrap();
+        }
+        let caster: String = connection
+            .query_row("SELECT caster_name FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(caster, "Tokuo");
+    }
+
     #[test]
     fn attack_confirmed_direct_proc_records_count_and_catalog_damage_once() {
         use crate::infrastructure::database::Database;

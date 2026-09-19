@@ -47,6 +47,8 @@ INSERT OR IGNORE INTO spell_source_rules(spell_name,observed_source_kind,source_
 VALUES('Curse of the Spirits','item_click_only','Spear of Fate');
 INSERT OR IGNORE INTO spell_source_rules(spell_name,observed_source_kind,source_name)
 VALUES('One Hundred Blows','proc_only','Tranquil Staff');
+INSERT OR IGNORE INTO spell_source_rules(spell_name,observed_source_kind,source_name)
+VALUES('Divine Might Effect','proc_only','Divine Might');
 "#;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
