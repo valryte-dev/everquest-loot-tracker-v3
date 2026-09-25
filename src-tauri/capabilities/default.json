@@ -4,7 +4,8 @@
   "description": "V3 main desktop window",
   "windows": [
     "main",
-    "damage-meter"
+    "damage-meter",
+    "current-fight"
   ],
   "platforms": [
     "windows",
@@ -28,6 +29,7 @@
     "core:webview:allow-create-webview-window",
     "core:window:allow-set-focus",
     "core:window:allow-show",
-    "core:window:allow-set-always-on-top"
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-close"
   ]
 }

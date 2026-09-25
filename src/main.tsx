@@ -5,8 +5,10 @@ import { DamageMeterWindow } from "./app/damage/DamageMeterWindow";
 import "./styles/tokens.css";
 import "./styles/app.css";
 
+const widget=new URLSearchParams(window.location.search).get("widget");
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {new URLSearchParams(window.location.search).get("widget")==="damage-meter"?<DamageMeterWindow/>:<App />}
+    {widget==="damage-meter"?<DamageMeterWindow/>:widget==="current-fight"?<DamageMeterWindow focusCurrent/>:<App />}
   </StrictMode>,
 );

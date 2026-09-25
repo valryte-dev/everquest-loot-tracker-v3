@@ -15,6 +15,38 @@ export const WARDROBE_STATS:{key:WardrobeStatKey;label:string}[]=[
  {key:"damage",label:"Weapon damage"},{key:"delay",label:"Delay"},
 ];
 
+export type WardrobeChooserStatKey=WardrobeStatKey|"weight"|"ratio";
+export const WARDROBE_CHOOSER_STATS:{key:WardrobeChooserStatKey;label:string}[]=[
+ {key:"weight",label:"WT"},{key:"ac",label:"AC"},{key:"hp",label:"HP"},{key:"mana",label:"MANA"},
+ {key:"strength",label:"STR"},{key:"stamina",label:"STA"},{key:"agility",label:"AGI"},{key:"dexterity",label:"DEX"},
+ {key:"intelligence",label:"INT"},{key:"wisdom",label:"WIS"},{key:"charisma",label:"CHA"},
+ {key:"magicResist",label:"MR"},{key:"fireResist",label:"FR"},{key:"coldResist",label:"CR"},{key:"diseaseResist",label:"DR"},{key:"poisonResist",label:"PR"},
+ {key:"attack",label:"ATK"},{key:"haste",label:"HST"},{key:"manaRegen",label:"MREG"},{key:"damageShield",label:"DS"},
+ {key:"damage",label:"DMG"},{key:"delay",label:"DLY"},{key:"ratio",label:"RAT"},
+];
+export type WardrobeTradeability="all"|"tradable"|"no-drop";
+export const filterByTradeability=(items:WardrobeCatalogItem[],tradeability:WardrobeTradeability)=>tradeability==="all"?items:items.filter(item=>tradeability==="no-drop"?item.noDrop:!item.noDrop);
+
+export type WeaponHandedness="all"|"1h"|"2h";
+const ONE_HANDED_ITEM_TYPES=new Set([0,2,3,45]);
+const TWO_HANDED_ITEM_TYPES=new Set([1,4,35]);
+export const weaponHandedness=(item:WardrobeCatalogItem):Exclude<WeaponHandedness,"all">|null=>ONE_HANDED_ITEM_TYPES.has(item.itemType??-1)?"1h":TWO_HANDED_ITEM_TYPES.has(item.itemType??-1)?"2h":null;
+export const filterByWeaponHandedness=(items:WardrobeCatalogItem[],handedness:WeaponHandedness)=>handedness==="all"?items:items.filter(item=>weaponHandedness(item)===handedness);
+export const weaponRatio=(item:WardrobeCatalogItem)=>item.damage>0&&item.delay>0?item.damage/item.delay:0;
+
+export type WardrobeSortDirection="asc"|"desc";
+export interface WardrobeStatSort {key:WardrobeChooserStatKey;direction:WardrobeSortDirection}
+const wardrobeSortValue=(item:WardrobeCatalogItem,key:WardrobeChooserStatKey)=>key==="ratio"?weaponRatio(item):item[key];
+export function sortByWardrobeStats(items:WardrobeCatalogItem[],sorts:WardrobeStatSort[]){
+ if(!sorts.length)return items;
+ return [...items].sort((left,right)=>{
+  for(const sort of sorts){
+   const difference=wardrobeSortValue(left,sort.key)-wardrobeSortValue(right,sort.key);
+   if(difference)return sort.direction==="desc"?-difference:difference;
+  }
+  return left.name.localeCompare(right.name,undefined,{numeric:true,sensitivity:"base"});
+ });
+}
 export const SLOT_BITS:Record<EquipmentSlotKey,number>={
  "left-ear":2,head:4,face:8,"right-ear":16,neck:32,shoulders:64,arms:128,back:256,
  "left-wrist":512,"right-wrist":1024,range:2048,hands:4096,primary:8192,secondary:16384,

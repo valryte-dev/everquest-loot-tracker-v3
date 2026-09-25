@@ -1,5 +1,6 @@
 import {useEffect,useState} from "react";
 import type {InventoryItem} from "../../shared/contracts";
+import {ItemHover} from "../items/ItemHover";
 import {CharacterModelViewer} from "./CharacterModelViewer";
 import {characterClassesForRace,characterRacesForClass,isCharacterRaceClassCompatible,type CharacterModelProfile} from "./characterProfile";
 
@@ -57,10 +58,10 @@ export function itemIconPath(iconId?:number):string|undefined{
 
 export function ItemNameWithIcon({item,compact=false}:{item:InventoryItem;compact?:boolean}){
  const icon=itemIconPath(item.iconId);
- return <span className={"inventory-item-name"+(compact?" compact":"")}>
+ return <ItemHover itemName={item.itemName} itemId={item.itemId} iconId={item.iconId} valuePp={item.valuePp} focusable={!compact}><span className={"inventory-item-name"+(compact?" compact":"")}>
   <span className="inventory-item-icon">{icon?<img src={icon} alt="" loading="lazy"/>:<i aria-hidden="true">?</i>}</span>
   <span><strong>{item.itemName.trim()||"Empty"}</strong>{!compact&&item.itemId&&<small>ID {item.itemId}</small>}</span>
- </span>;
+ </span></ItemHover>;
 }
 
 function EquipmentSlotCard({slot,item,onSelect,active=false}:{slot:EquipmentSlot;item?:InventoryItem;onSelect?:(slot:EquipmentSlot)=>void;active?:boolean}){
@@ -80,6 +81,7 @@ function SlotGroup({className,slots,items,onSlotClick,activeSlot}:{className:str
 }
 
 export function EquipmentPaperDollView({items,character,profile,onSlotClick,activeSlot}:{items:InventoryItem[];character:string;profile:CharacterModelProfile;onSlotClick?:(slot:EquipmentSlot)=>void;activeSlot?:EquipmentSlotKey}){
+ const[animationControls,setAnimationControls]=useState<HTMLSpanElement|null>(null);
  const mapped=new Map<EquipmentSlotKey,InventoryItem>();
  const unmatched:InventoryItem[]=[];
  const slotOccurrences=new Map<string,number>();
@@ -96,8 +98,8 @@ export function EquipmentPaperDollView({items,character,profile,onSlotClick,acti
    <div className="paperdoll-center">
     <SlotGroup className="paperdoll-crown" slots={PAPERDOLL_TOP_SLOTS} items={mapped} onSlotClick={onSlotClick} activeSlot={activeSlot}/>
     <section className="character-model-stage" aria-label={`Character model area for ${character}`}>
-     <header><span>Character model</span><strong>{character||"No character selected"}</strong></header>
-     <CharacterModelViewer character={character} profile={profile} items={items}/>
+     <header><div className="character-model-title"><span>Character model</span><strong>{character||"No character selected"}</strong></div><span className="character-animation-host" ref={setAnimationControls}/></header>
+     <CharacterModelViewer character={character} profile={profile} items={items} controlsTarget={animationControls}/>
      <footer><span>{mapped.size} / 21 slots equipped</span><span>Interactive EverQuest model</span></footer>
     </section>
     <SlotGroup className="paperdoll-weapons" slots={PAPERDOLL_WEAPON_SLOTS} items={mapped} onSlotClick={onSlotClick} activeSlot={activeSlot}/>
@@ -108,7 +110,7 @@ export function EquipmentPaperDollView({items,character,profile,onSlotClick,acti
  </>;
 }
 
-export function EquipmentPaperDoll({items,character,profile,level,parsedLevel,levelSource,onProfileChange,onLevelChange}:{items:InventoryItem[];character:string;profile:CharacterModelProfile;level?:number;parsedLevel?:number;levelSource:"logs"|"manual"|"unknown";onProfileChange:(profile:CharacterModelProfile)=>void;onLevelChange:(level?:number)=>void}){
+export function EquipmentPaperDoll({items,character,profile,level,parsedLevel,levelSource,onProfileChange,onLevelChange,onCopyToWardrobe,copyingToWardrobe=false,wardrobeMessage=""}:{items:InventoryItem[];character:string;profile:CharacterModelProfile;level?:number;parsedLevel?:number;levelSource:"logs"|"manual"|"unknown";onProfileChange:(profile:CharacterModelProfile)=>void;onLevelChange:(level?:number)=>void;onCopyToWardrobe?:()=>void;copyingToWardrobe?:boolean;wardrobeMessage?:string}){
  const[levelDraft,setLevelDraft]=useState(level?String(level):"");
  useEffect(()=>setLevelDraft(level?String(level):""),[character,level]);
  const parsedDraft=Number(levelDraft),validLevel=Number.isInteger(parsedDraft)&&parsedDraft>=1&&parsedDraft<=255;
@@ -121,8 +123,10 @@ export function EquipmentPaperDoll({items,character,profile,level,parsedLevel,le
    <label><span>Gender</span><select value={profile.gender} onChange={event=>onProfileChange({...profile,gender:event.target.value as "m"|"f"})}><option value="m">Male</option><option value="f">Female</option></select></label>
    <label className="character-level-field"><span>Level</span><input type="number" min="1" max="255" inputMode="numeric" value={levelDraft} placeholder="Unknown" onChange={event=>setLevelDraft(event.target.value)}/></label>
    <button className="primary" disabled={!validLevel||parsedDraft===level} onClick={()=>onLevelChange(parsedDraft)}>Save level</button>
+   {onCopyToWardrobe&&<button type="button" disabled={!items.length||copyingToWardrobe} onClick={onCopyToWardrobe}>{copyingToWardrobe?"Copying...":"Copy to Wardrobe"}</button>}
    {levelSource==="manual"&&<button title={parsedLevel?`Return to parsed level ${parsedLevel}`:"Remove the manual level"} onClick={()=>onLevelChange(undefined)}>{parsedLevel?`Use parsed ${parsedLevel}`:"Clear override"}</button>}
    <small>{levelSource==="logs"?"Level from the latest parsed log event":levelSource==="manual"?"Manual level override":"No level event has been parsed yet"}</small>
+   {wardrobeMessage&&<small className="character-wardrobe-message" role="status">{wardrobeMessage}</small>}
   </section>
   <EquipmentPaperDollView items={items} character={character} profile={profile}/>
  </div>;

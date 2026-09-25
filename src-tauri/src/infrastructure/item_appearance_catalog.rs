@@ -27,7 +27,7 @@ static CATALOG: LazyLock<ItemAppearanceCatalog> = LazyLock::new(|| {
         let _planner_id = fields.next();
         let peq_id = fields.next().and_then(|value| value.parse::<i64>().ok());
         let name = fields.next().unwrap_or_default().trim();
-        let material = fields
+        let source_material = fields
             .next()
             .and_then(|value| value.parse().ok())
             .unwrap_or(0);
@@ -36,6 +36,17 @@ static CATALOG: LazyLock<ItemAppearanceCatalog> = LazyLock::new(|| {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
+        // The P99 export leaves Velious custom helms at material 0 and marks
+        // them with IT240. Normalize that client sentinel at the catalog
+        // boundary so every inventory consumer sees the same appearance.
+        let material = if id_file
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("IT240"))
+        {
+            240
+        } else {
+            source_material
+        };
         let color = fields
             .next()
             .and_then(|value| value.parse().ok())
@@ -130,5 +141,12 @@ mod tests {
                 .item_type,
             Some(8)
         );
+    }
+
+    #[test]
+    fn normalizes_velious_custom_helm_markers() {
+        let custom = appearance(Some(2612), "Custom Cowl of Mortality").unwrap();
+        assert_eq!(custom.id_file.as_deref(), Some("IT240"));
+        assert_eq!(custom.material, 240);
     }
 }

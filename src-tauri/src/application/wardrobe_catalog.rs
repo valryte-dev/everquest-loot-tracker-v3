@@ -15,6 +15,7 @@ pub struct WardrobeCatalogItem {
     name: String,
     icon_id: Option<i64>,
     item_type: Option<i64>,
+    no_drop: bool,
     slots: i64,
     classes: i64,
     races: i64,
@@ -159,6 +160,7 @@ fn read_item(
         material: row.get(34)?,
         id_file: row.get(35)?,
         color: row.get(36)?,
+        no_drop: row.get(37)?,
         set_names: set_names.get(&id).cloned().unwrap_or_default(),
     })
 }
@@ -167,7 +169,7 @@ const ITEM_SELECT: &str =
     "SELECT id, NULLIF(peqId,0), name, NULLIF(icon,0), itemType, slots, classes, races,
  weight, ac, hp, mana, astr, asta, aagi, adex, aint, awis, acha, mr, fr, cr, dr, pr, attack, haste,
  manaregen, damageshield, damage, delay, clickName, procName, wornName, focusName,
- NULLIF(material,0), NULLIF(idfile,''), color FROM items";
+ NULLIF(material,0), NULLIF(idfile,''), color, nodrop=0 FROM items";
 
 fn catalog_path() -> Result<PathBuf, String> {
     CATALOG_PATH
@@ -212,6 +214,29 @@ fn load(slot_bit: i64, class_bit: i64, race_bit: i64) -> Result<Vec<WardrobeCata
         })
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+fn load_item(item_id: Option<i64>, item_name: &str) -> Result<Option<WardrobeCatalogItem>, String> {
+    let name = item_name.trim();
+    if item_id.is_none() && name.is_empty() {
+        return Ok(None);
+    }
+    let connection = Connection::open_with_flags(
+        catalog_path()?,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("Could not open the embedded Wardrobe catalog: {error}"))?;
+    let set_names = set_names_by_item();
+    let sql = format!(
+        "{ITEM_SELECT}
+         WHERE (?1 IS NOT NULL AND (id=?1 OR peqId=?1)) OR name=?2 COLLATE NOCASE
+         ORDER BY CASE WHEN peqId=?1 THEN 0 WHEN id=?1 THEN 1 ELSE 2 END
+         LIMIT 1"
+    );
+    connection
+        .query_row(&sql, (item_id, name), |row| read_item(row, &set_names))
+        .optional()
         .map_err(|error| error.to_string())
 }
 
@@ -279,6 +304,16 @@ pub async fn wardrobe_catalog_items(
 }
 
 #[tauri::command]
+pub async fn wardrobe_catalog_item(
+    item_id: Option<i64>,
+    item_name: String,
+) -> Result<Option<WardrobeCatalogItem>, String> {
+    tauri::async_runtime::spawn_blocking(move || load_item(item_id, &item_name))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub fn wardrobe_catalog_sets() -> Vec<WardrobeSetSummary> {
     sets()
 }
@@ -296,7 +331,7 @@ pub async fn wardrobe_catalog_set_items(
 
 #[cfg(test)]
 mod tests {
-    use super::{load, load_set, sets};
+    use super::{load, load_item, load_set, sets};
 
     #[test]
     fn filters_the_embedded_catalog_by_slot_and_exposes_weapon_stats() {
@@ -304,6 +339,24 @@ mod tests {
         assert!(!primary.is_empty());
         assert!(primary.iter().all(|item| item.slots & 8192 != 0));
         assert!(primary.iter().any(|item| item.damage > 0 && item.delay > 0));
+    }
+
+    #[test]
+    fn resolves_one_item_for_hover_details_by_name() {
+        let item = load_item(None, "Fungus Covered Scale Tunic")
+            .unwrap()
+            .expect("fungi should exist in the embedded catalog");
+        assert_eq!(item.name, "Fungus Covered Scale Tunic");
+        assert_eq!(item.ac, 21);
+        assert!(!item.worn_name.is_empty());
+    }
+
+    #[test]
+    fn normalizes_the_inverted_eq_nodrop_flag() {
+        let tradable = load_item(None, "Tranquil Staff").unwrap().unwrap();
+        let no_drop = load_item(None, "Spear of Fate").unwrap().unwrap();
+        assert!(!tradable.no_drop);
+        assert!(no_drop.no_drop);
     }
 
     #[test]

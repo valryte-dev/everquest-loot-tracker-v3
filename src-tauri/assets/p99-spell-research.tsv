@@ -1,0 +1,276 @@
+class_name	level	spell_name	trivial	research_only	availability	source_url	component_name	icon_id	quantity	component_kind
+Enchanter	16	Levitate	22	0	Yes	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 23	1005	2	page
+Enchanter	16	Disempower	22	0	Yes	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 24	1005	2	page
+Enchanter	16	Mesmerization	22	1	No	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 26	1005	2	page
+Enchanter	20	Berserker Strength	42	1	No	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 30	1005	2	page
+Enchanter	20	Color Shift	42	1	No	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 312	1005	2	page
+Enchanter	20	Endure Magic	42	0	Yes	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 375	1005	2	page
+Enchanter	24	Strip Enchantment	62	1	No	https://wiki.project1999.com/Research	Part of Tasarin's Grimoire Pg. 390	1005	2	page
+Enchanter	24	Tepid Deeds	62	1	No	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 8	869	1	page
+Enchanter	24	Tepid Deeds	62	1	No	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 9	869	1	page
+Enchanter	24	Invigor	62	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 16	869	1	page
+Enchanter	24	Invigor	62	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg.17	869	1	page
+Enchanter	29	Ultravision	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 43	869	1	page
+Enchanter	29	Ultravision	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 44	869	1	page
+Enchanter	29	Nullify Magic	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 67	869	1	page
+Enchanter	29	Nullify Magic	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 68	869	1	page
+Enchanter	29	Enstill	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 75	869	1	page
+Enchanter	29	Enstill	95	0	Yes	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 76	869	1	page
+Enchanter	29	Feedback	95	1	No	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 108	869	1	page
+Enchanter	29	Feedback	95	1	No	https://wiki.project1999.com/Research	Velishoul's Tome Pg. 109	869	1	page
+Enchanter	34	Insipid Weakness	122	1	No	https://wiki.project1999.com/Research	Salil's Writ Pg. 60	1005	2	page
+Enchanter	34	Radiant Visage	122	1	No	https://wiki.project1999.com/Research	Salil's Writ Pg. 64	1005	2	page
+Enchanter	34	Mana Sieve	122	1	No	https://wiki.project1999.com/Research	Salil's Writ Pg. 90	1005	2	page
+Enchanter	39	Resist Magic	142	0	Yes	https://wiki.project1999.com/Research	Salil's Writ Pg. 153	1005	2	page
+Enchanter	39	Gravity Flux	142	1	No	https://wiki.project1999.com/Research	Salil's Writ Pg. 174	1005	2	page
+Enchanter	39	Immobilize	142	0	Yes	https://wiki.project1999.com/Research	Salil's Writ Pg. 282	1005	2	page
+Enchanter	39	Mind Wipe	142	1	No	https://wiki.project1999.com/Research	Salil's Writ Pg. 288	1005	2	page
+Enchanter	44	Pillage Enchantment	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 35	869	1	page
+Enchanter	44	Pillage Enchantment	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 36	869	1	page
+Enchanter	44	Color Skew	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 115	869	1	page
+Enchanter	44	Color Skew	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 116	869	1	page
+Enchanter	44	Shiftless Deeds	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 300	869	1	page
+Enchanter	44	Shiftless Deeds	162	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 301	869	1	page
+Enchanter	44	Extinguish Fatigue	162	0	Yes	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 351	869	1	page
+Enchanter	44	Extinguish Fatigue	162	0	Yes	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 352	869	1	page
+Enchanter	49	Allure	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 378	869	1	page
+Enchanter	49	Allure	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 379	869	1	page
+Enchanter	49	Paralyzing Earth	182	0	Unknown	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 400	869	1	page
+Enchanter	49	Paralyzing Earth	182	0	Unknown	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 401	869	1	page
+Enchanter	49	Blanket of Forgetfulness	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 415	869	1	page
+Enchanter	49	Blanket of Forgetfulness	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 416	869	1	page
+Enchanter	49	Reoccurring Amnesia	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 449	869	1	page
+Enchanter	49	Reoccurring Amnesia	182	1	No	https://wiki.project1999.com/Research	Nilitim's Grimoire Pg. 450	869	1	page
+Magician	16	Summon Heatstone	21	0	True	https://wiki.project1999.com/Research	Words of the Element	869	1	word
+Magician	16	Summon Heatstone	21	0	True	https://wiki.project1999.com/Research	Spell: Elemental Armor		1	spell
+Magician	16	Summon Heatstone	21	0	True	https://wiki.project1999.com/Research	Bloodstone	947	1	other
+Magician	16	Minor Summoning: Air	22	0	True	https://wiki.project1999.com/Research	Words of Tyranny	869	1	word
+Magician	16	Minor Summoning: Air	22	0	True	https://wiki.project1999.com/Research	Spell: Elemental: Air		1	spell
+Magician	16	Minor Summoning: Air	22	0	True	https://wiki.project1999.com/Research	Aviak Feather	514	1	other
+Magician	16	Minor Summoning: Earth	22	0	True	https://wiki.project1999.com/Research	Words of Tyranny	869	1	word
+Magician	16	Minor Summoning: Earth	22	0	True	https://wiki.project1999.com/Research	Spell: Elemental: Earth		1	spell
+Magician	16	Minor Summoning: Earth	22	0	True	https://wiki.project1999.com/Research	Small Brick of Ore	1135	1	other
+Magician	16	Minor Summoning: Fire	22	0	True	https://wiki.project1999.com/Research	Words of Tyranny	869	1	word
+Magician	16	Minor Summoning: Fire	22	0	True	https://wiki.project1999.com/Research	Spell: Elemental: Fire		1	spell
+Magician	16	Minor Summoning: Fire	22	0	True	https://wiki.project1999.com/Research	Halas Heater	979	1	other
+Magician	16	Minor Summoning: Water	22	0	True	https://wiki.project1999.com/Research	Words of Tyranny	869	1	word
+Magician	16	Minor Summoning: Water	22	0	True	https://wiki.project1999.com/Research	Spell: Elemental: Water		1	spell
+Magician	16	Minor Summoning: Water	22	0	True	https://wiki.project1999.com/Research	Shark Skin	814	1	other
+Magician	20	Lesser Summoning: Air	41	0	True	https://wiki.project1999.com/Research	Words of Dominion	869	1	word
+Magician	20	Lesser Summoning: Air	41	0	True	https://wiki.project1999.com/Research	Spell: Minor Summoning: Air		1	spell
+Magician	20	Lesser Summoning: Air	41	0	True	https://wiki.project1999.com/Research	Pearl Shard	972	1	other
+Magician	20	Lesser Summoning: Earth	41	0	True	https://wiki.project1999.com/Research	Words of Dominion	869	1	word
+Magician	20	Lesser Summoning: Earth	41	0	True	https://wiki.project1999.com/Research	Spell: Minor Summoning: Earth		1	spell
+Magician	20	Lesser Summoning: Earth	41	0	True	https://wiki.project1999.com/Research	Topaz	954	1	other
+Magician	20	Lesser Summoning: Fire	41	0	True	https://wiki.project1999.com/Research	Words of Dominion	869	1	word
+Magician	20	Lesser Summoning: Fire	41	0	True	https://wiki.project1999.com/Research	Spell: Minor Summoning: Fire		1	spell
+Magician	20	Lesser Summoning: Fire	41	0	True	https://wiki.project1999.com/Research	Jade Shard	952	1	other
+Magician	20	Lesser Summoning: Water	41	0	True	https://wiki.project1999.com/Research	Words of Dominion	869	1	word
+Magician	20	Lesser Summoning: Water	41	0	True	https://wiki.project1999.com/Research	Spell: Minor Summoning: Water		1	spell
+Magician	20	Lesser Summoning: Water	41	0	True	https://wiki.project1999.com/Research	Ice of Velious	972	1	other
+Magician	24	Cornucopia	62	1	False	https://wiki.project1999.com/Research	Words of Transcendence	869	1	word
+Magician	24	Cornucopia	62	1	False	https://wiki.project1999.com/Research	Spell: Summon Food		1	spell
+Magician	24	Cornucopia	62	1	False	https://wiki.project1999.com/Research	Loaf of Bread	537	1	other
+Magician	24	Everfount	62	1	False	https://wiki.project1999.com/Research	Words of Transcendence	869	1	word
+Magician	24	Everfount	62	1	False	https://wiki.project1999.com/Research	Spell: Summon Drink		1	spell
+Magician	24	Everfount	62	1	False	https://wiki.project1999.com/Research	Water Flask	584	1	other
+Magician	24	Summoning: Air	62	1	False	https://wiki.project1999.com/Research	Words of Dimension	869	1	word
+Magician	24	Summoning: Air	62	1	False	https://wiki.project1999.com/Research	Spell: Lesser Summoning: Air		1	spell
+Magician	24	Summoning: Air	62	1	False	https://wiki.project1999.com/Research	Pearl Shard	972	1	other
+Magician	24	Summoning: Earth	62	0	True	https://wiki.project1999.com/Research	Words of Dimension	869	1	word
+Magician	24	Summoning: Earth	62	0	True	https://wiki.project1999.com/Research	Spell: Lesser Summoning: Earth		1	spell
+Magician	24	Summoning: Earth	62	0	True	https://wiki.project1999.com/Research	Glove of Rallos Zek	518	1	other
+Magician	24	Summoning: Fire	62	1	False	https://wiki.project1999.com/Research	Words of Dimension	869	1	word
+Magician	24	Summoning: Fire	62	1	False	https://wiki.project1999.com/Research	Spell: Lesser Summoning: Fire		1	spell
+Magician	24	Summoning: Fire	62	1	False	https://wiki.project1999.com/Research	Jade Shard	952	1	other
+Magician	24	Summoning: Water	62	1	False	https://wiki.project1999.com/Research	Words of Dimension	869	1	word
+Magician	24	Summoning: Water	62	1	False	https://wiki.project1999.com/Research	Spell: Lesser Summoning: Water		1	spell
+Magician	24	Summoning: Water	62	1	False	https://wiki.project1999.com/Research	Ice of Velious	972	1	other
+Magician	29	Summon Coldstone	82	0	True	https://wiki.project1999.com/Research	Words of Sight	869	1	word
+Magician	29	Summon Coldstone	82	0	True	https://wiki.project1999.com/Research	Spell: Summon Heatstone		1	spell
+Magician	29	Summon Coldstone	82	0	True	https://wiki.project1999.com/Research	Eye of Serilis	943	1	other
+Magician	29	Greater Summoning: Air	82	0	True	https://wiki.project1999.com/Research	Words of Coercion	869	1	word
+Magician	29	Greater Summoning: Air	82	0	True	https://wiki.project1999.com/Research	Spell: Summoning: Air		1	spell
+Magician	29	Greater Summoning: Air	82	0	True	https://wiki.project1999.com/Research	The Scent of Marr	599	1	other
+Magician	29	Greater Summoning: Earth	82	1	False	https://wiki.project1999.com/Research	Words of Coercion	869	1	word
+Magician	29	Greater Summoning: Earth	82	1	False	https://wiki.project1999.com/Research	Spell: Summoning: Earth		1	spell
+Magician	29	Greater Summoning: Earth	82	1	False	https://wiki.project1999.com/Research	Glove of Rallos Zek	518	1	other
+Magician	29	Greater Summoning: Fire	82	0	True	https://wiki.project1999.com/Research	Words of Coercion	869	1	word
+Magician	29	Greater Summoning: Fire	82	0	True	https://wiki.project1999.com/Research	Spell: Summoning: Fire		1	spell
+Magician	29	Greater Summoning: Fire	82	0	True	https://wiki.project1999.com/Research	Breath of Solusek	688	1	other
+Magician	29	Greater Summoning: Water	82	1	False	https://wiki.project1999.com/Research	Words of Coercion	869	1	word
+Magician	29	Greater Summoning: Water	82	1	False	https://wiki.project1999.com/Research	Spell: Summoning: Water		1	spell
+Magician	29	Greater Summoning: Water	82	1	False	https://wiki.project1999.com/Research	Flame of Vox	706	1	other
+Magician	34	Nullify Magic	122	0	True	https://wiki.project1999.com/Research	Words of Detention	869	1	word
+Magician	34	Nullify Magic	122	0	True	https://wiki.project1999.com/Research	Spell: Cancel Magic		1	spell
+Magician	34	Nullify Magic	122	0	True	https://wiki.project1999.com/Research	Blood of Velious	697	1	other
+Magician	34	Minor Conjuration: Air	122	1	False	https://wiki.project1999.com/Research	Words of Duress	869	1	word
+Magician	34	Minor Conjuration: Air	122	1	False	https://wiki.project1999.com/Research	Spell: Greater Summoning: Air		1	spell
+Magician	34	Minor Conjuration: Air	122	1	False	https://wiki.project1999.com/Research	The Scent of Marr	599	1	other
+Magician	34	Minor Conjuration: Fire	122	1	False	https://wiki.project1999.com/Research	Words of Duress	869	1	word
+Magician	34	Minor Conjuration: Fire	122	1	False	https://wiki.project1999.com/Research	Spell: Greater Summoning: Fire		1	spell
+Magician	34	Minor Conjuration: Fire	122	1	False	https://wiki.project1999.com/Research	Breath of Solusek	688	1	other
+Magician	39	Dagger of Symbols	142	0	True	https://wiki.project1999.com/Research	Words of Collection (Azia)	864	1	word
+Magician	39	Dagger of Symbols	142	0	True	https://wiki.project1999.com/Research	Dagger	592	1	other
+Magician	39	Summon Ring of Flight	142	0	True	https://wiki.project1999.com/Research	Words of Collection (Azia)	864	1	word
+Magician	39	Summon Ring of Flight	142	0	True	https://wiki.project1999.com/Research	Star Rose Quartz	950	1	other
+Magician	39	Lesser Conjuration: Earth	142	1	False	https://wiki.project1999.com/Research	Words of Convocation	869	1	word
+Magician	39	Lesser Conjuration: Earth	142	1	False	https://wiki.project1999.com/Research	Spell: Minor Conjuration: Earth		1	spell
+Magician	39	Lesser Conjuration: Earth	142	1	False	https://wiki.project1999.com/Research	Glove of Rallos Zek	518	1	other
+Magician	39	Lesser Conjuration: Water	142	1	False	https://wiki.project1999.com/Research	Words of Convocation	869	1	word
+Magician	39	Lesser Conjuration: Water	142	1	False	https://wiki.project1999.com/Research	Spell: Minor Conjuration: Water		1	spell
+Magician	39	Lesser Conjuration: Water	142	1	False	https://wiki.project1999.com/Research	Flame of Vox	706	1	other
+Magician	44	Conjuration: Air	162	1	False	https://wiki.project1999.com/Research	Words of Incarceration	869	1	word
+Magician	44	Conjuration: Air	162	1	False	https://wiki.project1999.com/Research	Spell: Lesser Conjuration: Air		1	spell
+Magician	44	Conjuration: Air	162	1	False	https://wiki.project1999.com/Research	The Scent of Marr	599	1	other
+Magician	44	Conjuration: Earth	162	1	False	https://wiki.project1999.com/Research	Words of Incarceration	869	1	word
+Magician	44	Conjuration: Earth	162	1	False	https://wiki.project1999.com/Research	Spell: Lesser Conjuration: Earth		1	spell
+Magician	44	Conjuration: Earth	162	1	False	https://wiki.project1999.com/Research	Essence of Rathe	836	1	other
+Magician	44	Conjuration: Water	162	1	False	https://wiki.project1999.com/Research	Words of Incarceration	869	1	word
+Magician	44	Conjuration: Water	162	1	False	https://wiki.project1999.com/Research	Spell: Lesser Conjuration: Water		1	spell
+Magician	44	Conjuration: Water	162	1	False	https://wiki.project1999.com/Research	Tears of Prexus	699	1	other
+Magician	44	Conjuration: Fire	162	0	True	https://wiki.project1999.com/Research	Words of Incarceration	869	1	word
+Magician	44	Conjuration: Fire	162	0	True	https://wiki.project1999.com/Research	Spell: Lesser Conjuration: Fire		1	spell
+Magician	44	Conjuration: Fire	162	0	True	https://wiki.project1999.com/Research	Breath of Ro	836	1	other
+Magician	49	Greater Conjuration: Air	182	1	False	https://wiki.project1999.com/Research	Words of Bondage	896	1	word
+Magician	49	Greater Conjuration: Air	182	1	False	https://wiki.project1999.com/Research	Spell: Conjuration: Air		1	spell
+Magician	49	Greater Conjuration: Air	182	1	False	https://wiki.project1999.com/Research	Wing of Xegony	753	1	other
+Magician	49	Greater Conjuration: Fire	182	1	False	https://wiki.project1999.com/Research	Words of Bondage	896	1	word
+Magician	49	Greater Conjuration: Fire	182	1	False	https://wiki.project1999.com/Research	Spell: Conjuration: Fire		1	spell
+Magician	49	Greater Conjuration: Fire	182	1	False	https://wiki.project1999.com/Research	Breath of Ro	836	1	other
+Magician	49	Greater Conjuration: Water	182	1	False	https://wiki.project1999.com/Research	Words of Bondage	896	1	word
+Magician	49	Greater Conjuration: Water	182	1	False	https://wiki.project1999.com/Research	Spell: Conjuration: Water		1	spell
+Magician	49	Greater Conjuration: Water	182	1	False	https://wiki.project1999.com/Research	Tears of Prexus	699	1	other
+Magician	49	Greater Conjuration: Earth	182	0	True	https://wiki.project1999.com/Research	Words of Bondage	896	1	word
+Magician	49	Greater Conjuration: Earth	182	0	True	https://wiki.project1999.com/Research	Spell: Conjuration: Earth		1	spell
+Magician	49	Greater Conjuration: Earth	182	0	True	https://wiki.project1999.com/Research	Essence of Rathe	836	1	other
+Necromancer	16	Banshee Aura	21	0	Unknown	https://wiki.project1999.com/Research	Words of Derivation	869	1	word
+Necromancer	16	Banshee Aura	21	0	Unknown	https://wiki.project1999.com/Research	Words of Eradication	869	1	word
+Necromancer	16	Voice Graft	21	1	No	https://wiki.project1999.com/Research	Words of Possession	869	1	word
+Necromancer	16	Voice Graft	21	1	No	https://wiki.project1999.com/Research	Words of the Spoken	869	1	word
+Necromancer	16	Hungry Earth	21	1	No	https://wiki.project1999.com/Research	Words of Materials	869	1	word
+Necromancer	16	Hungry Earth	21	1	No	https://wiki.project1999.com/Research	Words of Spirit	869	1	word
+Necromancer	16	Restless Bones	21	0	Unknown	https://wiki.project1999.com/Research	Words of Reviviscence	869	1	word
+Necromancer	16	Restless Bones	21	0	Unknown	https://wiki.project1999.com/Research	Words of the Sentient (Azia)	869	1	word
+Necromancer	16	Feign Death	26	0	Unknown	https://wiki.project1999.com/Research	Words of Imitation	869	1	word
+Necromancer	16	Feign Death	26	0	Unknown	https://wiki.project1999.com/Research	Words of Resolution	869	1	word
+Necromancer	20	Harmshield	41	1	No	https://wiki.project1999.com/Research	Words of Refuge	869	1	word
+Necromancer	20	Harmshield	41	1	No	https://wiki.project1999.com/Research	Words of Absorption	869	1	word
+Necromancer	20	Identify	41	0	Unknown	https://wiki.project1999.com/Research	Words of Enlightenment	869	1	word
+Necromancer	20	Identify	41	0	Unknown	https://wiki.project1999.com/Research	Words of Anthology	869	1	word
+Necromancer	20	Shadow Vortex	41	0	Unknown	https://wiki.project1999.com/Research	Words of Imitation	869	1	word
+Necromancer	20	Shadow Vortex	41	0	Unknown	https://wiki.project1999.com/Research	Words of Dissolution	869	1	word
+Necromancer	20	Animate Dead	41	0	Unknown	https://wiki.project1999.com/Research	Words of the Extinct	869	1	word
+Necromancer	20	Animate Dead	41	0	Unknown	https://wiki.project1999.com/Research	Words of the Quickening	869	1	word
+Necromancer	20	Word of Shadow	41	0	Unknown	https://wiki.project1999.com/Research	Words of Cazic-Thule	869	1	word
+Necromancer	20	Word of Shadow	41	0	Unknown	https://wiki.project1999.com/Research	Words of Radiance	869	1	word
+Necromancer	24	Shadow Sight	62	0	Unknown	https://wiki.project1999.com/Research	Words of Discernment	869	1	word
+Necromancer	24	Shadow Sight	62	0	Unknown	https://wiki.project1999.com/Research	Words of Eventide	869	1	word
+Necromancer	24	Intensify Death	62	0	No (Quest)	https://wiki.project1999.com/Research	Words of the Sentient (Beza)	869	1	word
+Necromancer	24	Intensify Death	62	0	No (Quest)	https://wiki.project1999.com/Research	Words of Recluse	869	1	word
+Necromancer	24	Intensify Death	62	0	No (Quest)	https://wiki.project1999.com/Research	Words of Absorption	869	1	word
+Necromancer	24	Breath of the Dead	62	0	Unknown	https://wiki.project1999.com/Research	Words of Cloudburst	869	1	word
+Necromancer	24	Breath of the Dead	62	0	Unknown	https://wiki.project1999.com/Research	Words of Mistbreath	869	1	word
+Necromancer	24	Breath of the Dead	62	0	Unknown	https://wiki.project1999.com/Research	Words of Cazic-Thule	869	1	word
+Necromancer	24	Haunting Corpse	62	1	No	https://wiki.project1999.com/Research	Words of Possession	869	1	word
+Necromancer	24	Haunting Corpse	62	1	No	https://wiki.project1999.com/Research	Words of Detachment	869	1	word
+Necromancer	24	Haunting Corpse	62	1	No	https://wiki.project1999.com/Research	Words of Allure	869	1	word
+Necromancer	29	Summon Dead	87	0	Unknown	https://wiki.project1999.com/Research	Words of Possession	869	1	word
+Necromancer	29	Summon Dead	87	0	Unknown	https://wiki.project1999.com/Research	Words of Haunting	869	1	word
+Necromancer	29	Summon Dead	87	0	Unknown	https://wiki.project1999.com/Research	Words of Rupturing	869	1	word
+Necromancer	29	Renew Bones	93+	1	No	https://wiki.project1999.com/Research	Words of Purification	869	1	word
+Necromancer	29	Renew Bones	93+	1	No	https://wiki.project1999.com/Research	Words of the Incorporeal	869	1	word
+Necromancer	29	Renew Bones	93+	1	No	https://wiki.project1999.com/Research	Words of Acquisition (Azia)	869	1	word
+Necromancer	29	Vampiric Curse	95	0	Unknown	https://wiki.project1999.com/Research	Words of Possession	869	1	word
+Necromancer	29	Vampiric Curse	95	0	Unknown	https://wiki.project1999.com/Research	Words of Dissemination	869	1	word
+Necromancer	29	Vampiric Curse	95	0	Unknown	https://wiki.project1999.com/Research	Words of Parasitism	869	1	word
+Necromancer	34	Invoke Fear	120+	0	Unknown	https://wiki.project1999.com/Research	Words of Duration	869	1	word
+Necromancer	34	Invoke Fear	120+	0	Unknown	https://wiki.project1999.com/Research	Words of Quivering	869	1	word
+Necromancer	34	Invoke Fear	120+	0	Unknown	https://wiki.project1999.com/Research	Words of Resolve	869	1	word
+Necromancer	34	Call of Bones	120	1	No	https://wiki.project1999.com/Research	Words of Motion	869	1	word
+Necromancer	34	Call of Bones	120	1	No	https://wiki.project1999.com/Research	Words of Neglect	869	1	word
+Necromancer	34	Call of Bones	120	1	No	https://wiki.project1999.com/Research	Words of Endurance	869	1	word
+Necromancer	34	Surge of Enfeeblement	122	1	No	https://wiki.project1999.com/Research	Words of Abatement	869	1	word
+Necromancer	34	Surge of Enfeeblement	122	1	No	https://wiki.project1999.com/Research	Words of Cazic-Thule	869	1	word
+Necromancer	34	Surge of Enfeeblement	122	1	No	https://wiki.project1999.com/Research	Words of Efficacy	869	1	word
+Necromancer	34	Invoke Shadow	122	1	No	https://wiki.project1999.com/Research	Words of Dark Paths	869	1	word
+Necromancer	34	Invoke Shadow	122	1	No	https://wiki.project1999.com/Research	Words of Haunting	869	1	word
+Necromancer	34	Invoke Shadow	122	1	No	https://wiki.project1999.com/Research	Words of the Suffering	869	1	word
+Necromancer	39	Nullify Magic	142	0	Unknown	https://wiki.project1999.com/Research	Words of Descrying	869	1	word
+Necromancer	39	Nullify Magic	142	0	Unknown	https://wiki.project1999.com/Research	Words of Seizure	869	1	word
+Necromancer	39	Nullify Magic	142	0	Unknown	https://wiki.project1999.com/Research	Words of Dissolution	869	1	word
+Necromancer	39	Word of Souls	142	0	Unknown	https://wiki.project1999.com/Research	Words of Projection	869	1	word
+Necromancer	39	Word of Souls	142	0	Unknown	https://wiki.project1999.com/Research	Words of Cazic-Thule	869	1	word
+Necromancer	39	Word of Souls	142	0	Unknown	https://wiki.project1999.com/Research	Words of the Spectre	869	1	word
+Necromancer	39	Malignant Dead	142	0	Unknown	https://wiki.project1999.com/Research	Words of Bidding	869	1	word
+Necromancer	39	Malignant Dead	142	0	Unknown	https://wiki.project1999.com/Research	Words of the Suffering	869	1	word
+Necromancer	39	Malignant Dead	142	0	Unknown	https://wiki.project1999.com/Research	Words of Collection (Beza)	869	1	word
+Necromancer	44	Dead Man Floating	162	1	No	https://wiki.project1999.com/Research	Words of the Psyche	869	1	word
+Necromancer	44	Dead Man Floating	162	1	No	https://wiki.project1999.com/Research	Words of Burnishing	869	1	word
+Necromancer	44	Cackling Bones	162	0	Unknown	https://wiki.project1999.com/Research	Words of Obligation	869	1	word
+Necromancer	44	Cackling Bones	162	0	Unknown	https://wiki.project1999.com/Research	Words of Collection (Caza)	869	1	word
+Necromancer	49	Invoke Death	184	1	No	https://wiki.project1999.com/Research	Words of Requisition	869	1	word
+Necromancer	49	Invoke Death	184	1	No	https://wiki.project1999.com/Research	Words of Acquisition (Beza)	869	1	word
+Necromancer	49	Lich	184	1	No	https://wiki.project1999.com/Research	Words of the Ethereal	869	1	word
+Necromancer	49	Paralyzing Earth	184	0	Unknown	https://wiki.project1999.com/Research	Words of Crippling Force	869	1	word
+Necromancer	49	Bond of Death	184	1	No	https://wiki.project1999.com/Research	Words of Grappling	869	1	word
+Necromancer	49	Bond of Death	184	1	No	https://wiki.project1999.com/Research	Words of Odus	869	1	word
+Wizard	16	Identify	21	0	True	https://wiki.project1999.com/Research	Rune of Falhalem	967	1	rune
+Wizard	16	Identify	21	0	True	https://wiki.project1999.com/Research	Rune of Substance	967	1	rune
+Wizard	16	Pillar of Fire	21	1	False	https://wiki.project1999.com/Research	Rune of Nagafen	967	1	rune
+Wizard	16	Pillar of Fire	21	1	False	https://wiki.project1999.com/Research	Rune of Proximity	967	1	rune
+Wizard	16	Project Lightning	21	1	False	https://wiki.project1999.com/Research	Rune of Fulguration	967	1	rune
+Wizard	16	Project Lightning	21	1	False	https://wiki.project1999.com/Research	Rune of Periphery	967	1	rune
+Wizard	20	Enstill	41	0	True	https://wiki.project1999.com/Research	Rune of Neglect	967	1	rune
+Wizard	20	Enstill	41	0	True	https://wiki.project1999.com/Research	Rune of Oppression	967	1	rune
+Wizard	20	Fire Spiral of Al'Kabor	41	1	False	https://wiki.project1999.com/Research	Rune of Al'Kabor	967	1	rune
+Wizard	20	Fire Spiral of Al'Kabor	41	1	False	https://wiki.project1999.com/Research	Rune of Velious	967	1	rune
+Wizard	24	Cast Force	62	1	False	https://wiki.project1999.com/Research	Rune of Disassociation	967	1	rune
+Wizard	24	Cast Force	62	1	False	https://wiki.project1999.com/Research	Rune of Presence	967	1	rune
+Wizard	24	Column of Lightning	62	1	False	https://wiki.project1999.com/Research	Rune of Trauma	967	1	rune
+Wizard	24	Column of Lightning	62	1	False	https://wiki.project1999.com/Research	Rune of Xegony	967	1	rune
+Wizard	24	Levitate	64 or less	0	True	https://wiki.project1999.com/Research	Rune of Attraction	967	1	rune
+Wizard	24	Levitate	64 or less	0	True	https://wiki.project1999.com/Research	Rune of Expulsion	967	1	rune
+Wizard	24	Lightning Storm	62	1	False	https://wiki.project1999.com/Research	Rune of Karana	967	1	rune
+Wizard	24	Lightning Storm	62	1	False	https://wiki.project1999.com/Research	Rune of Xegony	967	1	rune
+Wizard	29	Energy Storm	96	1	False	https://wiki.project1999.com/Research	Rune of Fulguration	967	1	rune
+Wizard	29	Energy Storm	96	1	False	https://wiki.project1999.com/Research	Rune of Karana	967	1	rune
+Wizard	29	Energy Storm	96	1	False	https://wiki.project1999.com/Research	Rune of Xegony	967	1	rune
+Wizard	29	Shock Spiral of Al'Kabor	95	1	False	https://wiki.project1999.com/Research	Rune of Al'Kabor	967	1	rune
+Wizard	29	Shock Spiral of Al'Kabor	95	1	False	https://wiki.project1999.com/Research	Rune of The Helix		1	rune
+Wizard	29	Shock Spiral of Al'Kabor	95	1	False	https://wiki.project1999.com/Research	Rune of Rallos Zek	967	1	rune
+Wizard	29	Tox Portal	95	0	True	https://wiki.project1999.com/Research	Rune of the Combine	967	1	rune
+Wizard	29	Tox Portal	95	0	True	https://wiki.project1999.com/Research	Rune of Dismemberment	967	1	rune
+Wizard	29	Tox Portal	95	0	True	https://wiki.project1999.com/Research	Rune of Regeneration	967	1	rune
+Wizard	34	Circle of Force	120	1	False	https://wiki.project1999.com/Research	Rune of Banding	967	1	rune
+Wizard	34	Circle of Force	120	1	False	https://wiki.project1999.com/Research	Rune of the Catalyst	967	1	rune
+Wizard	34	Circle of Force	120	1	False	https://wiki.project1999.com/Research	Rune of Concussion	967	1	rune
+Wizard	34	Lava Storm	120	1	False	https://wiki.project1999.com/Research	Rune of Concussion	967	1	rune
+Wizard	34	Lava Storm	120	1	False	https://wiki.project1999.com/Research	Rune of the Cyclone	967	1	rune
+Wizard	34	Lava Storm	120	1	False	https://wiki.project1999.com/Research	Rune of Solusek Ro	967	1	rune
+Wizard	34	Nullify Magic	>101 (probably 120)	0	True	https://wiki.project1999.com/Research	Rune of Arrest	967	1	rune
+Wizard	34	Nullify Magic	>101 (probably 120)	0	True	https://wiki.project1999.com/Research	Rune of Consumption	967	1	rune
+Wizard	34	Nullify Magic	>101 (probably 120)	0	True	https://wiki.project1999.com/Research	Rune of Sorcery	967	1	rune
+Wizard	34	Thunderclap	120	1	False	https://wiki.project1999.com/Research	Rune of Conception	967	1	rune
+Wizard	34	Thunderclap	120	1	False	https://wiki.project1999.com/Research	Rune of Contortion	967	1	rune
+Wizard	34	Thunderclap	120	1	False	https://wiki.project1999.com/Research	Rune of Howling	967	1	rune
+Wizard	39	Common Portal	140	0	True	https://wiki.project1999.com/Research	Rune of the Combine	967	1	rune
+Wizard	39	Common Portal	140	0	True	https://wiki.project1999.com/Research	Rune of Conception	967	1	rune
+Wizard	39	Common Portal	140	0	True	https://wiki.project1999.com/Research	Rune of Embrace	967	1	rune
+Wizard	39	Force Spiral of Al'Kabor	140	1	False	https://wiki.project1999.com/Research	Rune of Al'Kabor	967	1	rune
+Wizard	39	Force Spiral of Al'Kabor	140	1	False	https://wiki.project1999.com/Research	Rune of The Helix		1	rune
+Wizard	39	Force Spiral of Al'Kabor	140	1	False	https://wiki.project1999.com/Research	Rune of Infraction	967	1	rune
+Wizard	39	Immobilize	140	0	True	https://wiki.project1999.com/Research	Rune of Paralysis	967	1	rune
+Wizard	39	Immobilize	140	0	True	https://wiki.project1999.com/Research	Rune of Petrification	967	1	rune
+Wizard	39	Immobilize	140	0	True	https://wiki.project1999.com/Research	Rune of Tyranny	967	1	rune
+Wizard	44	Gravity Flux	162	1	False	https://wiki.project1999.com/Research	Rune of Attraction	967	1	rune
+Wizard	44	Gravity Flux	162	1	False	https://wiki.project1999.com/Research	Rune of the Inverse	967	1	rune
+Wizard	44	Gravity Flux	162	1	False	https://wiki.project1999.com/Research	Rune of Rathe	967	1	rune
+Wizard	49	Ice Comet	184	0	False*	https://wiki.project1999.com/Research	Rune of the Astral	967	1	rune
+Wizard	49	Ice Comet	184	0	False*	https://wiki.project1999.com/Research	Rune of Frost	967	1	rune
+Wizard	49	Paralyzing Earth	182	0	Unknown	https://wiki.project1999.com/Research	Rune of Crippling	967	1	rune
+Wizard	49	Paralyzing Earth	182	0	Unknown	https://wiki.project1999.com/Research	Rune of Rathe	967	1	rune
+Wizard	49	Supernova	182	1	False	https://wiki.project1999.com/Research	Rune of the Astral	967	1	rune
+Wizard	49	Supernova	182	1	False	https://wiki.project1999.com/Research	Rune of Impetus	967	1	rune
+Wizard	49	Wrath of Al'Kabor	184	1	False	https://wiki.project1999.com/Research	Rune of Ap'Sagor		1	rune
+Wizard	49	Wrath of Al'Kabor	184	1	False	https://wiki.project1999.com/Research	Rune of Concussion	967	1	rune

@@ -45,6 +45,7 @@ fn page_fields(page: &str) -> &'static [&'static str] {
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
         "damage" => &["damageEncounters", "clericHealCalls", "guildSlowCalls"],
+        "dps-calculator" => &["inventory", "characterProfiles"],
         "merchant" => &["merchant"],
         "splits" => &["splits", "history", "aliases", "items", "mobs"],
         "compounds" => &[
@@ -67,6 +68,7 @@ fn page_fields(page: &str) -> &'static [&'static str] {
         "spells" => &["spells", "items"],
         "gems" => &["inventory"],
         "quest-items" => &["inventory", "questCatalog"],
+        "spell-research" => &["inventory", "researchCatalog"],
         "imports" => &["imports"],
         "wts" => &["wts", "inventory", "items"],
         "items" => &["items"],
@@ -237,6 +239,12 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
     )?;
     let quest_catalog = if wants("questCatalog") {
         super::quest_catalog::snapshot(&connection)?
+    } else {
+        Vec::new()
+    };
+
+    let research_catalog = if wants("researchCatalog") {
+        super::spell_research::snapshot(&connection)?
     } else {
         Vec::new()
     };
@@ -575,7 +583,7 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
 
     Ok(
         json!({"settings":settings,"members":members,"loot":loot,"splits":splits,"tracked":tracked,"history":history,
-        "items":items,"inventory":inventory,"questCatalog":quest_catalog,"spells":spells,"characterProfiles":character_profiles,
+        "items":items,"inventory":inventory,"questCatalog":quest_catalog,"researchCatalog":research_catalog,"spells":spells,"characterProfiles":character_profiles,
         "wts":wts,"aliases":aliases,"mobs":mobs,
         "logs":logs,"imports":imports,"merchant":merchant,"linkedLoot":linked_loot,
         "deathReports":death_reports,"damageEncounters":damage_encounters,
@@ -2664,6 +2672,22 @@ mod tests {
     #[test]
     fn wardrobe_page_loads_shared_master_values_without_roster_payloads() {
         assert_eq!(page_fields("wardrobe"), &["items"]);
+    }
+
+    #[test]
+    fn dps_calculator_loads_only_equipment_and_character_profiles() {
+        assert_eq!(
+            page_fields("dps-calculator"),
+            &["inventory", "characterProfiles"]
+        );
+    }
+
+    #[test]
+    fn spell_research_loads_only_inventory_and_its_catalog() {
+        assert_eq!(
+            page_fields("spell-research"),
+            &["inventory", "researchCatalog"]
+        );
     }
 
     #[test]

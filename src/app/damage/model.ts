@@ -98,6 +98,9 @@ export function sortLiveEncountersByPlayerTarget(
  });
 }
 
+export function focusedDamageEncounter<T extends {id:number}>(liveRows:readonly T[],allRows:readonly T[],retainedId?:number):T|undefined{
+ return liveRows[0]??allRows.find(row=>row.id===retainedId);
+}
 export function preferredDamageTargetId(settings:Record<string,string>,activeCharacter?:string):number|undefined{
  if(!activeCharacter||settings.damage_target_character?.toLowerCase()!==activeCharacter.toLowerCase())return undefined;
  const id=Number(settings.damage_target_encounter_id);

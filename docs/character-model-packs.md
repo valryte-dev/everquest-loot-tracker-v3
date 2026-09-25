@@ -6,12 +6,12 @@ Character models are optional external assets. They are not stored in SQLite and
 
 The System page contains the **Character model assets** card.
 
-- **Download appearance pack** downloads the 26 classic player race/gender bodies, their default heads, the 12 supported robe-body variants, referenced textures, and supplemental source particle sprites omitted from converted GLB metadata from P99 Planner.
+- **Download complete model pack** downloads the 26 classic player race/gender bodies, every available alternate head, the 12 supported robe-body variants, every equipment model referenced by the embedded item catalog, every generated armor material/region texture, animated material frames, and all renderer particle sprites from P99 Planner.
 - **Use an external pack folder** activates an existing compatible folder through the native Browse control.
 - **Verify files** recomputes every SHA-256 checksum.
 - **Disconnect** stops using the pack but deliberately preserves its files.
 
-The Characters page prefers a verified local pack. If a local model cannot be loaded, the viewer retries the P99 Planner online source. If both sources fail, the equipment and inventory interface remains usable and the viewer shows a retry state.
+The Characters page prefers a verified local pack and retries the P99 Planner online source when an individual asset is absent. If all configured sources fail, the equipment and inventory interface remains usable and the viewer shows a retry state.
 
 ## Storage
 
@@ -25,11 +25,13 @@ Downloaded packs use the platform application-data directory:
             +-- hum01.glb
             +-- humhe00.glb
             +-- huf.glb
+            +-- items/
+                +-- it150.glb
             +-- textures/
 
 External folders are used in place. Disconnecting never deletes an external folder.
 
-Equipped armor and weapon appearances are resolved from the embedded P99 item metadata catalog. Gear models and alternate armor textures use the online source when they are not present in a connected external pack; failure to load one visual never hides its inventory or equipment record.
+Equipped armor and weapon appearances are resolved from the embedded P99 item metadata catalog. Local assets are tried first, with the online source retained as recovery for a missing or damaged individual file; failure to load one visual never hides its inventory or equipment record.
 
 ## Manifest format
 
@@ -52,6 +54,8 @@ model-pack.json is the trust boundary for local assets:
     }
 
 Every path must be relative and traversal components are rejected. The loopback asset route serves only files explicitly listed in the active manifest.
+
+The loopback server selects the first available port in the app's reserved range and publishes that URL to the viewer. It does not assume port 8765 is free, so the V3 asset pack continues to work alongside a legacy tracker or another local service. Asset requests are served concurrently, and HEAD availability probes do not read full files from disk.
 
 ## Atomic download behavior
 

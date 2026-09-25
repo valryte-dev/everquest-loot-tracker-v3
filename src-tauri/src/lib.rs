@@ -11,8 +11,8 @@ use application::{
     parse_log_preview, proc_coach_analyze, proc_coach_delete_key, proc_coach_save_key,
     proc_coach_status, reload_spell_catalog, replay_library_import, replay_library_list,
     replay_library_load, replay_library_save_coach_review, save_ch_replay, save_damage_replay,
-    spell_catalog_entries, spell_catalog_status, spell_info, wardrobe_catalog_items,
-    wardrobe_catalog_set_items, wardrobe_catalog_sets, AppState,
+    spell_catalog_entries, spell_catalog_status, spell_info, wardrobe_catalog_item,
+    wardrobe_catalog_items, wardrobe_catalog_set_items, wardrobe_catalog_sets, AppState,
 };
 use tauri::Manager;
 
@@ -63,6 +63,7 @@ pub fn run() {
             spell_catalog_entries,
             spell_catalog_status,
             reload_spell_catalog,
+            wardrobe_catalog_item,
             wardrobe_catalog_items,
             wardrobe_catalog_sets,
             wardrobe_catalog_set_items

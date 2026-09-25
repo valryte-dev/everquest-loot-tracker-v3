@@ -27,7 +27,7 @@ export function CharacterModelPackPanel({run}:{run:Runner}){
  };
  const ready=status?.installed&&status.valid;
  return <section className="card model-pack-card">
-  <header><div><h2>Character model assets</h2><p>Optional external models stay outside SQLite and application releases.</p></div><span className={`pill ${ready?"success":status?.installed?"error":"warn"}`}>{ready?"Ready":status?.installed?"Needs attention":"Remote fallback"}</span></header>
+  <header><div><h2>Character model assets</h2><p>Optional external models stay outside SQLite and application releases.</p></div><span className={`pill ${ready&&!status?.updateAvailable?"success":status?.installed?"warn":"warn"}`}>{status?.updateAvailable?"Update available":ready?"Ready":status?.installed?"Needs attention":"Remote fallback"}</span></header>
   <div className="model-pack-body">
    <dl className="watcher-details">
     <div><dt>Active source</dt><dd>{ready?status?.name:"P99 Planner online fallback"}</dd></div>
@@ -39,7 +39,7 @@ export function CharacterModelPackPanel({run}:{run:Runner}){
    </dl>
    {status?.error&&<p className="update-error">{status.error}</p>}
    <div className="model-pack-actions">
-    <div><strong>Download appearance pack</strong><p>Downloads all 26 classic race/gender bodies, default heads, and their textures directly from P99 Planner. Existing local data is replaced only after the new pack verifies.</p><button className="primary" disabled={!!busy} onClick={()=>act("modelPack.download",{},"Character model pack downloaded and verified.")}>{busy==="modelPack.download"?"Downloading...":"Download appearance pack"}</button></div>
+    <div><strong>{status?.updateAvailable?"Update complete model pack":"Download complete model pack"}</strong><p>Downloads every body, alternate head, armor texture, equipment model, animation frame, and particle used by the viewer. Installation may take a couple of minutes; afterward complete packs render without the online fallback.</p><button className="primary" disabled={!!busy} onClick={()=>act("modelPack.download",{},"Complete character model pack downloaded and verified.")}>{busy==="modelPack.download"?"Downloading complete pack...":status?.updateAvailable?`Update to complete pack v${status.latestVersion}`:"Download complete model pack"}</button></div>
     <div><strong>Use an external pack folder</strong><p>Select a folder containing model-pack.json. Every listed file is checksum-verified before activation.</p><div className="input-action"><PathPicker value={path} onChange={setPath} kind="folder" placeholder="Choose a model pack folder"/><button disabled={!!busy||!path.trim()} onClick={()=>act("modelPack.activate",{path},"External model pack verified and activated.")}>Use pack</button></div></div>
    </div>
    <div className="button-row">
@@ -47,7 +47,7 @@ export function CharacterModelPackPanel({run}:{run:Runner}){
     <button disabled={!!busy||!status?.installed} onClick={()=>{if(confirm("Disconnect this model pack? Its files will be preserved."))void act("modelPack.disconnect",{},"Model pack disconnected. Files were preserved.")}}>Disconnect</button>
    </div>
    {message&&<p className="notice" role="status">{message}</p>}
-   <p className="muted">The viewer automatically falls back to online models if a local asset cannot be loaded. Downloaded content remains subject to its source's terms.</p>
+   <p className="muted">Complete current packs render locally. Older or external packs retain the online fallback for assets they do not contain. Downloaded content remains subject to its source's terms.</p>
   </div>
  </section>;
 }

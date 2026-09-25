@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,damageEncounterSnapshotChanged,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,damageEncounterSnapshotChanged,dpsMomentum,focusedDamageEncounter,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
@@ -126,6 +126,12 @@ describe("live DPS analytics",()=>{
   expect(sortLiveEncountersByPlayerTarget([add,target],"Cleric",1).map(row=>row.id)).toEqual([1,2]);
  });
 
+ it("keeps the last focused fight visible until a new current fight replaces it",()=>{
+  const previous={id:1,name:"previous"},current={id:2,name:"current"};
+  expect(focusedDamageEncounter([], [previous],1)).toBe(previous);
+  expect(focusedDamageEncounter([current], [previous,current],1)).toBe(current);
+  expect(focusedDamageEncounter([], [previous],99)).toBeUndefined();
+ });
  it("uses a target preference only for the character that selected it",()=>{
   const settings={damage_target_character:"Cleric",damage_target_encounter_id:"42"};
   expect(preferredDamageTargetId(settings,"cleric")).toBe(42);

@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 use tauri::Emitter;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Method, Response, Server};
 
 use super::{data, model_pack};
 use crate::infrastructure::database::Database;
@@ -562,37 +562,30 @@ fn database_path(database: &Database) -> Result<PathBuf, String> {
 
 pub fn start_web(database_path: PathBuf) {
     thread::spawn(move || {
-        let Ok(server) = Server::http("127.0.0.1:8765") else {
+        let Some((server, base_url)) = (8765..=8795).find_map(|port| {
+            Server::http(("127.0.0.1", port))
+                .ok()
+                .map(|server| (server, format!("http://127.0.0.1:{port}/")))
+        }) else {
             return;
         };
         if let Ok(db) = Database::open(&database_path) {
             if let Ok(c) = db.connect() {
-                let _=c.execute("INSERT INTO app_settings(key,value) VALUES('web_url','http://127.0.0.1:8765/') ON CONFLICT(key) DO UPDATE SET value=excluded.value",[]);
+                let _ = c.execute(
+                    "INSERT INTO app_settings(key,value) VALUES('web_url',?1)
+                     ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    [&base_url],
+                );
             }
             for request in server.incoming_requests() {
-                if let Some(asset) = model_pack::read_asset(&db, request.url()) {
-                    let mut response = match asset {
-                        Ok((bytes, content_type)) => {
-                            let mut response = Response::from_data(bytes);
-                            if let Ok(header) =
-                                Header::from_bytes("Content-Type", content_type.as_bytes())
-                            {
-                                response = response.with_header(header);
-                            }
-                            if let Ok(header) = Header::from_bytes(
-                                "Cache-Control",
-                                "public, max-age=31536000, immutable",
-                            ) {
-                                response = response.with_header(header);
-                            }
-                            response
-                        }
-                        Err(error) => Response::from_string(error).with_status_code(404),
-                    };
-                    if let Ok(header) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
-                        response = response.with_header(header);
-                    }
-                    let _ = request.respond(response);
+                if request
+                    .url()
+                    .split('?')
+                    .next()
+                    .is_some_and(|path| path.starts_with("/model-assets/"))
+                {
+                    let asset_database = db.clone();
+                    thread::spawn(move || respond_model_asset(&asset_database, request));
                     continue;
                 }
                 let body = data::snapshot(&db)
@@ -606,6 +599,41 @@ pub fn start_web(database_path: PathBuf) {
             }
         }
     });
+}
+
+fn respond_model_asset(database: &Database, request: tiny_http::Request) {
+    let include_body = request.method() != &Method::Head;
+    let Some(asset) = model_pack::read_asset(database, request.url(), include_body) else {
+        return;
+    };
+    let mut response = match asset {
+        Ok((bytes, content_type)) => {
+            let body = asset_response_body(request.method(), bytes);
+            let mut response = Response::from_data(body);
+            if let Ok(header) = Header::from_bytes("Content-Type", content_type.as_bytes()) {
+                response = response.with_header(header);
+            }
+            if let Ok(header) =
+                Header::from_bytes("Cache-Control", "public, max-age=31536000, immutable")
+            {
+                response = response.with_header(header);
+            }
+            response
+        }
+        Err(error) => Response::from_string(error).with_status_code(404),
+    };
+    if let Ok(header) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
+        response = response.with_header(header);
+    }
+    let _ = request.respond(response);
+}
+
+fn asset_response_body(method: &Method, bytes: Vec<u8>) -> Vec<u8> {
+    if method == &Method::Head {
+        Vec::new()
+    } else {
+        bytes
+    }
 }
 fn render_dashboard(v: Value) -> String {
     let rows = |key: &str, cols: &[(&str, &str)]| {
@@ -766,11 +794,21 @@ fn sql(e: rusqlite::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        auction_bytes, backup, output_directory, prune_older_database_backups, restore,
-        version_is_newer, write_social,
+        asset_response_body, auction_bytes, backup, output_directory, prune_older_database_backups,
+        restore, version_is_newer, write_social,
     };
     use crate::infrastructure::database::Database;
     use std::path::Path;
+    use tiny_http::Method;
+
+    #[test]
+    fn model_asset_head_probe_has_no_response_body() {
+        assert!(asset_response_body(&Method::Head, vec![1, 2, 3]).is_empty());
+        assert_eq!(
+            asset_response_body(&Method::Get, vec![1, 2, 3]),
+            vec![1, 2, 3]
+        );
+    }
 
     #[test]
     fn online_backup_and_restore_preserve_a_recovery_copy() {

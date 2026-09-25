@@ -1,11 +1,11 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import {listen} from "@tauri-apps/api/event";
+import {emit,listen} from "@tauri-apps/api/event";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import type {DamageEncounter,DamageEncounterDetail,GlobalStatusSnapshot} from "../../shared/contracts";
 import {getDamageEncounterDetails,getGlobalStatus,getRevision} from "../../shared/backend";
 import {formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,summarizePlayerEffects} from "./meterModel";
-import {sortLiveEncountersByPlayerTarget} from "./model";
+import {focusedDamageEncounter,sortLiveEncountersByPlayerTarget} from "./model";
 import {calculateProcDps,DamageFighterBars,spellEffectTitle,type DamageFighterBarRow} from "./DamageFighterBars";
 import {DamageIncomingBars,IncomingDamageTotal} from "./DamageIncomingBars";
 import {DamageProcSpellStack} from "./DamageProcSpellStack";
@@ -14,6 +14,7 @@ import {DamageTrendCharts} from "./DamageTrendCharts";
 const isDesktop=()=>"__TAURI_INTERNALS__" in window;
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 const formatNumber=(value:number)=>Math.round(value).toLocaleString();
+const currentFightWindowSize=()=>{const width=Math.max(560,Math.min(2400,Number(localStorage.getItem("current-fight-window-width"))||960)),height=Math.max(360,Math.min(1600,Number(localStorage.getItem("current-fight-window-height"))||760));return{width,height}};
 
 export async function openDamageMeterWidget(){
  if(!isDesktop()){window.open("?widget=damage-meter","damage-meter","width=860,height=720");return}
@@ -29,13 +30,33 @@ export async function openDamageMeterWidget(){
  });
 }
 
+export async function openCurrentFightWindow(){
+ if(!isDesktop()){window.open("?widget=current-fight","current-fight","width=960,height=760,resizable=yes");return}
+ const existing=await WebviewWindow.getByLabel("current-fight");
+ if(existing){await existing.show();await existing.setFocus();return}
+ const widget=new WebviewWindow("current-fight",{
+  url:"?widget=current-fight",title:"EQ Current Fight",width:960,height:760,
+  minWidth:560,minHeight:360,resizable:true,alwaysOnTop:true,center:true,
+ });
+ await new Promise<void>((resolve,reject)=>{
+  void widget.once("tauri://created",()=>resolve());
+  void widget.once("tauri://error",event=>reject(new Error(String(event.payload))));
+ });
+}
+
+export async function closeCurrentFightWindow(){
+ if(!isDesktop())return;
+ const existing=await WebviewWindow.getByLabel("current-fight");
+ if(existing)await existing.close();
+}
+
 type Activity={signature:string;seenAt:number};
 
-export function DamageMeterWindow(){
+export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
  const[data,setData]=useState<GlobalStatusSnapshot|null>(null);
  const[error,setError]=useState("");
  const[now,setNow]=useState(Date.now());
- const[onTop,setOnTop]=useState(true);
+ const[onTop,setOnTop]=useState(true),[retainedFightId,setRetainedFightId]=useState<number>();
  const[activity,setActivity]=useState<Map<number,Activity>>(()=>new Map());
  const revision=useRef(-1),refreshing=useRef(false),refreshQueued=useRef(false),refreshTimer=useRef<number|undefined>(undefined);
  const refresh=useCallback(async()=>{
@@ -79,7 +100,7 @@ export function DamageMeterWindow(){
   if(isDesktop())void listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>void refresh(),100)}).then(unlisten=>stop=unlisten);
   return()=>{window.clearTimeout(refreshTimer.current);window.clearInterval(clock);window.clearInterval(guard);stop?.()}
  },[refresh]);
- const fights=useMemo(()=>{
+ const liveFights=useMemo(()=>{
   if(!data)return[];
   const character=data.activeCharacter?.toLowerCase();
   const filtered=data.damageEncounters.filter(row=>{
@@ -89,6 +110,10 @@ export function DamageMeterWindow(){
   const preferred=data.preferredTargetCharacter?.toLowerCase()===character?data.preferredTargetEncounterId:undefined;
   return sortLiveEncountersByPlayerTarget(filtered,character,preferred);
  },[activity,data,now]);
+ useEffect(()=>{if(focusCurrent&&liveFights[0])setRetainedFightId(liveFights[0].id)},[focusCurrent,liveFights]);
+ useEffect(()=>{if(!focusCurrent)return;const closing=()=>{if(isDesktop())void emit("current-fight-window-closed")},rememberSize=()=>{localStorage.setItem("current-fight-window-width",String(window.outerWidth));localStorage.setItem("current-fight-window-height",String(window.outerHeight))};window.addEventListener("beforeunload",closing);window.addEventListener("resize",rememberSize);return()=>{window.removeEventListener("beforeunload",closing);window.removeEventListener("resize",rememberSize)}},[focusCurrent]);
+ const focused=focusCurrent?focusedDamageEncounter(liveFights,data?.damageEncounters||[],retainedFightId):undefined;
+ const fights=focusCurrent?(focused?[focused]:[]):liveFights;
  const toggleTop=async()=>{
   const next=!onTop;
   if(isDesktop())await getCurrentWindow().setAlwaysOnTop(next);
@@ -96,11 +121,11 @@ export function DamageMeterWindow(){
  };
  return <main className="damage-meter-window">
   <header className="damage-meter-toolbar">
-   <div><span>Live widget</span><strong>EQ Damage Meter</strong><small>{data?.activeCharacter||"Waiting for a character"}</small></div>
+   <div><span>{focusCurrent?"Undocked current fight":"Live widget"}</span><strong>{focusCurrent?"EQ Current Fight":"EQ Damage Meter"}</strong><small>{fights[0]?`${fights[0].character} vs. ${fights[0].mobName}`:data?.activeCharacter||"Waiting for a character"}</small></div>
    <label className="meter-top-toggle"><input type="checkbox" checked={onTop} onChange={()=>void toggleTop()}/><span>On top</span></label>
   </header>
   {error&&<div className="meter-error">{error}</div>}
-  {fights.length?<section className="damage-meter-fights">{fights.map(row=><DamageMeterPanel key={row.id} row={row} now={now}/>)}</section>:<section className="meter-waiting"><div><i/><strong>Listening for combat</strong><small>Each simultaneous encounter will appear as its own live damage card.</small></div></section>}
+  {fights.length?<section className="damage-meter-fights">{fights.map(row=><DamageMeterPanel key={row.id} row={row} now={now}/>)}</section>:<section className="meter-waiting"><div><i/><strong>Listening for combat</strong><small>The window will stay open and follow the preferred or active fight.</small></div></section>}
  </main>;
 }
 

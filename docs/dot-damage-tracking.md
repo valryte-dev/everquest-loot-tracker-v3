@@ -139,3 +139,10 @@ Saved reviews are training evidence for later parser work; the production parser
 CH encounter history is connected directly to the Complete Heal Chain Lab. Any in-database history row can be handed to the lab without first creating a duplicate replay file, while the lab also lists the canonical external `.eqch.json` replay library. Loaded encounters retain their original call timing and support play, pause, previous/next call stepping, speed selection, and timeline scrubbing through the shared live `ClericChainPulse` visualization.
 
 The shared CH cadence graph defaults to a 0–15 second vertical scale. Its compact numeric control accepts a manual upper bound from 1 to 600 seconds for edge cases; because the control lives inside `ClericChainPulse`, the same behavior is available in live CH tracking and both lab/history replay surfaces.
+
+
+## Focused undocked fight window
+
+The Damage Tracker placement control offers **In page** and **Undocked** modes. Undocked mode removes the full live-fight meter from the page and leaves a small summary with combat time, personal damage, group DPS, group damage, and a button to refocus the window.
+
+The separate window is resizable, remembers its last size, and is always-on-top by default. It renders the same shared meter controls and backend snapshots as the in-page view. It displays one stable current fight: the character-scoped preferred target first, otherwise the encounter most recently attacked by the active character. A completed or idle encounter remains visible until a newer current fight replaces it. Closing the window automatically returns the page to **In page** mode.

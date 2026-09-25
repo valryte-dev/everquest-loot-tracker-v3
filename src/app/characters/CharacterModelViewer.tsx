@@ -1,12 +1,13 @@
 import {useEffect,useRef,useState} from "react";
+import {createPortal} from "react-dom";
 import {getModelPackStatus} from "../../shared/backend";
 import type {InventoryItem} from "../../shared/contracts";
 import type {CharacterModelProfile} from "./characterProfile";
 import {isAdditiveEqShader,itemAppearance} from "./itemAppearance";
-import {itemParticleDefinitions,itemParticleRenderSettings,itemParticleStartDelay} from "./itemParticleCatalog";
+import {animatedItemModel,itemParticleDefinitions,itemParticleRenderSettings,itemParticleStartDelay} from "./itemParticleCatalog";
 
 const REMOTE_MODEL_ROOT="https://p99planner.com/models/";
-const LOCAL_MODEL_ROOT="http://127.0.0.1:8765/model-assets/";
+const DEFAULT_LOCAL_MODEL_ROOT="http://127.0.0.1:8765/model-assets/";
 export const DEFAULT_MODEL_RADIUS=11;
 export const DEFAULT_MODEL_ALPHA=0;
 export const MODEL_VERTICAL_OFFSET=.13;
@@ -17,7 +18,9 @@ export const MODEL_ENGINE_OPTIONS={preserveDrawingBuffer:false,stencil:false,pre
 
 const ROBE_MODEL_CODES=new Set(["daf","dam","erf","erm","gnf","gnm","hif","him","huf","hum","ikf","ikm"]);
 
-export const modelRoots=(localReady:boolean)=>localReady?[LOCAL_MODEL_ROOT,REMOTE_MODEL_ROOT]:[REMOTE_MODEL_ROOT];
+export const modelRoots=(localReady:boolean,_localComplete=false,localRoot=DEFAULT_LOCAL_MODEL_ROOT)=>localReady
+ ?[localRoot,REMOTE_MODEL_ROOT]
+ :[REMOTE_MODEL_ROOT];
 
 function visualSlot(location:string){
  const value=location.toLocaleLowerCase().replace(/[^a-z0-9]/g,"");
@@ -133,6 +136,36 @@ export function itemModelCode(item?:InventoryItem){
  return idFile&&/^IT\d+$/.test(idFile)?idFile:undefined;
 }
 
+function isCustomHelmItem(item?:InventoryItem){
+ const idFile=item?.idFile?.trim().toUpperCase();
+ return idFile==="IT240"||item?.material===240;
+}
+
+const CLASSIC_CUSTOM_HELM_MODELS:Record<string,string>={
+ baf:"IT530",bam:"IT537",daf:"IT540",dam:"IT545",dwf:"IT550",dwm:"IT557",
+ elf:"IT561",elm:"IT565",erf:"IT570",erm:"IT575",gnf:"IT580",gnm:"IT585",
+ haf:"IT590",ham:"IT595",hif:"IT600",him:"IT605",hof:"IT610",hom:"IT615",
+ huf:"IT620",hum:"IT627",ikf:"IT630",ikm:"IT635",ogf:"IT640",ogm:"IT645",
+ trf:"IT650",trm:"IT655",
+};
+
+export function customHelmModel(modelCode:string,item?:InventoryItem){
+ return isCustomHelmItem(item)?CLASSIC_CUSTOM_HELM_MODELS[modelCode.toLocaleLowerCase()]:undefined;
+}
+
+export const customHelmAttachPoint=()=>"he";
+
+export function attachmentNodeName(name:string){
+ return name.replace(/^Clone of\s+/i,"").toLocaleLowerCase();
+}
+
+export function headModelVariation(item?:InventoryItem){
+ // Keep the native face beneath the race/gender-specific Velious helm mesh.
+ if(isCustomHelmItem(item))return 0;
+ const material=item?.material||0;
+ return material>=1&&material<=23?material:0;
+}
+
 export function weaponAttachPoint(slot:"primary"|"secondary",itemType?:number,itemName=""){
  // EQSage uses item type 8. The P99 export marks most shields as the unknown
  // sentinel (255), and a small number use unrelated armor types. A semantic
@@ -143,7 +176,49 @@ export function weaponAttachPoint(slot:"primary"|"secondary",itemType?:number,it
 
 export function preferredPose<T extends {name:string}>(groups:T[]){
  return groups.find(group=>group.name.toLocaleLowerCase()==="p01")
+  ||groups.find(group=>group.name.toLocaleLowerCase()==="o01")
   ||groups.find(group=>group.name.toLocaleLowerCase()==="pos");
+}
+
+const CHARACTER_ANIMATION_LABELS:Record<string,string>={
+ pos:"Standard pose",c01:"Kick",c02:"1H Pierce",c03:"2H Slash",c04:"2H Blunt",c05:"1H Slash",
+ c06:"1H Slash - offhand",c07:"Bash",c08:"Hand to hand",c09:"Archery",c10:"Swimming attack",
+ c11:"Roundhouse kick",d01:"Minor damage",d02:"Heavy damage",d04:"Drowning",d05:"Death",
+ l01:"Walk",l02:"Run",l03:"Running jump",l04:"Standing jump",l05:"Falling",l06:"Crouch walk",
+ l07:"Climb",l08:"Crouch",l09:"Tread water",o01:"Idle - alternate",p01:"Idle",p02:"Sit",
+ p03:"Shuffle turn",p04:"Shuffle strafe",p05:"Loot",p06:"Swim",s01:"Cheer",s02:"Disappointed",
+ s03:"Wave",s04:"Rude",t02:"Stringed instrument",t03:"Wind instrument",t04:"Cast - pull back",
+ t05:"Cast - channel",t06:"Cast - release",t07:"Flying kick",t08:"Tiger strike",t09:"Dragon punch",
+};
+
+const normalizedAnimationName=(name:string)=>name.replace(/^Clone of\s+/i,"").toLocaleLowerCase();
+export const characterAnimationLabel=(name:string)=>CHARACTER_ANIMATION_LABELS[normalizedAnimationName(name)]||name;
+export function characterAnimationOptions<T extends {name:string;from:number;to:number}>(groups:T[]){
+ const seen=new Set<string>();
+ return groups.flatMap(group=>{
+  const name=normalizedAnimationName(group.name);
+  if(!name||seen.has(name)||group.to<group.from)return[];
+  seen.add(name);
+  return[{name,label:characterAnimationLabel(name)}];
+ });
+}
+
+type CharacterAnimationGroup={
+ name:string;from:number;to:number;
+ stop():unknown;play(loop?:boolean):unknown;goToFrame(frame:number):unknown;pause():unknown;
+};
+
+export function playCharacterAnimation(groups:CharacterAnimationGroup[],requested:string){
+ groups.forEach(group=>group.stop());
+ const selected=groups.find(group=>normalizedAnimationName(group.name)===normalizedAnimationName(requested))
+  ||preferredPose(groups);
+ if(!selected)return undefined;
+ if(normalizedAnimationName(selected.name)==="pos"){
+  selected.play(false);
+  selected.goToFrame(selected.from);
+  selected.pause();
+ }else selected.play(true);
+ return normalizedAnimationName(selected.name);
 }
 
 export function applyItemBindPose<T extends {reset():unknown}>(groups:T[]){
@@ -180,18 +255,30 @@ export function itemSkeleton<T>(instantiated:T[],container:T[]){
  return instantiated[0]||container[0];
 }
 
-export function CharacterModelViewer({character,profile,items}:{character:string;profile:CharacterModelProfile;items:InventoryItem[]}){
+export function CharacterModelViewer({character,profile,items,controlsTarget}:{character:string;profile:CharacterModelProfile;items:InventoryItem[];controlsTarget?:Element|null}){
  const canvasRef=useRef<HTMLCanvasElement>(null);
+ const engineRef=useRef<import("@babylonjs/core/Engines/engine").Engine|null>(null);
  const[status,setStatus]=useState<"loading"|"ready"|"error">("loading");
  const[error,setError]=useState("");
  const[reload,setReload]=useState(0);
  const[localReady,setLocalReady]=useState<boolean|undefined>(undefined);
+ const[localComplete,setLocalComplete]=useState(false);
+ const[localRoot,setLocalRoot]=useState(DEFAULT_LOCAL_MODEL_ROOT);
  const[source,setSource]=useState<"local"|"online">("online");
  const[appearance,setAppearance]=useState("");
+ const[animationOptions,setAnimationOptions]=useState<Array<{name:string;label:string}>>([]);
+ const[selectedAnimation,setSelectedAnimation]=useState("p01");
+ const animationGroupsRef=useRef<CharacterAnimationGroup[]>([]);
+ const selectedAnimationRef=useRef(selectedAnimation);
+ selectedAnimationRef.current=selectedAnimation;
  const modelCode=profile.race+profile.gender;
  const appearanceKey=items.map(item=>`${item.location}:${item.itemId||0}:${item.material||0}:${item.idFile||""}:${item.color||0}`).join("|");
 
- useEffect(()=>{let active=true;getModelPackStatus().then(value=>{if(active)setLocalReady(value.installed&&value.valid)}).catch(()=>{if(active)setLocalReady(false)});return()=>{active=false}},[]);
+ useEffect(()=>{let active=true;getModelPackStatus().then(value=>{if(active){const ready=value.installed&&value.valid;setLocalReady(ready);setLocalComplete(ready&&!value.updateAvailable);if(value.assetBaseUrl)setLocalRoot(value.assetBaseUrl)}}).catch(()=>{if(active){setLocalReady(false);setLocalComplete(false)}});return()=>{active=false}},[]);
+ useEffect(()=>()=>{engineRef.current?.dispose();engineRef.current=null},[]);
+ useEffect(()=>{
+  if(status==="ready")playCharacterAnimation(animationGroupsRef.current,selectedAnimation);
+ },[selectedAnimation,status]);
  useEffect(()=>{
   if(localReady===undefined)return;
   const canvas=canvasRef.current;
@@ -203,9 +290,10 @@ export function CharacterModelViewer({character,profile,items}:{character:string
   let scene:import("@babylonjs/core/scene").Scene|undefined;
   let observer:ResizeObserver|undefined;
   let intersection:IntersectionObserver|undefined;
+  let ownedAnimationGroups:CharacterAnimationGroup[]|undefined;
   const materialTimers:number[]=[];
   let frame=0,lastFrame=0,visible=true;
-  setStatus("loading");setError("");
+  setStatus("loading");setError("");setAnimationOptions([]);
   (async()=>{
    try{
     const[
@@ -233,8 +321,11 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     await import("@babylonjs/core/Animations/animatable");
     await import("@babylonjs/loaders/glTF");
     if(disposed)return;
-    engine=new Engine(canvas,true,MODEL_ENGINE_OPTIONS,true);
-    engine.setHardwareScalingLevel(Math.max(1,Math.min(2,window.devicePixelRatio||1)));
+    engine=engineRef.current||new Engine(canvas,true,MODEL_ENGINE_OPTIONS,true);
+    if(!engineRef.current){
+     engine.setHardwareScalingLevel(Math.max(1,Math.min(2,window.devicePixelRatio||1)));
+     engineRef.current=engine;
+    }
     scene=new Scene(engine);
     scene.clearColor=new Color4(0,0,0,0);
     const camera=new ArcRotateCamera("character-camera",DEFAULT_MODEL_ALPHA,Math.PI/2.2,DEFAULT_MODEL_RADIUS,Vector3.Zero(),scene);
@@ -248,7 +339,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     fill.intensity=1.05;
     const key=new DirectionalLight("character-key",new Vector3(-.5,-1,.7),scene);
     key.intensity=.65;
-    const roots=modelRoots(localReady);
+    const roots=modelRoots(localReady,localComplete,localRoot);
     const loadAsset=async(relative:string)=>{
      let failure:unknown;
      for(const root of roots){
@@ -264,7 +355,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     for(const root of roots){
      try{
       result=await SceneLoader.LoadAssetContainerAsync(root,`${bodyModelCode}.glb`,scene);
-      setSource(root===LOCAL_MODEL_ROOT?"local":"online");
+      setSource(root===localRoot?"local":"online");
       break;
      }catch(reason){lastError=reason}
     }
@@ -273,6 +364,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     const bodyInstance=result.instantiateModelsToScene();
     const bodyAnimations=bodyInstance.animationGroups;
     bodyAnimations.forEach(group=>{group.name=group.name.replace(/^Clone of\s+/,"")});
+    ownedAnimationGroups=bodyAnimations;
     let bodyRoot=bodyInstance.rootNodes[0] as import("@babylonjs/core/Meshes/transformNode").TransformNode;
     const bodySkeleton=bodyInstance.skeletons[0];
     const skeletonRoot=bodyRoot.getChildren(undefined,true)[0] as import("@babylonjs/core/Meshes/transformNode").TransformNode|undefined;
@@ -287,18 +379,47 @@ export function CharacterModelViewer({character,profile,items}:{character:string
      clone.albedoColor=new Color3(tint.r,tint.g,tint.b);
      return clone;
     };
+    type PreparedWeapon={
+     item:InventoryItem;
+     idFile:string;
+     renderIdFile:string;
+     loadedWeapon:Awaited<ReturnType<typeof loadAsset>>;
+     sourceAnimations:Record<string,MaterialAnimation>;
+    };
+    const preparedWeapons=new Map<string,PreparedWeapon>();
+    const customHelmItem=equipped.get("head");
+    const customHelmId=customHelmModel(modelCode,customHelmItem);
+    let loadedCustomHelm:Awaited<ReturnType<typeof loadAsset>>|undefined;
+    const prepareCustomHelm=customHelmId
+     ?loadAsset(`items/${customHelmId.toLocaleLowerCase()}.glb`).then(value=>{loadedCustomHelm=value}).catch(()=>{})
+     :Promise.resolve();
+    const prepareWeapons=Promise.all(["primary","secondary"].map(async slot=>{
+     const item=equipped.get(slot);
+     const idFile=itemModelCode(item);
+     if(!item||!idFile)return;
+     const renderIdFile=animatedItemModel(idFile);
+     try{
+      const loadedWeapon=await loadAsset(`items/${renderIdFile.toLocaleLowerCase()}.glb`);
+      const sourceAnimations=await fetch(`${loadedWeapon.root}items/${renderIdFile.toLocaleLowerCase()}.glb`)
+       .then(response=>response.ok?response.arrayBuffer():Promise.reject(new Error(`HTTP ${response.status}`)))
+       .then(glbMaterialAnimations)
+       .catch(()=>({} as Record<string,MaterialAnimation>));
+      preparedWeapons.set(slot,{item,idFile,renderIdFile,loadedWeapon,sourceAnimations});
+     }catch{/* Unknown item models remain represented by their paper-doll icon. */}
+    }));
     let headLoaded=false;
     let headInstance:{dispose():void}|undefined;
     try{
      const headItem=equipped.get("head");
      const chestItem=equipped.get("chest");
-     const headMaterial=headItem?.material||0;
-     const headCode=headMaterial>=1&&headMaterial<=23?`${modelCode}he${String(headMaterial).padStart(2,"0")}`:`${modelCode}he00`;
+     const headVariation=headModelVariation(headItem);
+     const headCode=`${modelCode}he${String(headVariation).padStart(2,"0")}`;
      let loadedHead;
      try{loadedHead=await loadAsset(`${headCode}.glb`)}catch{loadedHead=await loadAsset(`${modelCode}he00.glb`)}
      const head=loadedHead.container.instantiateModelsToScene();
      headInstance=head;
-     for(const mesh of head.rootNodes[0]?.getChildMeshes(false)||[]){
+     const headMeshes=head.rootNodes[0]?.getChildMeshes(false)||[];
+     for(const mesh of headMeshes){
       mesh.parent=bodyRoot;
       const material=mesh.material;
       if(material){
@@ -332,6 +453,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     const renderMeshes=[mergedBody];
     const armorSlots:Record<string,string>={ch:"chest",ua:"arms",fa:"wrist",hn:"hands",lg:"legs",ft:"feet",clk:"chest"};
     let armorCount=0;
+    const armorLoads:Promise<void>[]=[];
     for(const mesh of renderMeshes){
      const material=mesh.material;
      if(!material)continue;
@@ -343,29 +465,75 @@ export function CharacterModelViewer({character,profile,items}:{character:string
       const item=region?equipped.get(armorSlots[region]):undefined;
       const textureName=item?armorTextureName(current.name,armorMaterial(item,modelCode)):undefined;
       if(!item||!textureName||!replaceableArmorRegion(current.name,modelCode))continue;
-      const textureUrl=await firstImageAssetUrl(roots.map(root=>`${root}textures/${textureName}`));
-      // EQSage leaves the native material in place when an appearance texture
-      // is absent. This also rejects P99 Planner's HTML 200 fallback page.
-      if(!textureUrl)continue;
-      const clone=current.clone(`${current.name}-${item.id}`) as typeof current&{albedoTexture:unknown;albedoColor?:import("@babylonjs/core/Maths/math.color").Color3};
-      clone.albedoTexture=new Texture(textureUrl,scene,false,false,Texture.TRILINEAR_SAMPLINGMODE);
-      const tint=itemTintRgb(item.color||0);
-      if(tint&&clone.albedoColor)clone.albedoColor=new Color3(tint.r,tint.g,tint.b);
-      if("subMaterials" in material)candidates[index]=clone;else mesh.material=clone;
-      armorCount++;
+      armorLoads.push((async()=>{
+       const textureUrl=await firstImageAssetUrl(roots.map(root=>`${root}textures/${textureName}`));
+       // EQSage leaves the native material in place when an appearance texture
+       // is absent. This also rejects P99 Planner's HTML 200 fallback page.
+       if(!textureUrl||disposed)return;
+       const clone=current.clone(`${current.name}-${item.id}`) as typeof current&{albedoTexture:unknown;albedoColor?:import("@babylonjs/core/Maths/math.color").Color3};
+       clone.albedoTexture=new Texture(textureUrl,scene,false,false,Texture.TRILINEAR_SAMPLINGMODE);
+       const tint=itemTintRgb(item.color||0);
+       if(tint&&clone.albedoColor)clone.albedoColor=new Color3(tint.r,tint.g,tint.b);
+       if("subMaterials" in material)candidates[index]=clone;else mesh.material=clone;
+       armorCount++;
+      })());
      }
+    }
+    await Promise.all(armorLoads);
+    await Promise.all([prepareWeapons,prepareCustomHelm]);
+    let customHelmLoaded=false;
+    if(customHelmItem&&customHelmId&&loadedCustomHelm&&bodySkeleton){
+     try{
+      const customHelm=loadedCustomHelm.container.instantiateModelsToScene();
+      applyItemBindPose(customHelm.animationGroups);
+      let customHelmRoot=customHelm.rootNodes[0] as import("@babylonjs/core/Meshes/transformNode").TransformNode|undefined;
+      if(customHelmRoot){
+       const mergedHelm=Mesh.MergeMeshes(
+        customHelmRoot.getChildMeshes(false).filter((mesh):mesh is import("@babylonjs/core/Meshes/mesh").Mesh=>mesh instanceof Mesh&&mesh.getTotalVertices()>0),
+        false,true,undefined,true,true,
+       );
+       if(mergedHelm){customHelmRoot.dispose();customHelmRoot=mergedHelm}
+      }
+      const point=customHelmAttachPoint();
+      const bone=bodySkeleton.bones.find(value=>value.name.toLocaleLowerCase()===point);
+      const transform=skeletonRoot.getChildTransformNodes().find(value=>attachmentNodeName(value.name)===point);
+      if(!bone||!transform||!customHelmRoot)customHelmRoot?.dispose();
+      else{
+       const meshes=[
+        ...(customHelmRoot instanceof Mesh?[customHelmRoot]:[]),
+        ...customHelmRoot.getChildMeshes(false).filter((mesh):mesh is import("@babylonjs/core/Meshes/mesh").Mesh=>mesh instanceof Mesh),
+       ];
+       for(const mesh of meshes){
+        const material=mesh.material;
+        if(!material)continue;
+        if("subMaterials" in material){
+         const candidates=(material as unknown as {subMaterials:Array<import("@babylonjs/core/Materials/material").Material|null>}).subMaterials;
+         for(let index=0;index<candidates.length;index++){
+          const current=candidates[index];
+          if(current)candidates[index]=tintMaterial(current,customHelmItem,`${current.name}-${customHelmItem.id}-custom-helm-tint`);
+         }
+        }else mesh.material=tintMaterial(material,customHelmItem,`${material.name}-${customHelmItem.id}-custom-helm-tint`);
+       }
+       // Custom helms are modeled around the actual head joint. head_point is
+       // an effect socket above the skull and was the source of the floating
+       // and tilted placement seen in earlier builds.
+       customHelmRoot.attachToBone(bone,undefined as never);
+       customHelmRoot.parent=transform;
+       customHelmRoot.rotationQuaternion=null;
+       customHelmRoot.rotation.setAll(0);
+       customHelmRoot.position.setAll(0);
+       customHelmRoot.scaling.setAll(1);
+       customHelmRoot.name=customHelmId;
+       customHelmLoaded=true;
+      }
+     }catch{/* Keep the character usable when an optional custom helm is unavailable. */}
     }
     let weaponCount=0;
     for(const slot of ["primary","secondary"]){
-     const item=equipped.get(slot);
-     const idFile=itemModelCode(item);
-     if(!idFile||!/^IT\d+$/i.test(idFile)||!bodySkeleton)continue;
+     const prepared=preparedWeapons.get(slot);
+     if(!prepared||!bodySkeleton)continue;
+     const{item,idFile,renderIdFile,loadedWeapon,sourceAnimations}=prepared;
      try{
-      const loadedWeapon=await loadAsset(`items/${idFile.toLocaleLowerCase()}.glb`);
-      const sourceAnimations=await fetch(`${loadedWeapon.root}items/${idFile.toLocaleLowerCase()}.glb`)
-       .then(response=>response.ok?response.arrayBuffer():Promise.reject(new Error(`HTTP ${response.status}`)))
-       .then(glbMaterialAnimations)
-       .catch(()=>({} as Record<string,MaterialAnimation>));
       const weapon=loadedWeapon.container.instantiateModelsToScene();
       weapon.animationGroups.forEach(group=>{
        group.name=group.name.replace(/^Clone of\s+/,"");
@@ -401,7 +569,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
        // Nature Walker's Scimitar is the validated exception: all five
        // emitters are direct root children, and flattening keeps its held
        // orientation correct while cloned POS tracks animate the leaves.
-       &&idFile.toLocaleUpperCase()!=="IT150",
+       &&renderIdFile!=="IT150",
       );
       const effectGroup=particleDefinitions.length?positionGroup:undefined;
       const particleTracks=new Map<string,{
@@ -594,7 +762,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
         particles.color2=new Color4(red,green,blue,1);
         particles.colorDead=new Color4(red,green,blue,0);
         // Preserve the visually approved short Nature Walker leaf lifecycle.
-        if(idFile.toLocaleUpperCase()==="IT150"){
+       if(renderIdFile==="IT150"){
          const leafSize=particleSettings.sizeMultiplier;
          particles.addColorGradient(0,new Color4(1,1,1,.75));
          particles.addColorGradient(.08,new Color4(1,1,1,.75));
@@ -611,7 +779,7 @@ export function CharacterModelViewer({character,profile,items}:{character:string
       weaponCount++;
      }catch{/* Unknown item models remain represented by their paper-doll icon. */}
     }
-    setAppearance(`${headLoaded?"Head":"Base"}${armorCount?` - ${armorCount} armor`:""}${weaponCount?` - ${weaponCount} weapon${weaponCount===1?"":"s"}`:""}`);
+    setAppearance(`${headLoaded?"Head":"Base"}${customHelmLoaded?" - custom helm":""}${armorCount?` - ${armorCount} armor`:""}${weaponCount?` - ${weaponCount} weapon${weaponCount===1?"":"s"}`:""}`);
     let minimum=new Vector3(Number.POSITIVE_INFINITY,Number.POSITIVE_INFINITY,Number.POSITIVE_INFINITY);
     let maximum=new Vector3(Number.NEGATIVE_INFINITY,Number.NEGATIVE_INFINITY,Number.NEGATIVE_INFINITY);
     for(const mesh of renderMeshes){
@@ -625,8 +793,14 @@ export function CharacterModelViewer({character,profile,items}:{character:string
     camera.setTarget(center.add(new Vector3(0,size.y*MODEL_VERTICAL_OFFSET,0)));
     camera.alpha=DEFAULT_MODEL_ALPHA;
     camera.radius=DEFAULT_MODEL_RADIUS;
-    const idle=preferredPose(bodyAnimations);
-    applyStandardPose(bodyAnimations,idle);
+    const choices=characterAnimationOptions(bodyAnimations);
+    const requested=choices.some(option=>option.name===selectedAnimationRef.current)
+     ?selectedAnimationRef.current
+     :(choices.find(option=>option.name==="p01")||choices.find(option=>option.name==="o01")||choices.find(option=>option.name==="pos")||choices[0])?.name||"";
+    animationGroupsRef.current=bodyAnimations;
+    setAnimationOptions(choices);
+    setSelectedAnimation(requested);
+    playCharacterAnimation(bodyAnimations,requested);
     // Commit an initial frame immediately. The throttled/visibility-aware loop
     // handles subsequent animation, but should never leave a ready canvas blank.
     scene.render();
@@ -651,14 +825,15 @@ export function CharacterModelViewer({character,profile,items}:{character:string
    observer?.disconnect();
    intersection?.disconnect();
    for(const timer of materialTimers)window.clearInterval(timer);
+   if(animationGroupsRef.current===ownedAnimationGroups)animationGroupsRef.current=[];
    canvas.removeEventListener("wheel",containWheel);
    scene?.dispose();
-   engine?.dispose();
   };
- },[modelCode,appearanceKey,reload,localReady]);
+ },[modelCode,appearanceKey,reload,localReady,localComplete,localRoot]);
 
  return <div className="character-model-viewer">
-  <canvas ref={canvasRef} aria-label={`Interactive 3D model for ${character}`}/>
+ <canvas ref={canvasRef} aria-label={`Interactive 3D model for ${character}`}/>
+  {status==="ready"&&animationOptions.length>0&&controlsTarget&&createPortal(<label className="character-animation-control"><span>Animation</span><select value={selectedAnimation} onChange={event=>setSelectedAnimation(event.target.value)}>{animationOptions.map(option=><option key={option.name} value={option.name}>{option.label}</option>)}</select></label>,controlsTarget)}
   {status==="loading"&&<div className="character-model-status"><i/><strong>Loading EQ model...</strong></div>}
   {status==="error"&&<div className="character-model-status error"><strong>Model unavailable</strong><span>{error}</span><button onClick={()=>setReload(value=>value+1)}>Retry</button></div>}
   {status==="ready"&&<div className="character-model-hint">{source==="local"?"Local pack":"Online fallback"} - {appearance} - drag to rotate - wheel to zoom</div>}

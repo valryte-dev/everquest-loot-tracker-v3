@@ -13,12 +13,14 @@ mod quest_catalog;
 mod replay_library;
 mod runtime;
 mod services;
+mod spell_research;
 mod split_reconciliation;
 mod system_tasks;
 mod wardrobe_catalog;
 
 pub use wardrobe_catalog::{
-    wardrobe_catalog_items, wardrobe_catalog_set_items, wardrobe_catalog_sets,
+    wardrobe_catalog_item, wardrobe_catalog_items, wardrobe_catalog_set_items,
+    wardrobe_catalog_sets,
 };
 
 use serde::Deserialize;
