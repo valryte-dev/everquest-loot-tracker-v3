@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from "vitest";
-import {applyStandardPose,attachmentNodeName,characterAnimationLabel,characterAnimationOptions,customHelmAttachPoint,customHelmModel,headModelVariation,isRobeHeadMaterial,itemEffectAnimationSpeed,modelRoots,playCharacterAnimation} from "./CharacterModelViewer";
+import {applyStandardPose,armorMaterial,armorTextureName,attachmentNodeName,characterAnimationLabel,characterAnimationOptions,customHelmAttachPoint,customHelmModel,headModelVariation,isRobeHeadMaterial,itemEffectAnimationSpeed,modelRoots,playCharacterAnimation} from "./CharacterModelViewer";
 
 describe("character model pose",()=>{
  it("holds the exported standard pose without stopping item effect clocks",()=>{
@@ -48,6 +48,21 @@ describe("character model pose",()=>{
   expect(isRobeHeadMaterial("clkErF06","erf01")).toBe(true);
   expect(isRobeHeadMaterial("ermhe0001","erm01")).toBe(false);
   expect(isRobeHeadMaterial("CLKERM06","erm")).toBe(false);
+ });
+
+
+ it("renders the fungi tunic through the Ogre chain texture family",()=>{
+  const fungi={itemName:"Fungus Covered Scale Tunic",material:7} as never;
+  expect(armorMaterial(fungi,"ogm")).toBe(2);
+  expect(armorTextureName("ogmch0001",armorMaterial(fungi,"ogm"))).toBe("ogmch0201.png");
+  expect(armorTextureName("ogmch0002",armorMaterial(fungi,"ogm"))).toBe("ogmch0202.png");
+ });
+ it("renders the fungi tunic through the Iksar scale texture family",()=>{
+  const fungi={itemName:"Fungus Covered Scale Tunic",material:7} as never;
+  expect(armorMaterial(fungi,"ikm")).toBe(3);
+  expect(armorMaterial(fungi,"ikf")).toBe(3);
+  expect(armorTextureName("ikmch0001",armorMaterial(fungi,"ikm"))).toBe("ikmch0301.png");
+  expect(armorTextureName("ikmch0002",armorMaterial(fungi,"ikm"))).toBe("ikmch0302.png");
  });
 
  it("maps IT240 to a race and gender custom helm on the real head joint",()=>{

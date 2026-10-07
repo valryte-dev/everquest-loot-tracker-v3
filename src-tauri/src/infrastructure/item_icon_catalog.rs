@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::LazyLock};
 const EMBEDDED_CATALOG: &str = include_str!("../../assets/p99-item-icons.tsv");
 
 struct ItemIconCatalog {
-    by_peq_id: HashMap<i64, i64>,
+    by_peq_id: HashMap<i64, (String, i64)>,
     by_name: HashMap<String, i64>,
 }
 
@@ -24,7 +24,9 @@ static CATALOG: LazyLock<ItemIconCatalog> = LazyLock::new(|| {
             continue;
         };
         if let Some(peq_id) = peq_id.filter(|value| *value > 0) {
-            by_peq_id.entry(peq_id).or_insert(icon_id);
+            by_peq_id
+                .entry(peq_id)
+                .or_insert_with(|| (name.to_lowercase(), icon_id));
         }
         if !name.is_empty() {
             by_name.entry(name.to_lowercase()).or_insert(icon_id);
@@ -34,14 +36,12 @@ static CATALOG: LazyLock<ItemIconCatalog> = LazyLock::new(|| {
 });
 
 pub fn icon_id(item_id: Option<i64>, item_name: &str) -> Option<i64> {
+    let normalized_name = item_name.trim().to_lowercase();
     item_id
-        .and_then(|id| CATALOG.by_peq_id.get(&id).copied())
-        .or_else(|| {
-            CATALOG
-                .by_name
-                .get(&item_name.trim().to_lowercase())
-                .copied()
-        })
+        .and_then(|id| CATALOG.by_peq_id.get(&id))
+        .filter(|(catalog_name, _)| catalog_name == &normalized_name)
+        .map(|(_, icon_id)| *icon_id)
+        .or_else(|| CATALOG.by_name.get(&normalized_name).copied())
 }
 
 #[cfg(test)]
@@ -55,6 +55,10 @@ mod tests {
         assert_eq!(icon_id(Some(-1), "A Blue Crown"), Some(653));
     }
 
+    #[test]
+    fn rejects_cross_catalog_id_collisions_before_falling_back_to_name() {
+        assert_eq!(icon_id(Some(2656), "Staff of the Serpent"), Some(2865));
+    }
     #[test]
     fn unknown_items_have_no_invented_icon() {
         assert_eq!(icon_id(Some(999_999_999), "Not A Real Item"), None);

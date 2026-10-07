@@ -50,9 +50,10 @@ export function armorTextureName(materialName:string,material:number){
 
 export function armorMaterial(item:InventoryItem|undefined,_modelCode=""){
  const material=item?.material||0;
- // The P99 item export uses material 7 for the Iksar scale family, while the
- // classic EQSage character assets expose that appearance as plate (3).
- return material===7?3:material;
+ // The P99 item export uses material 7 for the Kunark-chain family (including
+ // the Fungus Covered Scale Tunic). Iksar models expose that appearance through
+ // their scale/plate family (3); the other player models use chain (2).
+ return material===7?(_modelCode.toLocaleLowerCase().startsWith("ik")?3:2):material;
 }
 
 export function replaceableArmorRegion(materialName:string,modelCode:string){

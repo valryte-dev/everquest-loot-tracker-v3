@@ -10,11 +10,19 @@ import {calculateProcDps,DamageFighterBars,spellEffectTitle,type DamageFighterBa
 import {DamageIncomingBars,IncomingDamageTotal} from "./DamageIncomingBars";
 import {DamageProcSpellStack} from "./DamageProcSpellStack";
 import {DamageTrendCharts} from "./DamageTrendCharts";
+import {DamageUltraCompactMeter} from "./DamageUltraCompactMeter";
 
 const isDesktop=()=>"__TAURI_INTERNALS__" in window;
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 const formatNumber=(value:number)=>Math.round(value).toLocaleString();
-const currentFightWindowSize=()=>{const width=Math.max(560,Math.min(2400,Number(localStorage.getItem("current-fight-window-width"))||960)),height=Math.max(360,Math.min(1600,Number(localStorage.getItem("current-fight-window-height"))||760));return{width,height}};
+type DamagePopoutView="ultra"|"full";
+const currentFightView=():DamagePopoutView=>localStorage.getItem("current-fight-window-view")==="full"?"full":"ultra";
+const currentFightWindowSize=(view:DamagePopoutView)=>{
+ const compact=view==="ultra",prefix=compact?"current-fight-ultra":"current-fight-full";
+ const width=Math.max(compact?360:560,Math.min(2400,Number(localStorage.getItem(`${prefix}-width`))||(compact?440:960)));
+ const height=Math.max(compact?240:360,Math.min(1600,Number(localStorage.getItem(`${prefix}-height`))||(compact?520:760)));
+ return{width,height};
+};
 
 export async function openDamageMeterWidget(){
  if(!isDesktop()){window.open("?widget=damage-meter","damage-meter","width=860,height=720");return}
@@ -31,12 +39,13 @@ export async function openDamageMeterWidget(){
 }
 
 export async function openCurrentFightWindow(){
- if(!isDesktop()){window.open("?widget=current-fight","current-fight","width=960,height=760,resizable=yes");return}
+ const view=currentFightView(),size=currentFightWindowSize(view);
+ if(!isDesktop()){window.open("?widget=current-fight","current-fight",`width=${size.width},height=${size.height},resizable=yes`);return}
  const existing=await WebviewWindow.getByLabel("current-fight");
  if(existing){await existing.show();await existing.setFocus();return}
  const widget=new WebviewWindow("current-fight",{
-  url:"?widget=current-fight",title:"EQ Current Fight",width:960,height:760,
-  minWidth:560,minHeight:360,resizable:true,alwaysOnTop:true,center:true,
+  url:"?widget=current-fight",title:"EQ Current Fight",width:size.width,height:size.height,
+  minWidth:360,minHeight:240,resizable:true,alwaysOnTop:true,center:true,
  });
  await new Promise<void>((resolve,reject)=>{
   void widget.once("tauri://created",()=>resolve());
@@ -57,6 +66,7 @@ export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
  const[error,setError]=useState("");
  const[now,setNow]=useState(Date.now());
  const[onTop,setOnTop]=useState(true),[retainedFightId,setRetainedFightId]=useState<number>();
+ const[popoutView,setPopoutView]=useState<DamagePopoutView>(()=>focusCurrent?currentFightView():"full");
  const[activity,setActivity]=useState<Map<number,Activity>>(()=>new Map());
  const revision=useRef(-1),refreshing=useRef(false),refreshQueued=useRef(false),refreshTimer=useRef<number|undefined>(undefined);
  const refresh=useCallback(async()=>{
@@ -111,7 +121,7 @@ export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
   return sortLiveEncountersByPlayerTarget(filtered,character,preferred);
  },[activity,data,now]);
  useEffect(()=>{if(focusCurrent&&liveFights[0])setRetainedFightId(liveFights[0].id)},[focusCurrent,liveFights]);
- useEffect(()=>{if(!focusCurrent)return;const closing=()=>{if(isDesktop())void emit("current-fight-window-closed")},rememberSize=()=>{localStorage.setItem("current-fight-window-width",String(window.outerWidth));localStorage.setItem("current-fight-window-height",String(window.outerHeight))};window.addEventListener("beforeunload",closing);window.addEventListener("resize",rememberSize);return()=>{window.removeEventListener("beforeunload",closing);window.removeEventListener("resize",rememberSize)}},[focusCurrent]);
+ useEffect(()=>{if(!focusCurrent)return;const closing=()=>{if(isDesktop())void emit("current-fight-window-closed")},rememberSize=()=>{const prefix=popoutView==="ultra"?"current-fight-ultra":"current-fight-full";localStorage.setItem(`${prefix}-width`,String(window.outerWidth));localStorage.setItem(`${prefix}-height`,String(window.outerHeight))};window.addEventListener("beforeunload",closing);window.addEventListener("resize",rememberSize);return()=>{window.removeEventListener("beforeunload",closing);window.removeEventListener("resize",rememberSize)}},[focusCurrent,popoutView]);
  const focused=focusCurrent?focusedDamageEncounter(liveFights,data?.damageEncounters||[],retainedFightId):undefined;
  const fights=focusCurrent?(focused?[focused]:[]):liveFights;
  const toggleTop=async()=>{
@@ -119,17 +129,18 @@ export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
   if(isDesktop())await getCurrentWindow().setAlwaysOnTop(next);
   setOnTop(next);
  };
- return <main className="damage-meter-window">
+ const selectPopoutView=(view:DamagePopoutView)=>{localStorage.setItem("current-fight-window-view",view);setPopoutView(view)};
+ return <main className={"damage-meter-window"+(focusCurrent&&popoutView==="ultra"?" is-ultra":"")}>
   <header className="damage-meter-toolbar">
    <div><span>{focusCurrent?"Undocked current fight":"Live widget"}</span><strong>{focusCurrent?"EQ Current Fight":"EQ Damage Meter"}</strong><small>{fights[0]?`${fights[0].character} vs. ${fights[0].mobName}`:data?.activeCharacter||"Waiting for a character"}</small></div>
-   <label className="meter-top-toggle"><input type="checkbox" checked={onTop} onChange={()=>void toggleTop()}/><span>On top</span></label>
+   <div className="damage-meter-toolbar-actions">{focusCurrent&&<div className="damage-popout-view-toggle" aria-label="Popout density"><button type="button" className={popoutView==="ultra"?"active":""} onClick={()=>selectPopoutView("ultra")}>Ultra</button><button type="button" className={popoutView==="full"?"active":""} onClick={()=>selectPopoutView("full")}>Full</button></div>}<label className="meter-top-toggle"><input type="checkbox" checked={onTop} onChange={()=>void toggleTop()}/><span>On top</span></label></div>
   </header>
   {error&&<div className="meter-error">{error}</div>}
-  {fights.length?<section className="damage-meter-fights">{fights.map(row=><DamageMeterPanel key={row.id} row={row} now={now}/>)}</section>:<section className="meter-waiting"><div><i/><strong>Listening for combat</strong><small>The window will stay open and follow the preferred or active fight.</small></div></section>}
+  {fights.length?<section className="damage-meter-fights">{fights.map(row=><DamageMeterPanel key={row.id} row={row} now={now} ultraCompact={focusCurrent&&popoutView==="ultra"}/>)}</section>:<section className="meter-waiting"><div><i/><strong>Listening for combat</strong><small>The window will stay open and follow the preferred or active fight.</small></div></section>}
  </main>;
 }
 
-export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;now:number;embedded?:boolean}){
+export function DamageMeterPanel({row,now,embedded=false,ultraCompact=false}:{row:DamageEncounter;now:number;embedded?:boolean;ultraCompact?:boolean}){
  const[detail,setDetail]=useState<DamageEncounterDetail|null>(null);
  const previousShares=useRef(new Map<string,number>());
  const detailTimer=useRef<number|undefined>(undefined),detailRequestedAt=useRef(0);
@@ -169,6 +180,7 @@ export function DamageMeterPanel({row,now,embedded=false}:{row:DamageEncounter;n
    effects:fighterEffects,effectsTitle:effects?.title,
   };
  });
+ if(ultraCompact)return <DamageUltraCompactMeter row={row} durationSeconds={duration} fighters={fighterRows}/>;
  return <article className={"meter-fight"+(embedded?" is-embedded":"")}>
   {!embedded&&<header>
    <div><span className="meter-pulse"><i/>{row.outcome==="active"?"Live":"Recent"}</span><h2 title={row.mobName}>{row.mobName}</h2><small>Combat {formatCombatClock(duration)} | {row.character}{row.weapons.length?" | Last known weapon snapshot: "+row.weapons.join(" / "):""}</small></div>

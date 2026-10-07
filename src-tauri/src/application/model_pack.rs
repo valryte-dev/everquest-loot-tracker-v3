@@ -440,7 +440,13 @@ fn visual_materials() -> BTreeSet<u8> {
         .skip(1)
         .filter_map(|line| line.split('\t').nth(3))
         .filter_map(|value| value.parse::<u8>().ok())
-        .map(|material| if material == 7 { 3 } else { material })
+        .flat_map(|material| {
+            if material == 7 {
+                vec![2, 3]
+            } else {
+                vec![material]
+            }
+        })
         .filter(|material| *material > 0 && *material < 100)
         .collect()
 }
@@ -849,8 +855,8 @@ mod tests {
     use super::{
         alternate_head_model_files, armor_texture_candidates, download_into,
         glb_asset_texture_uris, is_image_asset, item_model_files, percent_decode,
-        validate_relative, verify_directory, ModelAssetIndex, ModelPackFile, ModelPackManifest,
-        MANIFEST_NAME, PACK_VERSION, SUPPLEMENTAL_TEXTURES,
+        validate_relative, verify_directory, visual_materials, ModelAssetIndex, ModelPackFile,
+        ModelPackManifest, MANIFEST_NAME, PACK_VERSION, SUPPLEMENTAL_TEXTURES,
     };
     use std::{collections::BTreeSet, fs};
 
@@ -890,6 +896,9 @@ mod tests {
             "textures/humch0001.png".to_owned(),
             "textures/clk0401.png".to_owned(),
         ]);
+        let materials = visual_materials();
+        assert!(materials.contains(&2));
+        assert!(materials.contains(&3));
         let candidates = armor_texture_candidates(&base);
         assert!(candidates.contains("textures/humch2201.png"));
         assert!(candidates.contains("textures/humch0301.png"));

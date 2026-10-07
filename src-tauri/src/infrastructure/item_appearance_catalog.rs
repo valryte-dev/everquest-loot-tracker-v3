@@ -11,7 +11,7 @@ pub struct ItemAppearance {
 }
 
 struct ItemAppearanceCatalog {
-    by_peq_id: HashMap<i64, ItemAppearance>,
+    by_peq_id: HashMap<i64, (String, ItemAppearance)>,
     by_name: HashMap<String, ItemAppearance>,
 }
 
@@ -64,7 +64,7 @@ static CATALOG: LazyLock<ItemAppearanceCatalog> = LazyLock::new(|| {
         if let Some(peq_id) = peq_id.filter(|value| *value > 0) {
             by_peq_id
                 .entry(peq_id)
-                .or_insert_with(|| appearance.clone());
+                .or_insert_with(|| (name.to_lowercase(), appearance.clone()));
         }
         if !name.is_empty() {
             by_name.entry(name.to_lowercase()).or_insert(appearance);
@@ -89,14 +89,12 @@ fn normalized_item_type(id_file: Option<&str>, source_item_type: Option<i64>) ->
 }
 
 pub fn appearance(item_id: Option<i64>, item_name: &str) -> Option<ItemAppearance> {
+    let normalized_name = item_name.trim().to_lowercase();
     item_id
-        .and_then(|id| CATALOG.by_peq_id.get(&id).cloned())
-        .or_else(|| {
-            CATALOG
-                .by_name
-                .get(&item_name.trim().to_lowercase())
-                .cloned()
-        })
+        .and_then(|id| CATALOG.by_peq_id.get(&id))
+        .filter(|(catalog_name, _)| catalog_name == &normalized_name)
+        .map(|(_, appearance)| appearance.clone())
+        .or_else(|| CATALOG.by_name.get(&normalized_name).cloned())
 }
 
 #[cfg(test)]
@@ -118,6 +116,13 @@ mod tests {
             .is_some());
     }
 
+    #[test]
+    fn rejects_cross_catalog_id_collisions_before_falling_back_to_name() {
+        let staff = appearance(Some(2656), "Staff of the Serpent").unwrap();
+        assert_eq!(staff.id_file.as_deref(), Some("IT157"));
+        assert_eq!(staff.item_type, Some(3));
+        assert_eq!(staff.material, 0);
+    }
     #[test]
     fn unknown_items_have_no_invented_appearance() {
         assert_eq!(appearance(Some(999_999_999), "Not A Real Item"), None);

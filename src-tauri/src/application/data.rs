@@ -2875,6 +2875,28 @@ mod tests {
     }
 
     #[test]
+    fn inventory_snapshot_rejects_foreign_catalog_id_collisions() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+
+        mutate(
+            &database,
+            "inventory.importFiles",
+            &json!({"files":[{"name":"Daydrinker-Inventory.txt","text":"Primary\tStaff of the Serpent\t2656\t1\n"}]}),
+        )
+        .unwrap();
+
+        let value = snapshot(&database).unwrap();
+        let staff = &value["inventory"][0];
+        assert_eq!(staff["itemName"], "Staff of the Serpent");
+        assert_eq!(staff["itemId"], 2656);
+        assert_eq!(staff["iconId"], 2865);
+        assert_eq!(staff["idFile"], "IT157");
+        assert_eq!(staff["itemType"], 3);
+        assert_eq!(staff["material"], 0);
+    }
+    #[test]
     fn merchant_snapshot_compares_asking_and_pigparse_prices() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();

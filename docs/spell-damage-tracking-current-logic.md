@@ -8,9 +8,8 @@ Spell damage combines:
 
 1. EverQuest events parsed in `domain/log_events.rs`.
 2. Project 1999 metadata cached separately in `spell-info.db` by `infrastructure/spell_catalog.rs`.
-3. A bundled, versioned item-to-proc snapshot from the [Project 1999 Weapon Procs table](https://wiki.project1999.com/Weapon_Procs), reconciled to master item IDs by `infrastructure/proc_catalog.rs`.
-4. Stateful attribution and inference in `application/dot_tracking.rs`.
-5. Canonical damage writes and spell summaries in `application/runtime.rs` and `application/combat_metrics.rs`.
+3. Stateful attribution and inference in `application/dot_tracking.rs`.
+4. Canonical damage writes and spell summaries in `application/runtime.rs` and `application/combat_metrics.rs`.
 
 For every complete timestamped line, the ordinary event is persisted first. The spell tracker then consumes the same parsed event, resolves prior clues, flushes inferred ticks due at that timestamp, and evaluates spell landing text.
 
@@ -23,7 +22,7 @@ Names are normalized by removing leading `Spell:`, converting backticks and know
 | `damage_kind` | Current rule |
 | --- | --- |
 | `dot` | An effect contains `Decrease Hitpoints ... by N ... per tick`, with no separate direct effect. |
-| `direct` | An effect contains `Decrease Hitpoints ... by N` or `Decrease HP when cast by N` without `per tick`, with no DoT effect. |
+| `direct` | An effect contains `Decrease Hitpoints ... by N` without `per tick`, with no DoT effect. |
 | `hybrid` | Both forms were parsed. |
 | `non_damage` | Neither supported form was parsed. |
 
@@ -35,7 +34,7 @@ Numeric rules:
 - Tick interval is always six seconds.
 - Total DoT estimate is damage per tick multiplied by tick count.
 
-Older wiki records with empty structured slots receive a deliberately narrow description fallback when they explicitly state a numeric amount of damage and do not describe tick cadence, reactive damage, or absorption. The derived spell cache is reclassified locally at combat schema version 3; no network refresh is required. Only `direct`, `dot`, and `hybrid` entries with non-empty `Cast on Other` and usable damage data become combat profiles, plus explicit safety rules such as an already-known proc-only effect.
+Only `direct`, `dot`, and `hybrid` entries with non-empty `Cast on Other` and usable damage data become combat profiles.
 
 **Audit flags:** formula-based, level-scaled, negative, or unusually worded effects can fail classification; non-literal durations produce no inferred DoT; only the first supported direct and per-tick effects are used.
 
@@ -108,17 +107,9 @@ Wiki: Someone staggers as the light of dawn washes over it.
 Log:  Hexbone skeleton staggers as the light of dawn washes over it.
 ```
 
-The target becomes `Hexbone skeleton`. Profiles reload at most once every 30 seconds per tracker instance.
+The target becomes `Hexbone skeleton`. A landing is accepted only if exactly one combat profile matches. Profiles reload at most once every 30 seconds per tracker instance.
 
-When several spells share the same landing message, selection is deterministic:
-
-1. An explicit matching `You begin casting` spell wins.
-2. A matching active-character item clue wins when the item-to-proc catalog identifies one candidate.
-3. For a local proc with immediately preceding non-melee damage, the newest primary/secondary weapon snapshot may select one candidate when exactly one equipped weapon maps to it.
-4. A single remaining profile is accepted normally.
-5. A same-target collision involving known proc spells is retained as `Unidentified direct proc` rather than discarded. Logged non-melee damage is preserved, but no catalog damage or item ownership is invented.
-
-**Audit flags:** messages lacking literal `Someone` are excluded; punctuation or wording differences fail; a last-known weapon snapshot can be stale and is therefore only used when it uniquely disambiguates candidates.
+**Audit flags:** messages lacking literal `Someone` are excluded; punctuation or wording differences fail; identical landing text on multiple spells is treated as ambiguous and all matches are ignored.
 
 ## Caster/source priority
 
@@ -130,7 +121,7 @@ For one recognized landing, priority is:
 
 ### Item click
 
-A glow qualifies zero through three whole seconds after it. When multiple profiles match, the canonical item-to-proc relationship must select the spell; a unique landing continues to work for click items not present in the weapon-proc catalog.
+A glow qualifies zero through three whole seconds after it. No database relationship between the glowing item and matched spell is required.
 
 - caster: active character only
 - attribution: `item_glow`
@@ -165,19 +156,19 @@ Some item effects do not emit another player's `begins to glow` line. The spell 
 - proc count: no
 - inferred damage: no
 
-This keeps the landing visible in the live fight without assigning it to the next attacker or corrupting damage totals. The catalog maps `Curse of the Spirits` (`Someone is consumed by the raging spirits of the land.`) to the `Spear of Fate` Shaman epic item click. When another player's click message is not visible, the source is known but the caster remains `Unattributed`.
+This keeps the landing visible in the live fight without assigning it to the next attacker or corrupting damage totals. The initial rule maps `Curse of the Spirits` (`Someone is consumed by the raging spirits of the land.`) to a possible `Spear of Fate` item click.
 
 ### Proc
 
-Without a qualifying active-character glow, direct cast, or cataloged item-click-only rule, the landing remains memory-only for exactly the next parsed line. The tracker also remembers whether the immediately preceding line was generic non-melee damage against the same target. The next line confirms a proc when it is a same-target:
+Without a qualifying active-character glow, direct cast, or cataloged item-click-only rule, the landing is not written to the database. It remains memory-only for exactly the next parsed line. The tracker also remembers whether the immediately preceding line was generic non-melee damage against the same target. The next line confirms a proc when it is a same-target:
 
 - failed same-target combat attempt ending in `miss!`, `misses!`, `ripostes!`, `blocks!`, `parries!`, or `dodges!`;
 - local melee damage event; or
 - observed melee damage event.
 
-Caster selection is deliberately conservative. An immediately following same-target combat action explicitly belonging to the active character attributes the proc to that character. Matching generic non-melee damage immediately before the landing additionally supplies its logged direct proc damage. A following same-target combat action from any other player can confirm that the landing was a proc, but it does not prove that player caused it; the occurrence and any inferred proc damage are assigned to `Unidentified player`. The last-known weapon loadout is checked against the bundled weapon-proc relationships only as possible source evidence. DoT attribution and activity become `proc`, and a `proc_occurrences` row is created. Ambiguous known-proc landings are counted under `Unidentified direct proc`; they only add direct damage when the log supplied an actual non-melee amount. Any intervening line, different target/source, or unsupported event consumes and discards the candidate.
+Caster selection then has two branches. If matching generic non-melee damage immediately preceded the landing, the caster is forced to the active character and the logged amount is used as direct proc damage. Otherwise, the attacker on the confirming combat line becomes the caster, including an observed player; fixed catalog direct damage is used when available. DoT attribution and activity become `proc`, and a `proc_occurrences` row is created. Any intervening line, different target/source, or unsupported event consumes and discards the candidate.
 
-**Audit flags:** inserted log chatter can make valid procs fail; only one pending proc exists across simultaneous fights; the next attacker confirms adjacency but is never treated as proof of caster identity; an item-click-only spell needs a catalog source rule to avoid being misclassified as a proc; no rule proves which equipped weapon caused the proc.
+**Audit flags:** inserted log chatter can make valid procs fail; only one pending proc exists across simultaneous fights; without preceding non-melee evidence, the next attacker is a probabilistic attribution rather than proof; an item-click-only spell needs a catalog source rule to avoid that ambiguity; no rule proves which equipped weapon caused the proc.
 Observed-player example:
 
 ```text
@@ -186,11 +177,7 @@ Observed-player example:
 [Mon Sep 07 08:55:39 2026] Lizzyflop crushes Grink for 30 points of damage.
 ```
 
-For Essence Tap, the immediately preceding named `says 'Ahhh, I feel much better now...'` message is a spell-specific caster candidate. The landing must then be immediately followed by that same named player attacking or attempting to attack the same target. Only the full three-line sequence attributes the proc to that player. The melee hit remains separate, while Essence Tap contributes its catalog direct-damage estimate to the player's proc total. Without matching combat confirmation, a standalone `Grink staggers.` landing remains `Unidentified player`.
-
-For a spell explicitly classified as `proc_only` in the spell catalog, an immediately following same-target melee hit or attempted hit identifies the proccer. This includes blocked, dodged, parried, riposted, and missed attempts. A matching non-melee damage line immediately before the landing is a stronger local signature: when its amount equals the proc spell's catalog damage, the active character owns the proc even if another player's melee line follows. Without that prefix, the next same-target attacker owns the proc and receives the spell catalog's damage estimate. This covers One Hundred Blows (`120 non-melee -> spinning`) and Divine Might Effect (`65 non-melee -> struck by a surge`) using one rule. Item-click-only spells are excluded from this inference and remain unattributed unless the active character's cast or glow evidence identifies them.
-
-Root landings ending in `'s feet become entwined.` are ambiguous because several direct-cast root spells and weapon procs share that message. A matching active-character `You begin casting ... Roots.` clue wins and is recorded as a direct spell, never a proc. Without a direct-cast or item-click clue, the immediately following same-target attack or combat attempt identifies the likely proccer. When the exact root spell cannot be disambiguated, it is retained as `Unidentified root proc` with no guessed spell damage.
+The first line is ordinary flavor text. `Grink staggers.` uniquely matches Essence Tap. Because there is no immediately preceding generic non-melee line, the next same-target combat action identifies Lizzyflop as the probable proccer. The 30-point crush remains melee damage, while Essence Tap contributes its separate catalog direct-damage estimate.
 Observed-player DoT-proc example:
 
 ```text
@@ -198,7 +185,7 @@ Observed-player DoT-proc example:
 [Sun Sep 06 20:46:11 2026] Balbazak pierces Drusella Sathir for 271 points of damage.
 ```
 
-The landing uniquely matches Dawncall. Balbazak's immediately following same-target pierce confirms proc adjacency but not caster identity. The 271-point pierce remains Balbazak's melee damage. Dawncall is stored as a proc-attributed DoT application under `Unidentified player`, and its calculated ticks accrue to that unidentified bucket for the catalog duration unless refreshed, explicitly superseded, or ended with the encounter.
+The landing uniquely matches Dawncall. Balbazak's immediately following same-target pierce makes Balbazak the probable proccer. The 271-point pierce remains melee damage. Dawncall is stored as a proc-attributed DoT application, and its calculated ticks accrue separately to Balbazak for the catalog duration unless refreshed, explicitly superseded, or ended with the encounter.
 
 ## Direct damage accounting
 
@@ -220,7 +207,7 @@ The confirming melee hit remains separate. Pure direct casts and item clicks do 
 
 ## DoT accounting
 
-A matched profile with damage per tick and tick count creates an application after attribution by active-character direct cast, active-character item click, or an attack-confirmed proc. The next-combat rule can confirm an observed proc but cannot identify an observed player as its caster; those applications use `Unidentified player`. Unconfirmed landings create no application or inferred ticks.
+A matched profile with damage per tick and tick count creates an application after attribution by active-character direct cast, active-character item click, or an attack-confirmed proc. A proc may be attributed to an observed player by the next-combat rule. Unconfirmed landings create no application or inferred ticks.
 
 Before insertion, every active same-encounter, same-target, same-spell application is marked `refreshed`, regardless of caster. The replacement resets duration:
 
@@ -249,7 +236,7 @@ A confirmed landing reuses an `active` encounter matching source file, log chara
 
 ## Persistence
 
-| Table | Purpose |
+| Table | Purpose |d
 | --- | --- |
 | `damage_events` | Canonical explicit and inferred outgoing damage. |
 | `damage_encounters` | Fight totals and lifecycle. |
@@ -257,7 +244,6 @@ A confirmed landing reuses an `active` encounter matching source file, log chara
 | `proc_occurrences` | Confirmed proc and inferred direct-damage identity. |
 | `damage_spell_summaries` | Incremental per-encounter/caster/spell metrics. |
 | `combat_spell_activity` | Recognized landing feed with source classification. |
-| `item_proc_spells` | Bundled item-to-proc relationships with nullable canonical `item_id`, captured item name, spell, proc level, and source provenance. |
 
 Idempotency uses original source/offset for landings and procs, `proc://<id>` for direct proc damage, and `dot://<application id>` plus tick number for DoT ticks.
 
