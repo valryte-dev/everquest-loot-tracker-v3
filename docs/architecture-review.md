@@ -504,6 +504,18 @@ The non-destructive refactor phases are implemented and checkpointed:
 - The System page displays the actual runtime schema version.
 - Startup database writers are ordered (live folder reconciliation, backlog scan, then damage-summary backfill), and long runtime transactions share a writer coordinator to prevent SQLite lock failures.
 
+### Mass-combat parser hardening — 2026-10-31
+
+The live log path was compared with EqTool's high-volume parser and tightened without changing combat semantics or transaction boundaries:
+
+- The fixed EverQuest timestamp envelope is parsed directly instead of running a regular expression for every log line.
+- Common melee and non-melee damage patterns are evaluated before uncommon spell-state patterns.
+- Live batches derive their change notification from actual mutations instead of running aggregate signature queries across combat history before and after every batch.
+- Schema 52 adds a small partial index for the active-encounter lookup used by the live damage hot path.
+- A 20,000-line synthetic raid-spam parser test and an SQLite query-plan assertion guard the two optimizations against regression.
+
+Bounded transaction chunking is deliberately deferred. It would change atomic ingestion boundaries and should only be introduced behind a named checkpoint after profiling a real high-volume capture proves that parsing and active-encounter lookup are no longer the limiting stages.
+
 Deliberately deferred destructive work:
 
 - Raw combat/log retention is unchanged because deleting diagnostic history requires an explicit opt-in policy.

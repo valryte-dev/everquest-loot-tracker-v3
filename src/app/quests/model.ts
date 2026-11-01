@@ -4,7 +4,7 @@ export interface QuestHolding {character:string;count:number;locations:string[]}
 export interface QuestComponentView extends QuestCatalogItem {held:number;holders:QuestHolding[]}
 export interface QuestCardView {
  key:string;category:QuestCatalogItem["category"];className:string;questName:string;
- rewardName:string;rewardIconId?:number;sourceUrl:string;components:QuestComponentView[];
+ rewardItemId?:number;rewardName:string;rewardIconId?:number;sourceUrl:string;components:QuestComponentView[];
  owned:number;required:number;ready:boolean;estimatedHeldValue:number;
 }
 export interface QuestCardGroup {key:string;label:string;cards:QuestCardView[]}
@@ -87,6 +87,7 @@ export function buildQuestCards(catalog:QuestCatalogItem[],inventory:InventoryIt
   });
   const owned=components.filter(component=>component.held>=component.quantity).length;
   return {key,category:first.category,className:first.className,questName:first.questName,
+   rewardItemId:first.category==="velious_armor"?undefined:first.rewardItemId,
    rewardName:first.category==="velious_armor"?first.questName:first.rewardName,
    rewardIconId:first.rewardIconId,sourceUrl:first.sourceUrl,components,owned,
    required:components.length,ready:components.length>0&&owned===components.length,

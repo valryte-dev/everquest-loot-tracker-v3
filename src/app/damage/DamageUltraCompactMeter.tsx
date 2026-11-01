@@ -18,7 +18,7 @@ export function DamageUltraCompactMeter({row,durationSeconds,fighters}:{row:Dama
    return <article key={fighter.name} className={fighter.mine?"is-me":""} style={{"--meter-color":damageBarColors[index%damageBarColors.length]} as CSSProperties}>
     <i style={{"--meter-fill":fighter.totalDamage/maxDamage} as CSSProperties} aria-hidden="true"/>
     <b>#{fighter.rank}</b>
-    <div className="meter-ultra-name"><strong title={fighter.name}>{fighter.name}</strong>{fighter.mine&&<em>ME</em>}<small>{formatFighterDuration(fighter.combatSeconds)} · {fighter.contribution.toFixed(1)}% · IN {number(fighter.incomingDamage)}{effects.procCount>0?` · ${effects.procCount}P/${number(procDamage)}`:""}</small></div>
+    <div className="meter-ultra-name"><strong title={fighter.name}>{fighter.name}</strong>{fighter.mine&&<em>ME</em>}<small>{formatFighterDuration(fighter.combatSeconds)} · 12S {fighter.liveDps.toFixed(1)} · {fighter.contribution.toFixed(1)}% · IN {number(fighter.incomingDamage)}{effects.procCount>0?` · ${effects.procCount}P/${number(procDamage)}`:""}</small></div>
     <div className="meter-ultra-stat"><strong>{fighter.dps.toFixed(1)}</strong><small>DPS</small></div>
     <div className="meter-ultra-stat damage"><strong>{number(fighter.totalDamage)}</strong><small>DMG</small></div>
    </article>;

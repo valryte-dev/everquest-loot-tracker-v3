@@ -1,0 +1,593 @@
+# EqTool spawn catalog (MIT), generated from EQToolShared/Zones.cs
+# upstream_revision	200bf339ae438e635ef50b1e071a654f801a44e0
+# record_type	zone_key	name_or_alias	respawn_seconds
+default	airplane		28800
+default	akanon		400
+default	arena		0
+default	befallen		1140
+exact	befallen	An Elf Skeleton	400
+default	beholder		400
+default	blackburrow		1320
+default	burningwood		400
+default	butcher		900
+exact	butcher	Nyzil Bloodforge	400
+exact	butcher	Durkis Battlemore	400
+exact	butcher	Walnan	400
+exact	butcher	Happ Findlefinn	400
+exact	butcher	Atwin Keladryn	400
+exact	butcher	Balen Kalgunn	400
+exact	butcher	Thar Kelgand	400
+exact	butcher	Alun Bilgum	1320
+exact	butcher	Darm Dundam	1320
+exact	butcher	Doran Glosglen	1320
+exact	butcher	Ganbar Dundam	1320
+exact	butcher	Gann Dunbull	1320
+exact	butcher	Gibi Bilgum	1320
+exact	butcher	Glorin Binfurr	1320
+exact	butcher	Magnus Boran	1320
+contains	butcher	Guard Armandin	1440
+contains	butcher	Guard Belg	1440
+contains	butcher	Guard Burr	1440
+contains	butcher	Guard Clendin	1440
+contains	butcher	Guard Dunil	1440
+contains	butcher	Guard Dunn	1440
+contains	butcher	Guard Gabel	1440
+contains	butcher	Guard Gonin	1440
+contains	butcher	Guard Grae	1440
+contains	butcher	Guard Haendar	1440
+contains	butcher	Guard Haldin	1440
+contains	butcher	Guard Hartt	1440
+contains	butcher	Guard Kizzburr	1440
+contains	butcher	Guard Kyte	1440
+contains	butcher	Guard Mandin	1440
+contains	butcher	Guard Norin	1440
+contains	butcher	Guard Rundul	1440
+contains	butcher	Guard Rylin	1440
+contains	butcher	Guard Sornn	1440
+contains	butcher	Guard Srinn	1440
+contains	butcher	Guard Zyburr	1120
+contains	butcher	Guard Zyburr	1120
+contains	butcher	Peg Leg	400
+contains	butcher	Keldyn Dunfire	400
+contains	butcher	Margyl Darklin	400
+contains	butcher	Crytil Dunfire	400
+contains	butcher	Qued	400
+contains	butcher	Barma Dunfire	400
+default	cabeast		400
+default	cabwest		400
+default	cauldron		400
+default	cazicthule		1320
+default	charasis		1230
+exact	charasis	Drusella Sathir	86400
+default	chardok		1080
+exact	chardok	Kennel Master Al`ele	1200
+exact	chardok	an apprentice kennelmaster	1200
+default	citymist		1320
+exact	citymist	a black reaver	7200
+default	cobaltscar		1200
+default	commons		400
+exact	commons	a shadowed man	600
+default	crushbone		540
+exact	crushbone	Retlon Brenclog	180
+default	crystal		885
+default	dalnir		720
+default	dreadlands		400
+exact	dreadlands	A Tundra Yeti	960
+exact	dreadlands	A Glacier Yeti	960
+default	droga		1230
+default	eastkarana		360
+default	eastwastes		400
+default	ecommons		400
+default	emeraldjungle		400
+default	erudnext		1440
+contains	erudnext	shark	400
+default	erudnint		1440
+contains	erudnint	shark	400
+default	erudsxing		400
+default	everfrost		400
+default	fearplane		28800
+default	feerrott		400
+default	felwithea		1440
+default	felwitheb		1440
+default	fieldofbone		400
+default	firiona		400
+default	freporte		400
+default	freportn		400
+default	freportw		1440
+default	frontiermtns		400
+default	frozenshadow		1200
+default	gfaydark		425
+exact	gfaydark	Captain Silverwind	1440
+exact	gfaydark	Captain Fayfear	1440
+exact	gfaydark	Captain Briarstorm	1440
+exact	gfaydark	Captain Brookrock	1440
+exact	gfaydark	Captain Crystalwind	1440
+exact	gfaydark	Captain Dayblaze	1440
+exact	gfaydark	Captain Eaglesong	1440
+exact	gfaydark	Captain Fayfield	1440
+exact	gfaydark	Guard Fireblight	1440
+exact	gfaydark	Guard Frostfallen	1440
+exact	gfaydark	Guard Marshmoor	1440
+exact	gfaydark	Guard Moonwind	1440
+exact	gfaydark	Guard Nitegazer	1440
+exact	gfaydark	Guard Noonshadow	1440
+exact	gfaydark	Guard Oakwillow	1440
+exact	gfaydark	Guard Orcflayer	1440
+exact	gfaydark	Guard Pinebramble	1440
+exact	gfaydark	Guard Pineshade	1440
+exact	gfaydark	Guard Rainstrider	1440
+exact	gfaydark	Guard Starstrike	1440
+exact	gfaydark	Guard Streamtree	1440
+exact	gfaydark	Guard Sunblaze	1440
+exact	gfaydark	Guard Sunweaver	1440
+exact	gfaydark	Guard Tangleroot	1440
+exact	gfaydark	Guard Treestrider	1440
+exact	gfaydark	Guard Valewatcher	1440
+exact	gfaydark	Liutenant Leafstalker	1440
+default	greatdivide		640
+default	grobb		1440
+default	growthplane		43200
+exact	growthplane	a protector of growth	1440
+exact	growthplane	Tunare	1
+default	gukbottom		1680
+default	guktop		990
+default	halas		1440
+default	hateplane		28800
+default	highkeep		1080
+exact	highkeep	Guard Chopin	180
+exact	highkeep	Guard Blayle	180
+exact	highkeep	A noble	360
+exact	highkeep	Isabella Cellus	360
+exact	highkeep	Captain Boshinko	360
+exact	highkeep	Dyrna Nlith	360
+contains	highkeep	Goblin	600
+default	highpass		300
+exact	highpass	Vexven Mucktail	1320
+exact	highpass	Grenix Mucktail	1320
+exact	highpass	Greth Truksorn	900
+exact	highpass	Dalishea	900
+exact	highpass	Brenon	900
+default	hole		1290
+default	iceclad		400
+exact	iceclad	Ergrez Shortpaw	360
+default	innothule		400
+default	kael		1680
+exact	kael	Keldor Dek`Torek	64800
+exact	kael	Derakor the Vindicator	25200
+default	kaesora		1080
+default	kaladima		1440
+exact	kaladima	King Kazon Stormhammer	400
+default	kaladimb		1440
+default	karnor		1620
+default	kedge		1320
+default	kerraridge		1065
+default	kithicor		400
+default	kurn		1100
+default	lakeofillomen		400
+exact	lakeofillomen	a bloodgill goblin	780
+exact	lakeofillomen	Chancellor of Di`Zok	7200
+default	lakerathe		400
+default	lavastorm		400
+exact	lavastorm	a shadowed man	360
+default	lfaydark		400
+exact	lfaydark	a brownie guard	960
+default	mischiefplane		4210
+default	mistmoore		1320
+exact	mistmoore	an Advisor	14400
+default	misty		400
+default	najena		1140
+default	necropolis		1620
+default	nektulos		400
+default	neriaka		1440
+exact	neriaka	Jacker	480
+exact	neriaka	Oosa Shadowthumper	480
+exact	neriaka	Karnan	480
+exact	neriaka	Uglan	400
+exact	neriaka	Mrak	480
+exact	neriaka	Capee	400
+exact	neriaka	Svunsa	400
+default	neriakb		1440
+default	neriakc		1440
+exact	neriakc	Nallar Q`Tentu	400
+default	northkarana		360
+default	nro		400
+exact	nro	Guard Fintran	700
+exact	nro	Guard Stoutman	700
+exact	nro	Guard Brendyl	700
+default	nurga		1230
+default	oasis		400
+exact	oasis	A Spectre	990
+default	oggok		1440
+default	oot		360
+exact	oot	Guardian of K`Arnon	1320
+exact	oot	Gull Skytalon	28800
+default	overthere		400
+default	paineel		630
+exact	paineel	Guard Ackin	1500
+exact	paineel	Guard Buldoral	1500
+exact	paineel	Guard Abrebla	1500
+exact	paineel	Guard Captain Latorl	1440
+exact	paineel	Guard Hetorzuz	1500
+exact	paineel	Guard Ishvlor	1500
+exact	paineel	Guard Korlack	1500
+exact	paineel	Guard Lehlufa	360
+exact	paineel	Guard Lecknar	1500
+exact	paineel	Guard Mertanor	1500
+exact	paineel	Guard Lesunra	360
+exact	paineel	Guard Pendleir	360
+exact	paineel	Guard Perelin	360
+exact	paineel	Guard Yerlash	360
+exact	paineel	Guard Polzdurn	1500
+exact	paineel	Guard Pomnares	360
+exact	paineel	Guard Potren	1500
+exact	paineel	Guard Sheltuin	1500
+exact	paineel	Guard Tynaryn	1500
+exact	paineel	Guard Yerlash	1500
+default	paw		1320
+exact	paw	The Ishva Mal	1680
+exact	paw	An Ishva Lteth gnoll	1680
+default	permafrost		1320
+default	qcat		720
+exact	qcat	A Spectre	1440
+default	qey2hh1		400
+exact	qey2hh1	Guard Ason	360
+default	qeynos		400
+default	qeynos2		400
+default	qeytoqrg		400
+default	qrg		400
+default	rathemtn		400
+exact	rathemtn	Kindra Farseer	1200
+exact	rathemtn	Tabien the Goodly	7200
+exact	rathemtn	Cynthia	350
+default	rivervale		1320
+default	runnyeye		1320
+default	sebilis		1620
+exact	sebilis	Tolapumj	9900
+exact	sebilis	Sebilite protector	9900
+default	sirens		1680
+default	skyfire		780
+default	skyshrine		1800
+default	sleeper		28800
+default	soldunga		1080
+default	soldungb		1320
+exact	soldungb	King Tranix	28800
+exact	soldungb	Warlord Skarlon	28800
+exact	soldungb	Magi Rokyl	28800
+contains	soldungb	Fire Giant	28800
+default	soltemple		300
+default	southkarana		360
+exact	southkarana	High Shaman Phido	1320
+exact	southkarana	a treant	240
+default	sro		400
+default	steamfont		400
+default	stonebrunt		670
+default	swampofnohope		400
+default	templeveeshan		4400
+exact	templeveeshan	A crimson claw hatchling	360
+exact	templeveeshan	A shard wyvern hatchling	360
+exact	templeveeshan	A skyseeker hatchling	360
+exact	templeveeshan	An ebon wing hatchling	360
+exact	templeveeshan	An emerald eye hatchling	360
+default	thurgadina		420
+default	thurgadinb		420
+default	timorous		720
+default	tox		400
+default	trakanon		400
+default	unrest		1320
+default	veeshan		4320
+default	velketor		1970
+default	wakening		400
+exact	wakening	A storm giant surveyor	420
+exact	wakening	A tar goo	870
+exact	wakening	A suit of sentient armor	870
+exact	wakening	A storm giant escort	870
+exact	wakening	A faerie dragon	420
+default	warrens		400
+exact	warrens	King Gragnar	2880
+exact	warrens	High Shaman Drogik	2880
+exact	warrens	Lorekeeper Roggik	2880
+exact	warrens	Trainer Daxgrr	1200
+exact	warrens	Cave Bat Lord	2880
+exact	warrens	Foodmaster Rargnar	1200
+exact	warrens	Huntmaster Furgrl	2880
+exact	warrens	The Muglwump	2100
+exact	warrens	Packmaster Dledsh	960
+exact	warrens	Prince Bragnar	3420
+exact	warrens	Smithy Rrarrgin	1200
+exact	warrens	Warlord Drrig	780
+default	warslikswood		400
+default	westwastes		400
+exact	westwastes	An elder wyvern	1800
+exact	westwastes	Amcilla	30600
+exact	westwastes	Atpaev	30600
+exact	westwastes	Bufa	30600
+exact	westwastes	Crial	30600
+exact	westwastes	Gangel	30600
+exact	westwastes	Honvar	30600
+exact	westwastes	Linbrak	30600
+exact	westwastes	Makala	30600
+exact	westwastes	Onava	30600
+exact	westwastes	Quoza	30600
+exact	westwastes	Sivar	30600
+exact	westwastes	Uiliak	30600
+exact	westwastes	Yal	30600
+exact	westwastes	Ayillish	28800
+exact	westwastes	Derasinel	28800
+exact	westwastes	Draazak	28800
+exact	westwastes	Entariz	28800
+exact	westwastes	Harla Dar	10800
+exact	westwastes	Ionat	28800
+exact	westwastes	Jen Sapara	28800
+exact	westwastes	Kar Sapara	28800
+exact	westwastes	Karkona	28800
+exact	westwastes	Lord Gossimerwind	400
+exact	westwastes	A Faerie Dragon	400
+alias	airplane	airplane	
+alias	akanon	akanon	
+alias	arena	arena	
+alias	befallen	befallen	
+alias	beholder	beholder	
+alias	blackburrow	blackburrow	
+alias	burningwood	burningwood	
+alias	butcher	butcher	
+alias	cabeast	cabeast	
+alias	cabwest	cabwest	
+alias	cauldron	cauldron	
+alias	cazicthule	cazicthule	
+alias	charasis	charasis	
+alias	chardok	chardok	
+alias	citymist	citymist	
+alias	cobaltscar	cobaltscar	
+alias	commons	commons	
+alias	crushbone	crushbone	
+alias	crystal	crystal	
+alias	dalnir	dalnir	
+alias	dreadlands	dreadlands	
+alias	droga	droga	
+alias	eastkarana	eastkarana	
+alias	eastwastes	eastwastes	
+alias	ecommons	ecommons	
+alias	emeraldjungle	emeraldjungle	
+alias	erudnext	erudnext	
+alias	erudnint	erudnint	
+alias	erudsxing	erudsxing	
+alias	everfrost	everfrost	
+alias	fearplane	fearplane	
+alias	feerrott	feerrott	
+alias	felwithea	felwithea	
+alias	felwitheb	felwitheb	
+alias	fieldofbone	fieldofbone	
+alias	firiona	firiona	
+alias	freporte	freporte	
+alias	freportn	freportn	
+alias	freportw	freportw	
+alias	frontiermtns	frontiermtns	
+alias	frozenshadow	frozenshadow	
+alias	gfaydark	gfaydark	
+alias	greatdivide	greatdivide	
+alias	grobb	grobb	
+alias	growthplane	growthplane	
+alias	gukbottom	gukbottom	
+alias	guktop	guktop	
+alias	halas	halas	
+alias	hateplane	hateplane	
+alias	highkeep	highkeep	
+alias	highpass	highpass	
+alias	hole	hole	
+alias	iceclad	iceclad	
+alias	innothule	innothule	
+alias	kael	kael	
+alias	kaesora	kaesora	
+alias	kaladima	kaladima	
+alias	kaladimb	kaladimb	
+alias	karnor	karnor	
+alias	kedge	kedge	
+alias	kerraridge	kerraridge	
+alias	kithicor	kithicor	
+alias	kurn	kurn	
+alias	lakeofillomen	lakeofillomen	
+alias	lakerathe	lakerathe	
+alias	lavastorm	lavastorm	
+alias	lfaydark	lfaydark	
+alias	mischiefplane	mischiefplane	
+alias	mistmoore	mistmoore	
+alias	misty	misty	
+alias	najena	najena	
+alias	necropolis	necropolis	
+alias	nektulos	nektulos	
+alias	neriaka	neriaka	
+alias	neriakb	neriakb	
+alias	neriakc	neriakc	
+alias	northkarana	northkarana	
+alias	nro	nro	
+alias	nurga	nurga	
+alias	oasis	oasis	
+alias	oggok	oggok	
+alias	oot	oot	
+alias	overthere	overthere	
+alias	paineel	paineel	
+alias	paw	paw	
+alias	permafrost	permafrost	
+alias	qcat	qcat	
+alias	qey2hh1	qey2hh1	
+alias	qeynos	qeynos	
+alias	qeynos2	qeynos2	
+alias	qeytoqrg	qeytoqrg	
+alias	qrg	qrg	
+alias	rathemtn	rathemtn	
+alias	rivervale	rivervale	
+alias	runnyeye	runnyeye	
+alias	sebilis	sebilis	
+alias	sirens	sirens	
+alias	skyfire	skyfire	
+alias	skyshrine	skyshrine	
+alias	sleeper	sleeper	
+alias	soldunga	soldunga	
+alias	soldungb	soldungb	
+alias	soltemple	soltemple	
+alias	southkarana	southkarana	
+alias	sro	sro	
+alias	steamfont	steamfont	
+alias	stonebrunt	stonebrunt	
+alias	swampofnohope	swampofnohope	
+alias	templeveeshan	templeveeshan	
+alias	thurgadina	thurgadina	
+alias	thurgadinb	thurgadinb	
+alias	timorous	timorous	
+alias	tox	tox	
+alias	trakanon	trakanon	
+alias	unrest	unrest	
+alias	veeshan	veeshan	
+alias	velketor	velketor	
+alias	wakening	wakening	
+alias	warrens	warrens	
+alias	warslikswood	warslikswood	
+alias	westwastes	westwastes	
+alias	oot	ocean of tears	
+alias	northkarana	northern plains of karana	
+alias	nektulos	the nektulos forest	
+alias	sleeper	sleepers tomb	
+alias	erudnext	erudin	
+alias	kedge	kedge keep	
+alias	akanon	ak'anon	
+alias	warslikswood	warsliks woods	
+alias	mistmoore	castle mistmoore	
+alias	mistmoore	castle of mistmoore	
+alias	highkeep	high keep	
+alias	highpass	highpass hold	
+alias	qcat	qeynos aqueduct system	
+alias	lakeofillomen	lake of ill omen	
+alias	kael	kael drakkel	
+alias	frozenshadow	tower of frozen shadow	
+alias	thurgadinb	icewell keep	
+alias	feerrott	the feerrott	
+alias	sebilis	ruins of sebilis	
+alias	sebilis	old sebilis	
+alias	ecommons	east commonlands	
+alias	cabeast	cabilis east	
+alias	veeshan	veeshan's peak	
+alias	qrg	surefall glade	
+alias	innothule	innothule swamp	
+alias	myriah	domain of frost	
+alias	soldunga	solusek's eye	
+alias	unrest	estate of unrest	
+alias	beholder	gorge of king xorbb	
+alias	hateplane	plane of hate	
+alias	commons	west commonlands	
+alias	qeynos2	north qeynos	
+alias	cobaltscar	cobalt scar	
+alias	freportn	north freeport	
+alias	soldungb	nagafen's lair	
+alias	runnyeye	runnyeye citadel	
+alias	frontiermtns	frontier mountains	
+alias	citymist	the city of mist	
+alias	freportw	west freeport	
+alias	butcher	butcherblock mountains	
+alias	permafrost	permafrost caverns	
+alias	hole	the hole	
+alias	qeytoqrg	qeynos hills	
+alias	lavastorm	lavastorm mountains	
+alias	growthplane	plane of growth	
+alias	misty	misty thicket	
+alias	thurgadina	city of thurgadin	
+alias	nro	northern desert of ro	
+alias	neriaka	neriak foreign quarter	
+alias	neriaka	neriak - foreign quarter	
+alias	paw	infected paw	
+alias	paw	lair of the splitpaw	
+alias	airplane	plane of air	
+alias	felwitheb	southern felwithe	
+alias	velketor	velketor's labyrinth	
+alias	cabwest	cabilis west	
+alias	lakerathe	lake rathetear	
+alias	kurn	kurn's tower	
+alias	towerfrost	oops, all icebones!	
+alias	cauldron	dagnor's cauldron	
+alias	westwastes	western wastes	
+alias	templeveeshan	temple of veeshan	
+alias	lfaydark	lesser faydark	
+alias	trakanon	trakanon's teeth	
+alias	eastkarana	eastern plains of karana	
+alias	kaladimb	north kaladim	
+alias	qeynos	south qeynos	
+alias	fearplane	plane of fear	
+alias	rathemtn	rathe mountains	
+alias	wakening	the wakening lands	
+alias	sro	southern desert of ro	
+alias	burningwood	the burning wood	
+alias	gfaydark	greater faydark	
+alias	necropolis	dragon necropolis	
+alias	guktop	guk	
+alias	overthere	the overthere	
+alias	eastwastes	eastern wastelands	
+alias	fieldofbone	field of bone	
+alias	neriakc	neriak third gate	
+alias	neriakc	neriak - 3rd gate	
+alias	erudsxing	erud's crossing	
+alias	felwithea	northern felwithe	
+alias	firiona	firiona vie	
+alias	freporte	east freeport	
+alias	swampofnohope	swamp of no hope	
+alias	timorous	timorous deep	
+alias	southkarana	southern plains of karana	
+alias	qey2hh1	western plains of karana	
+alias	skyfire	skyfire mountains	
+alias	nurga	mines of nurga	
+alias	oasis	oasis of marr	
+alias	emeraldjungle	the emerald jungle	
+alias	greatdivide	great divide	
+alias	sirens	sirens grotto	
+alias	erudnint	erudin palace	
+alias	tox	toxxulia forest	
+alias	gukbottom	ruins of old guk	
+alias	steamfont	steamfont mountains	
+alias	kaladima	south kaladim	
+alias	stonebrunt	stonebrunt mountains	
+alias	charasis	howling stones	
+alias	kerraridge	kerra isle	
+alias	cazicthule	lost temple of cazic-thule	
+alias	cazicthule	lost temple of cazicthule	
+alias	neriakb	neriak - commons	
+alias	neriakb	neriak commons	
+alias	karnor	karnor's castle	
+alias	crystal	crystal caverns	
+alias	iceclad	iceclad ocean	
+alias	mischiefplane	plane of mischief	
+alias	droga	temple of droga	
+alias	kithicor	kithicor woods	
+alias	soltemple	temple of solusek ro	
+alias	kael	kael drakkal	
+alias	eastwastes	eastern wastes	
+alias	wakening	the wakening land	
+alias	sirens	siren's grotto	
+alias	hateplane	the plane of hate	
+alias	burningwood	burning woods	
+alias	sro	south ro	
+alias	airplane	plane of sky	
+alias	southkarana	south karana	
+alias	sleeper	sleeper's tomb	
+alias	rathemtn	mountains of rathe	
+alias	nektulos	nektulos forest	
+alias	citymist	city of mist	
+alias	cabwest	west cabilis	
+alias	cabeast	east cabilis	
+alias	cazicthule	cazic-thule	
+alias	everfrost	everfrost peaks	
+alias	kithicor	kithicor forest	
+alias	gukbottom	lower guk	
+alias	nro	north ro	
+alias	northkarana	north karana	
+alias	permafrost	permafrost keep	
+alias	runnyeye	clan runnyeye	
+alias	hole	the ruins of old paineel	
+alias	warrens	the warrens	
+alias	thurgadina	thurgadin	
+alias	guktop	upper guk	
+alias	warslikswood	warsliks wood	
+alias	qey2hh1	west karana	
+alias	crushbone	clan crushbone	
+alias	eastkarana	east karana	
+alias	fieldofbone	the field of bone	
+alias	qcat	qeynos catacombs	
+alias	felwithea	felwithe	
+alias	kaladima	kaladim	

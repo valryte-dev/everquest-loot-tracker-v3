@@ -8,7 +8,10 @@ use std::{
     path::Path,
 };
 
-use super::combat_metrics::{self, EncounterSpellMetrics};
+use super::{
+    combat_metrics::{self, EncounterSpellMetrics},
+    eq_time,
+};
 
 use crate::{
     domain::{
@@ -834,6 +837,7 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
     let mut enriched = vec![encounter];
     attach_active_dots(&connection, &mut enriched)?;
     attach_spell_metrics(&connection, &mut enriched)?;
+    attach_recent_damage(&connection, &mut enriched)?;
     attach_tracked_spells(&connection, &mut enriched)?;
     let mut value = enriched.pop().expect("encounter remains available");
     let root = value
@@ -844,8 +848,50 @@ pub fn damage_encounter_details(database: &Database, id: i64) -> Result<Value, S
     Ok(value)
 }
 
+pub fn damage_encounter_telemetry(database: &Database, id: i64) -> Result<Value, String> {
+    let connection = database.connect().map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(
+            "SELECT e.id,e.happened_at,e.damage_type,e.attack_kind,e.damage,
+                    w.primary_weapon_name,w.primary_item_id,
+                    w.secondary_weapon_name,w.secondary_item_id,
+                    COALESCE(e.attacker_name,encounter.character_name,'Unknown'),
+                    CASE
+                        WHEN e.source_file LIKE 'dot://%' THEN 'dot'
+                        WHEN e.source_file LIKE 'proc://%' THEN 'proc'
+                        ELSE 'explicit'
+                    END
+             FROM damage_events e
+             LEFT JOIN character_weapon_loadouts w ON w.id=e.weapon_loadout_id
+             LEFT JOIN damage_encounters encounter ON encounter.id=e.encounter_id
+             WHERE e.encounter_id=?
+               AND e.happened_at>=datetime(encounter.last_damage_at,'-35 seconds')
+             ORDER BY e.happened_at,e.id",
+        )
+        .map_err(err)?;
+    let rows = statement
+        .query_map([id], |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "damageType":row.get::<_,String>(2)?,"attack":row.get::<_,String>(3)?,
+                "damage":row.get::<_,i64>(4)?,
+                "primaryWeapon":row.get::<_,Option<String>>(5)?,
+                "primaryItemId":row.get::<_,Option<i64>>(6)?,
+                "secondaryWeapon":row.get::<_,Option<String>>(7)?,
+                "secondaryItemId":row.get::<_,Option<i64>>(8)?,
+                "attacker":row.get::<_,String>(9)?,
+                "source":row.get::<_,String>(10)?
+            }))
+        })
+        .map_err(err)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map(Value::Array)
+        .map_err(err)
+}
+
 pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
     let connection = database.connect().map_err(|error| error.to_string())?;
+    let eq_time = eq_time::snapshot(&connection)?;
     let active_character = connection
         .query_row(
             "SELECT value FROM app_settings WHERE key='active_character'",
@@ -921,12 +967,44 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
             "incomingMaxHit":row.get::<_,i64>(17)?,"damageTargets":row.get::<_,Option<String>>(18)?.and_then(|v|serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(||json!([])) })))?;
     attach_active_dots(&connection, &mut encounters)?;
     attach_spell_metrics(&connection, &mut encounters)?;
+    attach_recent_damage(&connection, &mut encounters)?;
     attach_tracked_spells(&connection, &mut encounters)?;
+    let cleric_heal_calls = query_values(
+        &connection,
+        "SELECT id,happened_at,character_name,cleric_name,call_number,target_name,
+                channel,message,source_file
+         FROM cleric_heal_calls
+         WHERE LOWER(channel)='guild'
+         ORDER BY happened_at DESC,id DESC LIMIT 100",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"clericName":row.get::<_,String>(3)?,
+                "callNumber":row.get::<_,i64>(4)?,"targetName":row.get::<_,Option<String>>(5)?,
+                "channel":row.get::<_,String>(6)?,"message":row.get::<_,String>(7)?,
+                "sourceFile":row.get::<_,String>(8)?
+            }))
+        },
+    )?;
+    let guild_slow_calls = query_values(
+        &connection,
+        "SELECT id,happened_at,character_name,speaker_name,mob_name,message,source_file
+         FROM guild_slow_calls
+         ORDER BY happened_at DESC,id DESC LIMIT 100",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
+                "character":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
+                "mobName":row.get::<_,String>(4)?,"message":row.get::<_,String>(5)?,
+                "sourceFile":row.get::<_,String>(6)?
+            }))
+        },
+    )?;
     let loadout=active_character.as_deref().filter(|value|!value.is_empty()).and_then(|character|
         connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
             [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
     Ok(
-        json!({"theme":theme,"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"damageEncounters":encounters,"tasks":[]}),
+        json!({"theme":theme,"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"eqTime":eq_time,"damageEncounters":encounters,"clericHealCalls":cleric_heal_calls,"guildSlowCalls":guild_slow_calls,"tasks":[]}),
     )
 }
 
@@ -1292,6 +1370,35 @@ fn attach_spell_metrics(
                 root.insert("spellMetrics".into(), field.clone());
             } else {
                 root.insert(key.clone(), field.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn attach_recent_damage(
+    connection: &rusqlite::Connection,
+    encounters: &mut [Value],
+) -> Result<(), String> {
+    let ids = encounters
+        .iter()
+        .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+        .collect::<Vec<_>>();
+    let mut recent = combat_metrics::load_recent_damage_for_encounters(connection, &ids)?;
+    for encounter in encounters {
+        let id = encounter
+            .get("id")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        let damage = recent.remove(&id).unwrap_or_default();
+        if let Some(players) = encounter.get_mut("players").and_then(Value::as_array_mut) {
+            for player in players {
+                let key = player
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_lowercase();
+                player["recentDamage12"] = json!(damage.get(&key).copied().unwrap_or_default());
             }
         }
     }

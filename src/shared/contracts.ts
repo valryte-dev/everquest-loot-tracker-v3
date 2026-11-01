@@ -1,4 +1,8 @@
 export interface BootstrapStatus { appVersion:string; platform:string; databasePath:string; databaseReady:boolean; schemaVersion:number; legacyDatabase:boolean }
+export interface FriendsSyncCharacter { character:string; server:string; fileName:string; friends:string[]; hasFriendsSection:boolean }
+export interface FriendsSyncSnapshot { directory:string; characters:FriendsSyncCharacter[] }
+export interface FriendsEditResult { sourceCharacter:string; friendCount:number; backupPath:string }
+export interface FriendsSyncResult { sourceCharacter:string; friendCount:number; appliedCount:number; targetCharacters:string[]; backupDirectory:string }
 export interface ModelPackStatus { installed:boolean; valid:boolean; latestVersion:string; updateAvailable:boolean; name?:string; version?:string; path?:string; sourceUrl?:string; assetBaseUrl?:string; modelCount:number; fileCount:number; bytes:number; verifiedAt?:string; error?:string }
 export interface Member { id:number; name:string; active:boolean }
 export interface Loot { id:number; happenedAt:string; itemName:string; itemId?:number; mobName?:string; looterName?:string; valuePp?:number; valueBasis?:string; valueSamples?:number; splitListed:boolean; attendees:string[] }
@@ -12,6 +16,27 @@ export interface ActivityMob { id:number; happenedAt:string; character:string; m
 export interface ActivityOffer { id:number; happenedAt:string; character:string; offererName:string; itemName:string; itemId?:number; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
 export interface ActivityLevel { id:number; happenedAt:string; character:string; level:number; direction:"gained"|"lost"; sourceFile:string }
 export interface ActivityHistorySnapshot { loot:ActivityLoot[]; mobs:ActivityMob[]; offers:ActivityOffer[]; levels:ActivityLevel[] }
+export type SpawnTimerMatchKind="exact"|"contains"|"zoneDefault"|"unknownDefault"|"experienceFallback"|"catalogOverride";
+export interface SpawnTimer { id:number; experienceEventId?:number; encounterId?:number; character:string; mobName:string; killerName?:string; zoneName?:string; killedAt:string; originKind:"confirmedKill"|"timerTrigger"|"combatRecord"|"correctedMob"|"experienceFallback"|"manualSpawn"; respawnAt:string; respawnSeconds:number; windowStartAt?:string; windowEndAt?:string; windowKind:"fixed"|"symmetric"|"after"; windowNumber:number; totalWindows:number; matchKind:SpawnTimerMatchKind; matchedRule?:string }
+export interface SpawnCatalogSummary { zoneCount:number; overrideCount:number; aliasCount:number; upstreamRevision:string }
+export interface GlobalSpawnTimer { id:string; name:string; server:string; dueAt?:string; durationSeconds:number; uncertain:boolean; origin:string; originAt:string; description:string }
+export interface SpawnTimerLookupResult { zoneName:string; mobName:string; respawnSeconds:number; windowSeconds:number; windowKind:"fixed"|"symmetric"|"after"; totalWindows:number; matchKind:SpawnTimerMatchKind; matchedRule?:string }
+export interface SpawnTimerOverride { nickname:string; mobName:string; shortName?:string; zoneName?:string; continent?:string; respawnMinutes:number; windowMinutes:number; windowsJson?:string; lastKnownTod?:string; lastKnownSpawnAt?:string; source:string; updatedAt:string }
+export interface SpawnTimerCatalogImportResult { imported:number; total:number }
+export interface SpawnKillScanMob { nickname:string; mobName:string; zoneName?:string }
+export interface SpawnKillScanOptions { activeCharacter?:string; characters:string[]; mobs:SpawnKillScanMob[] }
+export interface SpawnKillScanResult { nickname:string; mobName:string; character:string; killedAt:string; zoneName?:string; sourceKind:"confirmedKill"|"timerTrigger"|"combatRecord"; encounterId?:number }
+export interface SpawnTimerSnapshot { generatedAt:string; lingerSeconds:number; timers:SpawnTimer[]; globalTimers:GlobalSpawnTimer[]; catalog:SpawnCatalogSummary }
+export interface ExperienceGaugeRegion { x:number; y:number; width:number; height:number }
+export interface ExperienceCapturePreview { title:string; width:number; height:number; dataUrl:string; rawPercent?:number; adjustedPercent?:number; confidence?:number }
+export interface ExperienceCaptureWindow { id:string; title:string; processName:string }
+export interface ExperienceReading { character:string; percent:number; confidence:number; observedAt:string }
+export interface ExperienceHistoryRebuildResult { files:number; inserted:number }
+export interface ExperienceHistoryProgress { completedBytes:number; totalBytes:number; completedFiles:number; totalFiles:number; currentFile:string; inserted:number; done:boolean }
+export interface ExperienceObservation { id:number; happenedAt:string; character:string; level?:number; percent:number; confidence:number; gainEvents:number }
+export interface ExperienceGainEvent { id:number; happenedAt:string; character:string; mobName?:string; mobEvidence?:string; zoneName?:string; zoneEvidence?:string; groupMembers:string[] }
+export type ExperienceLevelEvent=ActivityLevel;
+export interface ExperienceTrackingSnapshot { enabled:boolean; calibrated:boolean; activeCharacter:string; currentZone?:string; currentGroup:string[]; verification?:ExperienceCapturePreview; selectedCaptureWindow?:ExperienceCaptureWindow; captureWindows:ExperienceCaptureWindow[]; observations:ExperienceObservation[]; gainEvents:ExperienceGainEvent[]; levelEvents:ExperienceLevelEvent[] }
 export interface DeathReport { id:number; happenedAt:string; character:string; killerName:string; sourceFile:string; contextCount:number }
 export interface DeathReportEntry { sequenceNumber:number; rawLine:string }
 export interface DeathReportDetail extends DeathReport { rawLine:string; sourceOffset:number; entries:DeathReportEntry[] }
@@ -24,8 +49,9 @@ export interface ClericHealReplaySummary { startedAt:string; endedAt:string; dur
 export interface ClericHealReplayFile { formatVersion:number; title:string; savedAt:string; character:string; targetMob:string; summary:ClericHealReplaySummary; calls:ClericHealReplayCall[]; path?:string }
 export interface ClericHealReplayEntry extends ClericHealReplaySummary { fileName:string; path:string; title:string; savedAt:string; character:string; targetMob:string }
 export interface SystemTaskStatus { id:string; label:string; state:"running"|"completed"|"failed"; detail:string; completed?:number; total?:number; startedAt:string; finishedAt?:string }
-export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; theme?:string; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; damageEncounters:DamageEncounter[] }
-export interface DamageParticipant { name:string; totalDamage:number; hitCount:number; firstDamageAt:string; lastDamageAt:string }
+export interface EqTimeSync { gameMinutes:number; synchronizedAt:string; gameDate:string; character:string }
+export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; theme?:string; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; eqTime?:EqTimeSync; damageEncounters:DamageEncounter[]; clericHealCalls?:ClericHealCall[]; guildSlowCalls?:GuildSlowCall[] }
+export interface DamageParticipant { name:string; totalDamage:number; hitCount:number; firstDamageAt:string; lastDamageAt:string; recentDamage12?:number }
 export interface DamageTarget extends DamageParticipant { maxHit:number }
 export interface DamageSpellMetric { playerName:string; spellName:string; procCount:number; directProcDamage:number; dotDamage:number; dotTickCount:number; procDotDamage:number; totalProcDamage:number }
 export interface ProcEvidenceMessage { sourceOffset:number; role:"preceding-context"|"landing"|"confirmation"|"landing-confirmation"|"supporting"; rawLine:string }
@@ -53,7 +79,7 @@ export interface Spell { character:string; importedAt:string; slot?:number; spel
 export interface CharacterProfile { character:string; race:string; gender:"m"|"f"; classCode:string; level?:number; parsedLevel?:number; levelOverride?:number; levelSource:"logs"|"manual"|"unknown"; updatedAt?:string; levelObservedAt?:string }
 export interface SpellClassInfo { name:string; level:number }
 export interface SpellEffectInfo { slot:number; description:string }
-export interface SpellInfo { spellName:string; wikiUrl:string; description:string; classes:SpellClassInfo[]; effects:SpellEffectInfo[]; mana:string; skill:string; castingTime:string; recastTime:string; fizzleTime:string; resist:string; range:string; targetType:string; spellType:string; duration:string; reagent:string; focus:string; whereToObtain:string; castOnYou:string; castOnOther:string; wearsOff:string; damageKind:"dot"|"direct"|"hybrid"|"non_damage"|"unknown"; directDamage?:number; damagePerTick?:number; tickCount?:number; tickIntervalSeconds:number; totalDotDamage?:number; fetchedAt:string; stale:boolean }
+export interface SpellInfo { spellName:string; wikiUrl:string; description:string; iconLetter:string; classes:SpellClassInfo[]; effects:SpellEffectInfo[]; mana:string; skill:string; castingTime:string; recastTime:string; fizzleTime:string; resist:string; range:string; targetType:string; spellType:string; duration:string; reagent:string; focus:string; whereToObtain:string; castOnYou:string; castOnOther:string; wearsOff:string; damageKind:"dot"|"direct"|"hybrid"|"non_damage"|"unknown"; directDamage?:number; damagePerTick?:number; tickCount?:number; tickIntervalSeconds:number; totalDotDamage?:number; fetchedAt:string; stale:boolean }
 export interface SpellCatalogStatus { cachedCount:number; processed:number; saved:number; failed:number; refreshing:boolean; startedAt?:string; lastRefreshAt?:string; lastError?:string }
 export interface WtsGroup { id:number; character:string; name:string; createdAt:string; updatedAt:string; items:string[]; itemIds:(number|null)[] }
 export interface Alias { alias:string; canonical:string }

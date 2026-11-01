@@ -77,6 +77,7 @@ A change is complete only when all applicable items pass:
 - Existing database migration and clean database creation are verified for schema changes.
 - Watcher, character-switch, backlog, network-failure, and form-stability regressions are tested when affected.
 - Documentation and rollback instructions are updated.
+- Local validation runs through `scripts/start-background-validation.cmd` in a hidden normal-priority process with bounded parallelism so verification remains unobtrusive.
 
 ## Exception process
 

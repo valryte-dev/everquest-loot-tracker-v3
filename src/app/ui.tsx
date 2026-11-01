@@ -1,9 +1,9 @@
 import {useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode} from "react";
 import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {isVeliousArmorGem} from "./gems/catalog";
-import {ItemHover} from "./items/ItemHover";
+import {ItemHover,type ItemHoverIdentity} from "./items/ItemHover";
 
-export type Column<T> = {key:string; label:string; value:(row:T)=>unknown; render?:(row:T)=>ReactNode; className?:string};
+export type Column<T> = {key:string; label:string; value:(row:T)=>unknown; render?:(row:T)=>ReactNode; item?:(row:T)=>ItemHoverIdentity|undefined; className?:string};
 export type IconName="add"|"bookmark"|"check"|"clipboard"|"close"|"coin"|"download"|"edit"|"external"|"flame"|"pause"|"pin"|"play"|"refresh"|"save"|"split"|"trash";
 const ICON_PATHS:Record<IconName,ReactNode>={
   add:<><path d="M12 5v14M5 12h14"/></>,
@@ -50,9 +50,11 @@ export function DataTable<T>({rows, columns, rowKey, actions, selected, onSelect
   const cell=(row:T,column:Column<T>)=>{
     const content=column.render?column.render(row):String(column.value(row)??"—");
     const item=row as {itemName?:unknown;itemId?:unknown;iconId?:unknown;valuePp?:unknown};
-    return !column.render&&column.key==="item"&&typeof item.itemName==="string"
-      ?<ItemHover itemName={item.itemName} itemId={typeof item.itemId==="number"?item.itemId:undefined} iconId={typeof item.iconId==="number"?item.iconId:undefined} valuePp={typeof item.valuePp==="number"?item.valuePp:undefined}>{content}</ItemHover>
-      :content;
+    const identity=column.item?.(row)||(column.key==="item"&&typeof item.itemName==="string"?{
+      itemName:item.itemName,itemId:typeof item.itemId==="number"?item.itemId:undefined,
+      iconId:typeof item.iconId==="number"?item.iconId:undefined,valuePp:typeof item.valuePp==="number"?item.valuePp:undefined,
+    }:undefined);
+    return identity?<ItemHover {...identity}>{content}</ItemHover>:content;
   };
   return <div className="data-grid">{!hideTools&&<div className="grid-tools"><label className="search"><span>⌕</span><input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Filter this list…"/><button disabled={!filter} onClick={()=>setFilter("")} aria-label="Clear filter">×</button></label><div className="grid-page"><span>{selectable.length} of {rows.length}{totalPages>1?` · page ${safePage+1} of ${totalPages}`:""}</span>{totalPages>1&&<><button aria-label="Previous page" title="Previous page" disabled={safePage===0} onClick={()=>setPage(value=>Math.max(0,value-1))}>←</button><button aria-label="Next page" title="Next page" disabled={safePage>=totalPages-1} onClick={()=>setPage(value=>Math.min(totalPages-1,value+1))}>→</button></>}</div></div>}<div className="table-scroll"><table><thead><tr>{columns.map(column=><th key={column.key} onClick={sortMode==="columns"?()=>toggleSort(column.key):undefined} className={[column.className,sortMode==="preserve"?"unsortable":""].filter(Boolean).join(" ")}>{column.label}<span className="sort">{sortMode==="columns"&&sort===column.key?(desc?"↓":"↑"):""}</span></th>)}{actions&&<th>Actions</th>}{onSelected&&<th className="select-col">Select <input type="checkbox" checked={all} onChange={()=>onSelected(new Set(all?[]:selectable.map(rowKey)))}/></th>}</tr></thead><tbody>{visible.map(row=><tr key={rowKey(row)} tabIndex={onRowClick?0:undefined} onClick={onRowClick?()=>onRowClick(row):undefined} onKeyDown={onRowClick?event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();onRowClick(row)}}:undefined} className={[onRowClick?"clickable-row":"",matches(row)?"":"filter-dimmed",specialGem(row)?"special-gem-row":"",rowClass?.(row)||""].filter(Boolean).join(" ")}>{columns.map(column=><td key={column.key} className={column.className}>{cell(row,column)}</td>)}{actions&&<td className="row-actions">{actions(row)}</td>}{onSelected&&<td className="select-col"><input type="checkbox" checked={selected?.has(rowKey(row))??false} onChange={()=>{const next=new Set(selected);const key=rowKey(row);next.has(key)?next.delete(key):next.add(key);onSelected(next)}}/></td>}</tr>)}{!shown.length&&<tr><td className="empty-cell" colSpan={columns.length+(actions?1:0)+(onSelected?1:0)}>{empty}</td></tr>}</tbody></table></div></div>;
 }

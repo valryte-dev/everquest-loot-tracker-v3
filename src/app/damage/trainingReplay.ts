@@ -11,6 +11,7 @@ export interface TrainingReplayFighter {
  incomingDamage:number;
  hitCount:number;
  dps:number;
+ liveDps:number;
  combatSeconds:number;
  contribution:number;
  procCount:number;
@@ -69,6 +70,7 @@ export function buildTrainingReplayFrames(report:DotTrainingReport,cursor:number
    const own=events.filter(event=>event.attacker.toLowerCase()===name.toLowerCase());
    const received=incoming.filter(event=>event.target.toLowerCase()===name.toLowerCase());
    const totalDamage=own.reduce((sum,event)=>sum+event.damage,0);
+   const recentDamage=own.filter(event=>event.timeMs>=currentMs-12000).reduce((sum,event)=>sum+event.damage,0);
    const firstMs=Math.min(...own.map(event=>event.timeMs));
    const combatSeconds=Math.max(0,(currentMs-firstMs)/1000);
    const procCount=encounter.procs.filter(proc=>proc.casterName.toLowerCase()===name.toLowerCase()&&replayTime(proc.happenedAt)<=currentMs).length;
@@ -78,7 +80,7 @@ export function buildTrainingReplayFrames(report:DotTrainingReport,cursor:number
    const spellDotDamage=own.filter(event=>event.sourceKind==="dot"&&!procDots.has(`${name.toLowerCase()}\u001f${event.attack.toLowerCase()}`)).reduce((sum,event)=>sum+event.damage,0);
    const spellDotCount=directDots.filter(dot=>dot.casterName.toLowerCase()===name.toLowerCase()).length;
    const sources=[...new Map(own.map(event=>{const source=describeTrainingEventSource(encounter,event);return[source.label.toLowerCase(),source]})).values()];
-   return {name,totalDamage,incomingDamage:received.reduce((sum,event)=>sum+event.damage,0),hitCount:own.length,dps:totalDamage/Math.max(1,combatSeconds),combatSeconds,contribution:0,procCount,procDirectDamage,procDotDamage,spellCount:spellDirect.length+spellDotCount,spellDirectDamage:spellDirect.reduce((sum,event)=>sum+event.damage,0),spellDotDamage,sources};
+   return {name,totalDamage,incomingDamage:received.reduce((sum,event)=>sum+event.damage,0),hitCount:own.length,dps:totalDamage/Math.max(1,combatSeconds),liveDps:recentDamage/12,combatSeconds,contribution:0,procCount,procDirectDamage,procDotDamage,spellCount:spellDirect.length+spellDotCount,spellDirectDamage:spellDirect.reduce((sum,event)=>sum+event.damage,0),spellDotDamage,sources};
   }).sort((a,b)=>b.totalDamage-a.totalDamage||a.name.localeCompare(b.name));
   const incomingNames=new Map<string,string>();
   incoming.forEach(event=>incomingNames.set(event.target.toLowerCase(),event.target));

@@ -33,6 +33,6 @@ export function DamageTrendCharts({events,startedAt,names,durationSeconds}:{even
  if(!events.length||!names.length)return null;
  return <section className="meter-trend-grid">
   <TrendChart title="Cumulative damage" sub="Total damage by fighter" unit="DMG" points={cumulative} names={names}/>
-  <TrendChart title="Rolling DPS" sub="30-second window - latest 2 minutes" unit="DPS" points={rolling} names={names}/>
+  <TrendChart title="Rolling DPS" sub="30-second trend - latest 2 minutes" unit="DPS" points={rolling} names={names}/>
  </section>;
 }

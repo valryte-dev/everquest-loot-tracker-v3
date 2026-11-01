@@ -22,6 +22,42 @@ export function damageEncounterSnapshotChanged(
  });
 }
 
+export function mergeLiveDamageEncounters(
+ pageRows:DamageEncounter[],
+ liveRows:DamageEncounter[],
+):DamageEncounter[]{
+ if(!liveRows.length)return pageRows;
+ const liveById=new Map(liveRows.map(row=>[row.id,row]));
+ const merged=pageRows.map(row=>{
+  const live=liveById.get(row.id);
+  if(!live)return row;
+  liveById.delete(row.id);
+  return {...row,...live,isProtected:row.isProtected,protectedAt:row.protectedAt};
+ });
+ return [...liveById.values(),...merged];
+}
+
+export function mergeRecentRows<T extends {id:number}>(
+ existing:T[]|undefined,
+ recent:T[]|undefined,
+):T[]{
+ if(!recent?.length)return existing||[];
+ const recentIds=new Set(recent.map(row=>row.id));
+ return [...recent,...(existing||[]).filter(row=>!recentIds.has(row.id))];
+}
+
+export function stabilizeEncounterArchive(
+ previous:DamageEncounter[],
+ current:DamageEncounter[],
+):DamageEncounter[]{
+ const previousById=new Map(previous.map(row=>[row.id,row]));
+ const stable=current.map(row=>{
+  const prior=previousById.get(row.id);
+  return row.outcome==="active"&&prior?.outcome==="active"?prior:row;
+ });
+ return stable.length===previous.length&&stable.every((row,index)=>row===previous[index])?previous:stable;
+}
+
 export function buildLiveDpsSeries(
  events:DamageEvent[],
  character:string,

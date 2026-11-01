@@ -29,8 +29,9 @@ export function itemStats(item:WardrobeCatalogItem):{core:Stat[];attributes:Stat
  };
 }
 
+export const itemHoverCacheKey=(itemId:number|undefined,itemName:string)=>`${itemId??"none"}:${itemName.trim().toLocaleLowerCase()}`;
 const requestItem=(itemId:number|undefined,itemName:string)=>{
- const key=itemId?`id:${itemId}`:`name:${itemName.trim().toLocaleLowerCase()}`;
+ const key=itemHoverCacheKey(itemId,itemName);
  let request=cache.get(key);
  if(!request){request=getWardrobeCatalogItem(itemId,itemName);cache.set(key,request);request.catch(()=>cache.delete(key))}
  return request;
@@ -38,7 +39,10 @@ const requestItem=(itemId:number|undefined,itemName:string)=>{
 const iconPath=(iconId?:number)=>iconId&&iconId>0?`/item-icons/Item_${iconId}.png`:undefined;
 const pp=(value?:number)=>value&&value>0?`${Math.round(value).toLocaleString()} pp`:"No market estimate";
 
-export function ItemHover({itemName,itemId,iconId,valuePp,details,children,focusable=true}:{itemName:string;itemId?:number;iconId?:number;valuePp?:number;details?:WardrobeCatalogItem;children:ReactNode;focusable?:boolean}){
+export interface ItemHoverIdentity {itemName:string;itemId?:number;iconId?:number;valuePp?:number;details?:WardrobeCatalogItem}
+export interface ItemHoverProps extends ItemHoverIdentity {children:ReactNode;focusable?:boolean;className?:string;title?:string}
+
+export function ItemHover({itemName,itemId,iconId,valuePp,details,children,focusable=true,className="",title}:ItemHoverProps){
  const anchor=useRef<HTMLSpanElement>(null);
  const mounted=useRef(true);
  const[state,setState]=useState<LoadState>(details?{kind:"ready",item:details}:{kind:"idle"});
@@ -52,7 +56,7 @@ export function ItemHover({itemName,itemId,iconId,valuePp,details,children,focus
   setVisible(true);
   if(state.kind==="idle"&&!details){setState({kind:"loading"});requestItem(itemId,itemName).then(item=>{if(mounted.current)setState({kind:"ready",item})}).catch(()=>{if(mounted.current)setState({kind:"error"})})}
  };
- return <span ref={anchor} className="item-hover-anchor" tabIndex={focusable?0:undefined} onMouseEnter={show} onMouseLeave={()=>setVisible(false)} onFocus={show} onBlur={()=>setVisible(false)}>
+ return <span ref={anchor} className={`item-hover-anchor ${className}`.trim()} title={title} tabIndex={focusable?0:undefined} onMouseEnter={show} onMouseLeave={()=>setVisible(false)} onFocus={show} onBlur={()=>setVisible(false)}>
   {children}
   {visible&&createPortal(<aside className="item-popover" style={position} role="tooltip"><ItemCard name={itemName} itemId={itemId} iconId={iconId} valuePp={valuePp} state={state}/></aside>,document.body)}
  </span>;

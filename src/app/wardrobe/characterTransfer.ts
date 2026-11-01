@@ -42,7 +42,7 @@ export async function createCharacterWardrobeTransfer(
   if(entry.catalogItem)items[entry.slot]=entry.catalogItem;
   else missing.push(entry.item.itemName);
  }
- return{draft:{profile:{...profile},items},copied:Object.keys(items).length,missing};
+ return{draft:{profile:{...profile},items,compare:[]},copied:Object.keys(items).length,missing};
 }
 
 export function saveCharacterWardrobeTransfer(transfer:CharacterWardrobeTransfer){

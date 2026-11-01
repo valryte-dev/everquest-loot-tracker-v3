@@ -1,6 +1,9 @@
 use crate::{
     application::{
-        combat_metrics::insert_or_get_damage_encounter, data, dot_tracking::DotTracker, services,
+        combat_metrics::{insert_or_get_damage_encounter, record_combat_attempt_start},
+        data,
+        dot_tracking::DotTracker,
+        eq_time, services,
         system_tasks::TaskRegistry,
     },
     domain::log_events::{parse_log_event, ChatChannel, GroupChangeKind, LogEvent},
@@ -13,7 +16,7 @@ use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
 use serde_json::json;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -329,7 +332,7 @@ fn scan_log_backlog(
             tasks.start(
                 "log-backlog",
                 "Checking log backlog",
-                "Scanning all character log segments",
+                "Scanning history and backfilling XP messages",
                 None,
             );
             let _ = app_handle.emit("system-task-changed", "log-backlog");
@@ -463,7 +466,10 @@ fn watch(
             continue;
         }
         if event_received {
-            thread::sleep(Duration::from_millis(60));
+            // Coalesce bursty filesystem notifications into one transaction. Live UI
+            // snapshots update once per second, so 150 ms retains responsive meters while
+            // sharply reducing WAL commits during raid-scale log spam.
+            thread::sleep(Duration::from_millis(150));
             while let Ok(event) = event_rx.try_recv() {
                 if let Ok(event) = event {
                     if let Some(path) = event.paths.into_iter().find(|path| is_active_log(path)) {
@@ -727,6 +733,128 @@ pub fn scan_history(database: &Database) -> Result<serde_json::Value, String> {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExperienceHistoryProgress {
+    pub completed_bytes: u64,
+    pub total_bytes: u64,
+    pub completed_files: usize,
+    pub total_files: usize,
+    pub current_file: String,
+    pub inserted: usize,
+    pub done: bool,
+}
+
+pub fn rebuild_experience_history(
+    database: &Database,
+    mut report: impl FnMut(ExperienceHistoryProgress),
+) -> Result<serde_json::Value, String> {
+    let directory = configured_log_directory(database)
+        .ok_or("Choose a Logs folder on the System page first")?;
+    if !directory.is_dir() {
+        return Err(format!(
+            "Logs folder does not exist: {}",
+            directory.display()
+        ));
+    }
+    {
+        let _writer_guard = database.writer_guard();
+        let connection = database.connect().map_err(|error| error.to_string())?;
+        connection
+            .execute("DELETE FROM experience_backfill_cursors", [])
+            .map_err(|error| error.to_string())?;
+    }
+
+    let mut paths = fs::read_dir(&directory)
+        .map_err(|error| error.to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| is_log(path))
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    let total_files = paths.len();
+    let total_bytes = paths.iter().try_fold(0u64, |total, path| {
+        fs::metadata(path)
+            .map(|metadata| total.saturating_add(metadata.len()))
+            .map_err(|error| error.to_string())
+    })?;
+    let mut inserted = 0usize;
+    let mut completed_bytes = 0u64;
+    report(ExperienceHistoryProgress {
+        completed_bytes,
+        total_bytes,
+        completed_files: 0,
+        total_files,
+        current_file: String::new(),
+        inserted,
+        done: false,
+    });
+    for (index, path) in paths.iter().enumerate() {
+        let source = path.display().to_string();
+        let size = fs::metadata(path).map_err(|error| error.to_string())?.len();
+        let mut previous_offset = u64::MAX;
+        let mut historical_group = HashSet::new();
+        {
+            let _writer_guard = database.writer_guard();
+            let connection = database.connect().map_err(|error| error.to_string())?;
+            connection
+                .execute(
+                    "DELETE FROM experience_gain_group_members
+                     WHERE experience_gain_event_id IN (
+                        SELECT id FROM experience_gain_events WHERE source_file=?
+                     )",
+                    [&source],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        loop {
+            inserted +=
+                scan_experience_backfill_file_with_group(database, path, &mut historical_group)?;
+            let connection = database.connect().map_err(|error| error.to_string())?;
+            let offset = connection
+                .query_row(
+                    "SELECT byte_offset FROM experience_backfill_cursors WHERE source_file=?",
+                    [&source],
+                    |row| row.get::<_, u64>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?
+                .unwrap_or(0);
+            let file_done = offset >= size || offset == previous_offset;
+            report(ExperienceHistoryProgress {
+                completed_bytes: completed_bytes.saturating_add(offset.min(size)),
+                total_bytes,
+                completed_files: index + usize::from(file_done),
+                total_files,
+                current_file: path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_owned(),
+                inserted,
+                done: false,
+            });
+            if file_done {
+                break;
+            }
+            previous_offset = offset;
+        }
+        completed_bytes = completed_bytes.saturating_add(size);
+    }
+
+    report(ExperienceHistoryProgress {
+        completed_bytes: total_bytes,
+        total_bytes,
+        completed_files: total_files,
+        total_files,
+        current_file: String::new(),
+        inserted,
+        done: true,
+    });
+    Ok(json!({"files":paths.len(),"inserted":inserted}))
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DamageScanProgress {
     pub completed: usize,
     pub total: usize,
@@ -841,6 +969,7 @@ fn scan_history_directory(
     for path in paths {
         summary.files += 1;
         summary.inserted += scan_history_file(database, &path)?;
+        summary.inserted += scan_experience_backfill_file(database, &path)?;
         summary.inserted += scan_death_report_file(database, &path)?;
         summary.inserted += scan_damage_file(database, &path)?;
     }
@@ -960,6 +1089,145 @@ fn scan_history_file(database: &Database, path: &Path) -> Result<usize, String> 
         .execute(
             "INSERT INTO log_history_cursors(source_file,character_name,byte_offset,file_size,scanned_at)
              VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(source_file) DO UPDATE SET
+                character_name=excluded.character_name,
+                byte_offset=excluded.byte_offset,
+                file_size=excluded.file_size,
+                scanned_at=excluded.scanned_at",
+            params![source, character, line_offset, size],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(inserted)
+}
+
+fn scan_experience_backfill_file(database: &Database, path: &Path) -> Result<usize, String> {
+    let mut unused_group = HashSet::new();
+    scan_experience_backfill_batch(database, path, &mut unused_group, false)
+}
+
+fn scan_experience_backfill_file_with_group(
+    database: &Database,
+    path: &Path,
+    group: &mut HashSet<String>,
+) -> Result<usize, String> {
+    scan_experience_backfill_batch(database, path, group, true)
+}
+
+fn scan_experience_backfill_batch(
+    database: &Database,
+    path: &Path,
+    historical_group: &mut HashSet<String>,
+    track_group: bool,
+) -> Result<usize, String> {
+    const MAX_BATCH_BYTES: u64 = 4 * 1024 * 1024;
+    let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
+    let source = path.display().to_string();
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let _writer_guard = database.writer_guard();
+    let mut connection = database.connect().map_err(|error| error.to_string())?;
+    let saved_offset = connection
+        .query_row(
+            "SELECT byte_offset FROM experience_backfill_cursors WHERE source_file=?",
+            [&source],
+            |row| row.get::<_, u64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .unwrap_or(0);
+    let mut line_offset = if size < saved_offset { 0 } else { saved_offset };
+    let batch_start = line_offset;
+    if size == line_offset {
+        return Ok(0);
+    }
+
+    file.seek(SeekFrom::Start(line_offset))
+        .map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(file);
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut inserted = 0;
+    let mut line_bytes = Vec::new();
+    loop {
+        line_bytes.clear();
+        let bytes_read = reader
+            .read_until(b'\n', &mut line_bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes_read == 0 || !line_bytes.ends_with(b"\n") {
+            break;
+        }
+        let text = String::from_utf8_lossy(&line_bytes);
+        let line = text.trim_end_matches(['\r', '\n']);
+        if let Some(event) = parse_log_event(line, &character) {
+            match event {
+                LogEvent::GroupChange {
+                    character: member,
+                    change,
+                    ..
+                } if track_group => match change {
+                    GroupChangeKind::Left => {
+                        historical_group.retain(|name| !name.eq_ignore_ascii_case(&member));
+                    }
+                    GroupChangeKind::Joined | GroupChangeKind::Spoke => {
+                        historical_group.insert(member);
+                        historical_group.insert(character.clone());
+                    }
+                },
+                LogEvent::GroupCleared { .. } if track_group => historical_group.clear(),
+                LogEvent::ExperienceGained { happened_at } => {
+                    inserted += record_experience_gain_event(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        line,
+                        &character,
+                        happened_at,
+                        false,
+                    )?;
+                    if track_group {
+                        let event_id: i64 = transaction
+                            .query_row(
+                                "SELECT id FROM experience_gain_events
+                                 WHERE source_file=? AND source_offset=?",
+                                params![source, line_offset as i64],
+                                |row| row.get(0),
+                            )
+                            .map_err(|error| error.to_string())?;
+                        transaction
+                            .execute(
+                                "INSERT OR IGNORE INTO experience_gain_group_members(
+                                    experience_gain_event_id,member_name
+                                 ) VALUES(?,?)",
+                                params![event_id, character],
+                            )
+                            .map_err(|error| error.to_string())?;
+                        for member in historical_group.iter() {
+                            transaction
+                                .execute(
+                                    "INSERT OR IGNORE INTO experience_gain_group_members(
+                                        experience_gain_event_id,member_name
+                                     ) VALUES(?,?)",
+                                    params![event_id, member],
+                                )
+                                .map_err(|error| error.to_string())?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        line_offset += bytes_read as u64;
+        if line_offset.saturating_sub(batch_start) >= MAX_BATCH_BYTES {
+            break;
+        }
+    }
+    transaction
+        .execute(
+            "INSERT INTO experience_backfill_cursors(
+                source_file,character_name,byte_offset,file_size,scanned_at
+             ) VALUES(?,?,?,?,CURRENT_TIMESTAMP)
              ON CONFLICT(source_file) DO UPDATE SET
                 character_name=excluded.character_name,
                 byte_offset=excluded.byte_offset,
@@ -1167,6 +1435,22 @@ fn scan_damage_file_internal(
                         &attack,
                         amount,
                         damage_type.as_str(),
+                    )?;
+                }
+                LogEvent::CombatAttempt {
+                    happened_at,
+                    attacker_name,
+                    mob_name,
+                    ..
+                } => {
+                    inserted += record_combat_attempt_start(
+                        &transaction,
+                        &source,
+                        line_offset as i64,
+                        &character,
+                        &attacker_name,
+                        happened_at,
+                        &mob_name,
                     )?;
                 }
                 LogEvent::PetAttack {
@@ -1445,74 +1729,46 @@ fn record_observed_melee_event(
     attack: &str,
     amount: u64,
 ) -> Result<usize, String> {
-    let known_target = target_name.eq_ignore_ascii_case(character)
-        || connection
+    let happened_at_text = happened_at.to_string();
+    let (target_is_known, subject_is_known, attacks_active_target, subject_is_active_mob) =
+        connection
             .query_row(
-                "SELECT 1 FROM known_members WHERE name=? COLLATE NOCASE",
-                [target_name],
-                |_| Ok(()),
+                "SELECT
+                    EXISTS(SELECT 1 FROM known_members WHERE name=?1 COLLATE NOCASE)
+                    OR EXISTS(SELECT 1 FROM combat_pet_evidence
+                        WHERE source_file=?3 AND character_name=?4 COLLATE NOCASE
+                          AND pet_name=?1 COLLATE NOCASE
+                          AND last_seen_at>=datetime(?5,'-10 minutes')),
+                    EXISTS(SELECT 1 FROM known_members WHERE name=?2 COLLATE NOCASE)
+                    OR EXISTS(SELECT 1 FROM combat_pet_evidence
+                        WHERE source_file=?3 AND character_name=?4 COLLATE NOCASE
+                          AND pet_name=?2 COLLATE NOCASE
+                          AND last_seen_at>=datetime(?5,'-10 minutes')),
+                    EXISTS(SELECT 1 FROM damage_encounters
+                        WHERE source_file=?3 AND character_name=?4 COLLATE NOCASE
+                          AND mob_name=?1 COLLATE NOCASE AND outcome='active'),
+                    EXISTS(SELECT 1 FROM damage_encounters
+                        WHERE source_file=?3 AND character_name=?4 COLLATE NOCASE
+                          AND mob_name=?2 COLLATE NOCASE AND outcome='active')",
+                params![
+                    target_name,
+                    subject_name,
+                    source,
+                    character,
+                    happened_at_text
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, bool>(0)?,
+                        row.get::<_, bool>(1)?,
+                        row.get::<_, bool>(2)?,
+                        row.get::<_, bool>(3)?,
+                    ))
+                },
             )
-            .optional()
-            .map_err(|error| error.to_string())?
-            .is_some()
-        || connection
-            .query_row(
-                "SELECT 1 FROM combat_pet_evidence
-                 WHERE source_file=? AND character_name=? COLLATE NOCASE
-                   AND pet_name=? COLLATE NOCASE AND last_seen_at>=datetime(?,'-10 minutes')
-                 ORDER BY last_seen_at DESC LIMIT 1",
-                params![source, character, target_name, happened_at.to_string()],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?
-            .is_some();
-    let known_subject = subject_name.eq_ignore_ascii_case(character)
-        || connection
-            .query_row(
-                "SELECT 1 FROM known_members WHERE name=? COLLATE NOCASE",
-                [subject_name],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?
-            .is_some()
-        || connection
-            .query_row(
-                "SELECT 1 FROM combat_pet_evidence
-                 WHERE source_file=? AND character_name=? COLLATE NOCASE
-                   AND pet_name=? COLLATE NOCASE AND last_seen_at>=datetime(?,'-10 minutes')
-                 ORDER BY last_seen_at DESC LIMIT 1",
-                params![source, character, subject_name, happened_at.to_string()],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?
-            .is_some();
-    let attacks_active_target = connection
-        .query_row(
-            "SELECT 1 FROM damage_encounters
-             WHERE source_file=? AND character_name=? COLLATE NOCASE
-               AND mob_name=? COLLATE NOCASE AND outcome='active'
-             ORDER BY last_source_offset DESC LIMIT 1",
-            params![source, character, target_name],
-            |_| Ok(()),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?
-        .is_some();
-    let subject_is_active_mob = connection
-        .query_row(
-            "SELECT 1 FROM damage_encounters
-             WHERE source_file=? AND character_name=? COLLATE NOCASE
-               AND mob_name=? COLLATE NOCASE AND outcome='active'
-             ORDER BY last_source_offset DESC LIMIT 1",
-            params![source, character, subject_name],
-            |_| Ok(()),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?
-        .is_some();
+            .map_err(|error| error.to_string())?;
+    let known_target = target_name.eq_ignore_ascii_case(character) || target_is_known;
+    let known_subject = subject_name.eq_ignore_ascii_case(character) || subject_is_known;
     let subject_lower = subject_name.to_ascii_lowercase();
     let looks_like_mob = subject_name.contains(' ')
         || subject_lower.starts_with("a ")
@@ -1609,7 +1865,7 @@ fn record_incoming_damage_event(
     const ENCOUNTER_GAP_SECONDS: i64 = 120;
     let already_recorded = connection
         .query_row(
-            "SELECT 1 FROM damage_received_events WHERE source_file=? AND source_offset=?",
+            "SELECT 1 FROM damage_received_events WHERE source_file=? AND source_offset=? LIMIT 1",
             params![source, source_offset],
             |_| Ok(()),
         )
@@ -1677,12 +1933,13 @@ fn record_incoming_damage_event(
         )
         .map_err(|error| error.to_string())?;
     if created > 0 {
+        let happened_at_text = happened_at.to_string();
         connection
             .execute(
                 "UPDATE damage_encounters
                  SET last_damage_at=?,last_source_offset=MAX(last_source_offset,?)
                  WHERE id=?",
-                params![happened_at.to_string(), source_offset, encounter_id],
+                params![happened_at_text, source_offset, encounter_id],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -1704,9 +1961,14 @@ pub(super) fn record_damage_event(
     damage_type: &str,
 ) -> Result<usize, String> {
     const ENCOUNTER_GAP_SECONDS: i64 = 120;
+    // Idempotency must be checked before encounter selection. Both the live
+    // watcher and damage-history scanner can visit the same source offset; if
+    // encounter allocation runs first, replaying an old line can close a newer
+    // fight and create an empty overlapping encounter even though the event's
+    // eventual INSERT OR IGNORE is rejected.
     let already_recorded = connection
         .query_row(
-            "SELECT 1 FROM damage_events WHERE source_file=? AND source_offset=?",
+            "SELECT 1 FROM damage_events WHERE source_file=? AND source_offset=? LIMIT 1",
             params![source, source_offset],
             |_| Ok(()),
         )
@@ -1716,7 +1978,6 @@ pub(super) fn record_damage_event(
     if already_recorded {
         return Ok(0);
     }
-
     // Generic non-melee lines do not identify their caster. Keep them only when a
     // recent landing was explicitly attributed to this log's active character.
     // Confirmed procs already write their catalog damage through proc:// events.
@@ -1856,6 +2117,86 @@ pub(super) fn record_damage_event(
     Ok(created)
 }
 
+fn record_experience_gain_event(
+    connection: &rusqlite::Connection,
+    source: &str,
+    source_offset: i64,
+    raw: &str,
+    character: &str,
+    happened_at: NaiveDateTime,
+    include_current_group: bool,
+) -> Result<usize, String> {
+    let inserted = connection
+        .execute(
+            "INSERT OR IGNORE INTO experience_gain_events(
+                happened_at,character_name,raw_line,source_file,source_offset
+             ) VALUES(?,?,?,?,?)",
+            params![
+                happened_at.to_string(),
+                character,
+                raw,
+                source,
+                source_offset
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if inserted == 0 {
+        return Ok(0);
+    }
+    let event_id = connection.last_insert_rowid();
+    let mob: Option<String> = connection
+        .query_row(
+            "SELECT mob_name FROM activity_mob_history
+             WHERE character_name=? COLLATE NOCASE
+               AND happened_at<=? AND happened_at>=datetime(?,'-15 seconds')
+             ORDER BY happened_at DESC,id DESC LIMIT 1",
+            params![character, happened_at.to_string(), happened_at.to_string()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let zone: Option<(String, String)> = connection
+        .query_row(
+            "SELECT zone_name,evidence FROM character_zone_history
+             WHERE character_name=? COLLATE NOCASE AND happened_at<=?
+               AND zone_name<>'EverQuest' COLLATE NOCASE
+             ORDER BY happened_at DESC,id DESC LIMIT 1",
+            params![character, happened_at.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO experience_gain_contexts(
+                experience_gain_event_id,mob_name,mob_evidence,zone_name,zone_evidence
+             ) VALUES(?,?,?,?,?)",
+            params![
+                event_id,
+                mob,
+                mob.as_ref().map(|_| "slain-within-15s"),
+                zone.as_ref().map(|value| &value.0),
+                zone.as_ref().map(|value| &value.1),
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if include_current_group {
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO experience_gain_group_members(
+                    experience_gain_event_id,member_name
+                 )
+                 SELECT ?,name FROM (
+                    SELECT m.name AS name FROM current_group g JOIN known_members m ON m.id=g.member_id
+                    UNION SELECT ?
+                 )",
+                params![event_id, character],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(inserted)
+}
+
 fn record_activity_event(
     connection: &rusqlite::Connection,
     path: &Path,
@@ -1906,6 +2247,26 @@ fn record_activity_event(
                 ],
             )
             .map_err(|error| error.to_string()),
+        LogEvent::SpawnTimerTrigger {
+            happened_at,
+            mob_name,
+            trigger_kind,
+        } => connection
+            .execute(
+                "INSERT OR IGNORE INTO spawn_timer_trigger_history(
+                    happened_at,character_name,mob_name,trigger_kind,raw_line,source_file,source_offset
+                 ) VALUES(?,?,?,?,?,?,?)",
+                params![
+                    happened_at.to_string(),
+                    character,
+                    mob_name,
+                    trigger_kind,
+                    raw,
+                    source,
+                    source_offset
+                ],
+            )
+            .map_err(|error| error.to_string()),
         LogEvent::LevelChanged {
             happened_at,
             level,
@@ -1924,6 +2285,23 @@ fn record_activity_event(
                     source,
                     source_offset
                 ],
+            )
+            .map_err(|error| error.to_string()),
+        LogEvent::ExperienceGained { happened_at } => record_experience_gain_event(
+            connection,
+            &source,
+            source_offset,
+            raw,
+            character,
+            *happened_at,
+            true,
+        ),
+        LogEvent::ZoneChanged { happened_at, zone_name, evidence } => connection
+            .execute(
+                "INSERT OR IGNORE INTO character_zone_history(
+                    happened_at,character_name,zone_name,evidence,source_file,source_offset
+                 ) VALUES(?,?,?,?,?,?)",
+                params![happened_at.to_string(),character,zone_name,evidence,source,source_offset],
             )
             .map_err(|error| error.to_string()),
         LogEvent::TradeOffer {
@@ -1990,7 +2368,6 @@ fn process_log_internal(
     last_mob: &mut HashMap<PathBuf, String>,
     mut dot_tracker: Option<&mut DotTracker>,
 ) -> Result<bool, String> {
-    let before = log_data_signature(database)?;
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
     let offset = offsets.entry(path.to_owned()).or_insert(size);
@@ -2015,6 +2392,7 @@ fn process_log_internal(
     let source_file = path.display().to_string();
     let purged_ranges =
         load_suppressed_combat_ranges(&transaction, &source_file, line_offset as i64)?;
+    let mut changed = false;
     for line_bytes in bytes.split_inclusive(|byte| *byte == b'\n') {
         if !line_bytes.ends_with(b"\n") {
             break;
@@ -2035,6 +2413,7 @@ fn process_log_internal(
                 event,
                 last_mob,
             )?;
+            changed = true;
         } else if line.to_ascii_lowercase().contains(" looted ") {
             log_with(
                 &transaction,
@@ -2042,17 +2421,18 @@ fn process_log_internal(
                 "parser",
                 &format!("Unrecognized loot line in {}: {line}", path.display()),
             );
+            changed = true;
         }
         if !purged {
             if let Some(tracker) = dot_tracker.as_deref_mut() {
-                tracker.process_line(
+                changed |= tracker.process_line(
                     &transaction,
-                    &path.display().to_string(),
+                    &source_file,
                     line_offset as i64,
                     line,
                     &character,
                     event.as_ref(),
-                )?;
+                )? > 0;
             }
         }
         line_offset += line_bytes.len() as u64;
@@ -2078,7 +2458,7 @@ fn process_log_internal(
     ).map_err(|error|error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     *offset = line_offset;
-    Ok(before != log_data_signature(database)?)
+    Ok(changed)
 }
 
 fn offset_in_ranges(ranges: &[(i64, i64)], offset: i64) -> bool {
@@ -2167,38 +2547,47 @@ fn initial_live_offset(database: &Database, path: &Path, size: u64) -> Result<u6
     Ok(offset)
 }
 
-type LogDataSignature = (i64, i64, i64, i64, i64, i64, i64, i64, i64, String, i64);
-
-fn log_data_signature(database: &Database) -> Result<LogDataSignature, String> {
-    database.connect().map_err(|error| error.to_string())?.query_row(
-        "SELECT
-            COALESCE((SELECT MAX(id) FROM loot_drops),0),
-            COALESCE((SELECT MAX(id) FROM linked_loot_items),0),
-            COALESCE((SELECT MAX(id) FROM merchant_messages),0),
-            COALESCE((SELECT MAX(id) FROM mobs),0),
-            COALESCE((SELECT MAX(id) FROM application_logs),0),
-            COALESCE((SELECT MAX(id) FROM damage_events),0),
-            COALESCE((SELECT MAX(id) FROM damage_received_events),0),
-            COALESCE((SELECT MAX(id) FROM cleric_heal_calls),0) +
-                COALESCE((SELECT MAX(id) FROM guild_slow_calls),0),
-            COALESCE((SELECT SUM(last_source_offset) FROM damage_encounters),0),
-            COALESCE((SELECT GROUP_CONCAT(member_id, ',') FROM (SELECT member_id FROM current_group ORDER BY member_id)),''),
-            COALESCE((SELECT SUM(id+ticks_applied+CASE WHEN status='active' THEN 1 ELSE 0 END) FROM dot_applications),0)",
-        [],
-        |row| Ok((
-            row.get(0)?,
-            row.get(1)?,
-            row.get(2)?,
-            row.get(3)?,
-            row.get(4)?,
-            row.get(5)?,
-            row.get(6)?,
-            row.get(7)?,
-            row.get(8)?,
-            row.get(9)?,
-            row.get(10)?,
-        )),
-    ).map_err(|error| error.to_string())
+fn resolve_loot_mob(
+    connection: &rusqlite::Connection,
+    path: &Path,
+    source_offset: i64,
+    happened_at: NaiveDateTime,
+    character: &str,
+    last_mob: &mut HashMap<PathBuf, String>,
+) -> Result<Option<String>, String> {
+    let source = path.display().to_string();
+    let same_file = connection
+        .query_row(
+            "SELECT mob_name FROM activity_mob_history
+             WHERE source_file=? AND source_offset<?
+             ORDER BY source_offset DESC,id DESC LIMIT 1",
+            params![source, source_offset],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let persisted = if same_file.is_some() {
+        same_file
+    } else {
+        connection
+            .query_row(
+                "SELECT mob_name FROM activity_mob_history
+                 WHERE character_name=? COLLATE NOCASE
+                   AND datetime(happened_at)<=datetime(?)
+                   AND datetime(happened_at)>=datetime(?,'-10 minutes')
+                 ORDER BY datetime(happened_at) DESC,id DESC LIMIT 1",
+                params![character, happened_at.to_string(), happened_at.to_string()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+    };
+    if let Some(mob_name) = persisted {
+        last_mob.insert(path.to_owned(), mob_name.clone());
+        Ok(Some(mob_name))
+    } else {
+        Ok(last_mob.get(path).cloned())
+    }
 }
 
 fn apply_event(
@@ -2213,6 +2602,17 @@ fn apply_event(
     let character = character_from_log(path).unwrap_or_else(|| "Unknown".into());
     record_activity_event(c, path, source_offset, raw, &character, event)?;
     match event {
+        LogEvent::GameTime {
+            happened_at,
+            game_date,
+            minutes_since_midnight,
+        } => eq_time::record(
+            c,
+            *happened_at,
+            game_date,
+            *minutes_since_midnight,
+            &character,
+        )?,
         LogEvent::MobSlain {
             happened_at,
             mob_name,
@@ -2284,7 +2684,9 @@ fn apply_event(
             item_name,
         } => {
             let source = path.display().to_string();
-            let inserted = c.execute("INSERT OR IGNORE INTO loot_drops(happened_at,item_name,mob_name,looter_name,raw_line,source_file,source_offset) VALUES(?,?,?,?,?,?,?)",params![happened_at.to_string(),item_name,last_mob.get(path),looter,raw,source,source_offset]).map_err(|e|e.to_string())?;
+            let mob_name =
+                resolve_loot_mob(c, path, source_offset, *happened_at, &character, last_mob)?;
+            let inserted = c.execute("INSERT OR IGNORE INTO loot_drops(happened_at,item_name,mob_name,looter_name,raw_line,source_file,source_offset) VALUES(?,?,?,?,?,?,?)",params![happened_at.to_string(),item_name,mob_name,looter,raw,source,source_offset]).map_err(|e|e.to_string())?;
             if inserted > 0 {
                 let id = c.last_insert_rowid();
                 c.execute("INSERT OR IGNORE INTO loot_drop_members(loot_drop_id,member_name) SELECT ?,m.name FROM current_group g JOIN known_members m ON m.id=g.member_id",[id]).map_err(|e|e.to_string())?;
@@ -2374,6 +2776,22 @@ fn apply_event(
                 attack,
                 *amount,
                 damage_type.as_str(),
+            )?;
+        }
+        LogEvent::CombatAttempt {
+            happened_at,
+            attacker_name,
+            mob_name,
+            ..
+        } => {
+            record_combat_attempt_start(
+                c,
+                &path.display().to_string(),
+                source_offset,
+                &character,
+                attacker_name,
+                *happened_at,
+                mob_name,
             )?;
         }
         LogEvent::ObservedMelee {
@@ -2483,7 +2901,10 @@ fn apply_event(
             )
             .map_err(|error| error.to_string())?;
         }
-        LogEvent::TradeOffer { .. } | LogEvent::LevelChanged { .. } => {}
+        LogEvent::TradeOffer { .. }
+        | LogEvent::LevelChanged { .. }
+        | LogEvent::ExperienceGained { .. }
+        | LogEvent::ZoneChanged { .. } => {}
         LogEvent::LinkedItems {
             happened_at,
             speaker,
@@ -2551,10 +2972,10 @@ fn apply_event(
             }
         }
         LogEvent::ItemGlow { .. }
+        | LogEvent::SpawnTimerTrigger { .. }
         | LogEvent::SpellCastStarted { .. }
         | LogEvent::SpellInterrupted { .. }
-        | LogEvent::SpellResisted { .. }
-        | LogEvent::CombatAttempt { .. } => {}
+        | LogEvent::SpellResisted { .. } => {}
     }
     Ok(())
 }
@@ -2962,14 +3383,73 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        character_from_log, is_active_log, is_log, poll, process_log, reconcile_exports,
-        record_damage_event, record_incoming_damage_event, record_observed_melee_event,
-        resolve_linked_items, scan_damage_file, scan_death_report_file, scan_history_directory,
+        character_from_log, is_active_log, is_log, poll, process_log, rebuild_experience_history,
+        reconcile_exports, record_damage_event, record_incoming_damage_event,
+        record_observed_melee_event, resolve_linked_items, scan_damage_file,
+        scan_death_report_file, scan_history_directory,
     };
     use crate::application::database_management::{delete_protected_fights, set_fight_protection};
     use crate::infrastructure::database::Database;
     use chrono::NaiveDateTime;
     use std::{collections::HashMap, fs, io::Write};
+
+    #[test]
+    fn replaying_a_stored_damage_offset_does_not_allocate_another_encounter() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        let happened_at =
+            NaiveDateTime::parse_from_str("2026-09-08 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+        assert_eq!(
+            record_damage_event(
+                &connection,
+                "test.log",
+                10,
+                "Tester hits Target for 50 points of damage.",
+                "Tester",
+                "Tester",
+                happened_at,
+                "Target",
+                "hit",
+                50,
+                "melee",
+            )
+            .unwrap(),
+            1
+        );
+        connection
+            .execute(
+                "UPDATE damage_encounters SET outcome='slain',ended_at=last_damage_at",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            record_damage_event(
+                &connection,
+                "test.log",
+                10,
+                "Tester hits Target for 50 points of damage.",
+                "Tester",
+                "Tester",
+                happened_at,
+                "Target",
+                "hit",
+                50,
+                "melee",
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
 
     #[test]
     fn recognizes_common_split_log_names_without_treating_them_as_live() {
@@ -3071,6 +3551,142 @@ mod tests {
             })
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn history_reconciliation_backfills_xp_after_the_general_cursor_is_current() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Tester_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Mon Aug 03 07:09:18 2026] You gain experience!!\r\n[Mon Aug 03 07:09:28 2026] You gain experience!\r\n",
+        )
+        .unwrap();
+        let size = fs::metadata(&log).unwrap().len();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO log_history_cursors(
+                    source_file,character_name,byte_offset,file_size
+                 ) VALUES(?,?,?,?)",
+                rusqlite::params![log.display().to_string(), "Tester", size, size],
+            )
+            .unwrap();
+
+        let first = scan_history_directory(&database, directory.path()).unwrap();
+        let second = scan_history_directory(&database, directory.path()).unwrap();
+        assert_eq!(first.inserted, 2);
+        assert_eq!(second.inserted, 0);
+
+        let connection = database.connect().unwrap();
+        let events: Vec<String> = connection
+            .prepare(
+                "SELECT happened_at FROM experience_gain_events
+                 ORDER BY happened_at",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            events,
+            vec![
+                "2026-08-03 07:09:18".to_owned(),
+                "2026-08-03 07:09:28".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn experience_rebuild_rewinds_only_xp_cursors_for_every_character() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO app_settings(key,value) VALUES('logs_directory',?)",
+                [directory.path().display().to_string()],
+            )
+            .unwrap();
+        let first = directory.path().join("eqlog_First_P1999Green.txt");
+        let second = directory.path().join("eqlog_Second_P1999Green.txt");
+        fs::write(
+            &first,
+            b"[Mon Aug 03 07:09:17 2026] Gnorbysiete has joined the group.\r\n[Mon Aug 03 07:09:18 2026] You gain party experience!!\r\n",
+        )
+        .unwrap();
+        fs::write(
+            &second,
+            b"[Mon Aug 03 07:10:18 2026] You gain experience!!\r\n",
+        )
+        .unwrap();
+        for path in [&first, &second] {
+            let size = fs::metadata(path).unwrap().len();
+            database
+                .connect()
+                .unwrap()
+                .execute(
+                    "INSERT INTO experience_backfill_cursors(
+                        source_file,character_name,byte_offset,file_size
+                     ) VALUES(?,?,?,?)",
+                    rusqlite::params![
+                        path.display().to_string(),
+                        character_from_log(path).unwrap(),
+                        size,
+                        size
+                    ],
+                )
+                .unwrap();
+        }
+
+        let mut progress = Vec::new();
+        let result = rebuild_experience_history(&database, |value| progress.push(value)).unwrap();
+
+        assert_eq!(result["files"], 2);
+        assert_eq!(result["inserted"], 2);
+        assert_eq!(progress.first().unwrap().completed_bytes, 0);
+        assert_eq!(progress.last().unwrap().completed_files, 2);
+        assert_eq!(
+            progress.last().unwrap().completed_bytes,
+            progress.last().unwrap().total_bytes
+        );
+        assert!(progress.last().unwrap().done);
+        let connection = database.connect().unwrap();
+        let first_group: Vec<String> = connection
+            .prepare(
+                "SELECT g.member_name
+                 FROM experience_gain_group_members g
+                 JOIN experience_gain_events e ON e.id=g.experience_gain_event_id
+                 WHERE e.character_name='First'
+                 ORDER BY g.member_name COLLATE NOCASE",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            first_group,
+            vec!["First".to_owned(), "Gnorbysiete".to_owned()]
+        );
+        let characters: Vec<String> = connection
+            .prepare(
+                "SELECT DISTINCT character_name
+                 FROM experience_gain_events
+                 ORDER BY character_name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(characters, vec!["First".to_owned(), "Second".to_owned()]);
     }
 
     #[test]
@@ -3706,6 +4322,46 @@ mod tests {
     }
 
     #[test]
+    fn opening_miss_does_not_start_the_fighter_or_encounter_clock() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        fs::write(
+            &log,
+            b"[Sat Sep 05 10:00:00 2026] You try to slash a frost giant, but miss!\r\n\
+[Sat Sep 05 10:00:05 2026] You slash a frost giant for 100 points of damage.\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(scan_damage_file(&database, &log).unwrap(), 1);
+        let connection = database.connect().unwrap();
+        let encounter_start: String = connection
+            .query_row("SELECT started_at FROM damage_encounters", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let participant: (i64, i64, String, String) = connection
+            .query_row(
+                "SELECT total_damage,hit_count,first_damage_at,last_damage_at
+                 FROM damage_participant_summaries WHERE attacker_name='Youngman'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(encounter_start, "2026-09-05 10:00:05");
+        assert_eq!(
+            participant,
+            (
+                100,
+                1,
+                "2026-09-05 10:00:05".into(),
+                "2026-09-05 10:00:05".into()
+            )
+        );
+    }
+
+    #[test]
     fn notified_log_path_wins_over_directory_timestamp_order() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -4040,6 +4696,84 @@ mod tests {
             )
             .unwrap();
         assert_eq!((count, distinct), (2, 2));
+    }
+
+    #[test]
+    fn loot_restores_the_latest_mob_from_persisted_history_after_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let kill = "[Mon Aug 03 07:09:17 2026] You have slain a frost giant!\r\n";
+        let loot = "[Mon Aug 03 07:09:18 2026] --You have looted a Giant Warrior Helmet.--\r\n";
+        fs::write(&log, format!("{kill}{loot}")).unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO activity_mob_history(
+                happened_at,character_name,mob_name,killer_name,raw_line,source_file,source_offset
+             ) VALUES('2026-08-03 07:09:17','Youngman','a frost giant','Youngman',?,?,0)",
+                rusqlite::params![kill.trim_end(), log.display().to_string()],
+            )
+            .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), kill.len() as u64)]);
+        let mut last_mob = HashMap::from([(log.clone(), "an old corpse".to_owned())]);
+
+        process_log(&database, &log, &mut offsets, &mut last_mob).unwrap();
+
+        let mob_name: String = database
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT mob_name FROM loot_drops WHERE item_name='Giant Warrior Helmet'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(mob_name, "a frost giant");
+        assert_eq!(
+            last_mob.get(&log).map(String::as_str),
+            Some("a frost giant")
+        );
+    }
+
+    #[test]
+    fn loot_can_restore_a_recent_mob_from_the_previous_split_log() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let log = directory.path().join("eqlog_Youngman_P1999Green.txt");
+        let previous = directory.path().join("eqlog_Youngman_P1999Green.txt.1");
+        fs::write(
+            &log,
+            b"[Mon Aug 03 07:09:18 2026] --You have looted a Giant Warrior Helmet.--\r\n",
+        )
+        .unwrap();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "INSERT INTO activity_mob_history(
+                happened_at,character_name,mob_name,killer_name,raw_line,source_file,source_offset
+             ) VALUES('2026-08-03 07:05:00','Youngman','a frost giant','Youngman','kill',?,100)",
+                [previous.display().to_string()],
+            )
+            .unwrap();
+        let mut offsets = HashMap::from([(log.clone(), 0)]);
+
+        process_log(&database, &log, &mut offsets, &mut HashMap::new()).unwrap();
+
+        let mob_name: String = database
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT mob_name FROM loot_drops WHERE item_name='Giant Warrior Helmet'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(mob_name, "a frost giant");
     }
 
     #[test]

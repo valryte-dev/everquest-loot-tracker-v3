@@ -251,6 +251,10 @@ Idempotency uses original source/offset for landings and procs, `proc://<id>` fo
 
 The app exposes proc count, inferred direct proc damage, inferred DoT damage/tick count, proc-attributed DoT damage, and total proc damage. Activity views show at most the newest 24 landings per encounter. Live, docked/detached, saved detail, and training replay share fighter bars.
 
+Fighter DPS uses each fighter's own active time, beginning with the first parsed attack attempt (including a miss, block, dodge, parry, or riposte) and ending with the encounter's current or final damage time. Older stored fights that predate attempt tracking fall back to the first landed hit. The fighter bars also show `12S DPS`, calculated as damage during the trailing 12 seconds divided by 12, matching EqTool's live-DPS convention. The rolling chart remains a separate 30-second trend.
+
+Parsed log damage above 1,000,000 is rejected before persistence as malformed or spoofed input. This protects encounter totals and DPS calculations without affecting plausible Project 1999 combat values. Existing historical records are not rewritten automatically.
+
 A last-known weapon snapshot is only a stale-capable candidate; it is not proof of proc source.
 
 ## Current decision flow

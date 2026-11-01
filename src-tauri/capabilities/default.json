@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "damage-meter",
-    "current-fight"
+    "current-fight",
+    "spawn-timers"
   ],
   "platforms": [
     "windows",
@@ -20,6 +21,9 @@
       "allow": [
         {
           "url": "https://p99planner.com/*"
+        },
+        {
+          "url": "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/*"
         },
         {
           "url": "http://127.0.0.1:8765/*"

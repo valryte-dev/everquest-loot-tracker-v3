@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+﻿use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashSet;
 
 const EMBEDDED_PROCS: &str = include_str!("../../assets/p99-weapon-procs.tsv");
@@ -165,7 +165,7 @@ mod tests {
     fn bundled_catalog_is_complete_and_resolves_canonical_ids() {
         let folder = tempdir().unwrap();
         let database = Database::open(folder.path().join("loot.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         assert_eq!(
             connection

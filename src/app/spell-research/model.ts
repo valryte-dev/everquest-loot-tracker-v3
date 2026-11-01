@@ -2,11 +2,12 @@ import type {InventoryItem,ResearchCatalogItem,ResearchComponentKind} from "../.
 
 export interface ResearchHolding{character:string;count:number;locations:string[]}
 export interface ResearchComponentView extends ResearchCatalogItem{held:number;holders:ResearchHolding[]}
+export interface ResearchCompleteToon{character:string;craftableCopies:number}
 export interface ResearchRecipeView{
  key:string;recipeId:number;className:ResearchCatalogItem["className"];level:number;spellName:string;
  spellItemId?:number;spellValuePp?:number;trivial:string;researchOnly:boolean;availability:string;
  sourceUrl:string;components:ResearchComponentView[];ownedRequirements:number;totalRequirements:number;
- ready:boolean;craftableCopies:number;heldValue:number;
+ ready:boolean;craftableCopies:number;completeToons:ResearchCompleteToon[];heldValue:number;
 }
 export interface ResearchComponentInventory{
  key:string;itemId?:number;itemName:string;iconId?:number;kind:ResearchComponentKind;held:number;
@@ -44,11 +45,19 @@ export function buildResearchRecipes(catalog:ResearchCatalogItem[],inventory:Inv
   });
   const ownedRequirements=components.filter(component=>component.held>=component.quantity).length;
   const craftableCopies=components.length?Math.min(...components.map(component=>Math.floor(component.held/component.quantity))):0;
+  const characters=new Set(components.flatMap(component=>component.holders.map(holder=>holder.character)));
+  const completeToons=[...characters].map(character=>({
+   character,
+   craftableCopies:components.length?Math.min(...components.map(component=>{
+    const held=component.holders.find(holder=>holder.character===character)?.count||0;
+    return Math.floor(held/component.quantity);
+   })):0,
+  })).filter(toon=>toon.craftableCopies>0).sort((a,b)=>b.craftableCopies-a.craftableCopies||a.character.localeCompare(b.character));
   return{key:`research:${recipeId}`,recipeId,className:first.className,level:first.level,spellName:first.spellName,
    spellItemId:first.spellItemId,spellValuePp:first.spellValuePp,trivial:first.trivial,
    researchOnly:first.researchOnly,availability:first.availability,sourceUrl:first.sourceUrl,components,
    ownedRequirements,totalRequirements:components.length,ready:components.length>0&&ownedRequirements===components.length,
-   craftableCopies,heldValue:components.reduce((sum,component)=>sum+component.held*(component.valuePp||0),0)};
+   craftableCopies,completeToons,heldValue:components.reduce((sum,component)=>sum+component.held*(component.valuePp||0),0)};
  }).sort((a,b)=>a.className.localeCompare(b.className)||a.level-b.level||a.spellName.localeCompare(b.spellName));
 }
 

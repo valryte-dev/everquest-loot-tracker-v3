@@ -11,3 +11,16 @@ Any control that accepts a file or folder path must provide a visible **Browse**
 - Keep the behavior compatible with Windows, macOS, and Linux.
 
 This is the default rule for all new and updated filesystem-path controls.
+
+# Countable Work Must Show Progress
+
+Any user-visible operation whose work can be counted must show determinate progress while it runs.
+
+- Display completed and total units together with a progress bar and percentage.
+- Prefer the most granular meaningful unit available (bytes or records over files when file sizes vary).
+- Show the current item being processed when it helps the user understand forward movement.
+- Keep the progress display visible through completion so the final count can be verified.
+- Use an indeterminate busy state only when the work truly cannot be measured.
+- A status message by itself is not sufficient for a countable scan, import, export, rebuild, purge, reconciliation, or batch mutation.
+
+This rule applies to all new operations and whenever an existing countable operation is updated.

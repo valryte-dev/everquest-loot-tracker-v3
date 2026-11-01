@@ -13,7 +13,7 @@ describe("DamageTrendCharts",()=>{
   const html=renderToStaticMarkup(<DamageTrendCharts events={events} startedAt="2026-09-08 10:00:00" names={["Valmezz","Treasure Chest"]} durationSeconds={2}/>);
   expect(html).toContain("Cumulative damage");
   expect(html).toContain("Rolling DPS");
-  expect(html).toContain("30-second window");
+  expect(html).toContain("30-second trend");
   expect(html).toContain("#fb56a3");
   expect(html).toContain("#a878fa");
   expect(html).toContain("Valmezz");

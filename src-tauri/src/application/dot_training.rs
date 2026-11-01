@@ -670,11 +670,14 @@ fn event_kind(event: &LogEvent) -> &'static str {
     match event {
         LogEvent::Loot { .. } => "loot",
         LogEvent::LevelChanged { .. } => "levelChanged",
+        LogEvent::ExperienceGained { .. } => "experienceGained",
+        LogEvent::ZoneChanged { .. } => "zoneChanged",
         LogEvent::PlayerDeath { .. } => "playerDeath",
         LogEvent::Damage { .. } => "damage",
         LogEvent::ObservedMelee { .. } => "observedMelee",
         LogEvent::IncomingDamage { .. } => "incomingDamage",
         LogEvent::MobSlain { .. } => "mobSlain",
+        LogEvent::SpawnTimerTrigger { .. } => "spawnTimerTrigger",
         LogEvent::GroupChange { .. } => "groupChange",
         LogEvent::GroupCleared { .. } => "groupCleared",
         LogEvent::ItemGlow { .. } => "itemGlow",
@@ -689,6 +692,7 @@ fn event_kind(event: &LogEvent) -> &'static str {
         LogEvent::LinkedItems { .. } => "linkedItems",
         LogEvent::ClericHealCall { .. } => "clericHealCall",
         LogEvent::GuildSlowCall { .. } => "guildSlowCall",
+        LogEvent::GameTime { .. } => "gameTime",
     }
 }
 
@@ -706,6 +710,7 @@ mod tests {
                 spell_name: "Dawncall".into(),
                 wiki_url: "https://wiki.project1999.com/Dawncall".into(),
                 description: String::new(),
+                icon_letter: String::new(),
                 classes: vec![],
                 effects: vec![SpellEffect {
                     slot: 1,
@@ -742,6 +747,7 @@ mod tests {
                 spell_name: "Essence Tap".into(),
                 wiki_url: "https://wiki.project1999.com/Essence_Tap".into(),
                 description: String::new(),
+                icon_letter: String::new(),
                 classes: vec![],
                 effects: vec![SpellEffect {
                     slot: 1,

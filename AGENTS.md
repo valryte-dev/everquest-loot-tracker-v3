@@ -15,3 +15,8 @@ The rules in `docs/architecture-rules.md` are mandatory. A feature is not comple
 Do not weaken an architectural rule to make a change easier. If a requirement genuinely conflicts with the architecture, stop and document the conflict, risk, proposed exception, and rollback plan before implementation. Destructive migrations, data retention/deletion, removal of a legacy rollback path, or an unbounded hot-path query require explicit user approval.
 
 Create a Git checkpoint before any high-risk migration or cross-cutting refactor. Keep existing behavior and storage readable until the replacement has parity tests and a verified rollback route.
+## Resource-safe validation
+
+All local tests, TypeScript builds, Rust checks, and standalone application builds must be launched through `scripts/start-background-validation.cmd`. Do not invoke `npm test`, `npm run build`, Cargo validation, or `npm run build:standalone` directly from the interactive agent process.
+
+The launcher is mandatory because it runs validation in a hidden child process at normal priority, limits parallel work, runs steps sequentially, redirects output to temporary logs, and reuses an isolated Cargo target. Use the default two-worker limit unless broader validation benefits from more parallelism. Poll the returned result/log paths and do not wait on the worker with a visible console.

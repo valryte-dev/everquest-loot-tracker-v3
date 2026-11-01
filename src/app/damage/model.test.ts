@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ClericHealCall,DamageEvent} from "../../shared/contracts";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,damageEncounterSnapshotChanged,dpsMomentum,focusedDamageEncounter,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,damageEncounterSnapshotChanged,dpsMomentum,focusedDamageEncounter,latestHealChainBoundary,discordHealChainSummary,mergeLiveDamageEncounters,mergeRecentRows,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId,stabilizeEncounterArchive} from "./model";
 
 const event=(id:number,second:number,attacker:string,damage:number):DamageEvent=>({
  id,happenedAt:`2026-09-05 10:00:${String(second).padStart(2,"0")}`,attacker,
@@ -69,6 +69,11 @@ describe("live DPS analytics",()=>{
   expect(damageEncounterSnapshotChanged([base],[base])).toBe(false);
   expect(damageEncounterSnapshotChanged([base],[{...base,totalDamage:150,hitCount:3,lastDamageAt:"2026-09-16 15:00:06"}])).toBe(true);
   expect(damageEncounterSnapshotChanged([], [base])).toBe(true);
+  expect(mergeLiveDamageEncounters([{...base,isProtected:true}],[{...base,totalDamage:150}])).toEqual([{...base,totalDamage:150,isProtected:true}]);
+  expect(mergeRecentRows([{id:1,value:"old"},{id:2,value:"keep"}],[{id:1,value:"new"},{id:3,value:"latest"}])).toEqual([{id:1,value:"new"},{id:3,value:"latest"},{id:2,value:"keep"}]);
+  const archived=[base];
+  expect(stabilizeEncounterArchive(archived,[{...base,totalDamage:200}])).toBe(archived);
+  expect(stabilizeEncounterArchive(archived,[{...base,outcome:"slain"}])).toEqual([{...base,outcome:"slain"}]);
  });
  it("builds independent group and active-character rolling DPS",()=>{
   const points=buildLiveDpsSeries([

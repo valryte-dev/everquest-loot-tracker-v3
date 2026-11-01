@@ -31,6 +31,16 @@ Schema 32 adds `item_proc_spells`. It is reference data bundled from the Project
 Schema 33 adds `quest_catalog_entries` and `quest_catalog_components`. Both are rebuildable reference tables sourced from the reviewed, bundled Project 1999 quest snapshot. Loot, inventories, splits, combat records, and the master item catalog are not replaced or deleted. Components and rewards retain captured names and use nullable canonical `master_items.item_id` references. To roll back the feature code, use tag `pre-quest-item-catalog-2026-09-11`; older builds safely ignore the two new tables.
 
 Schema 37 adds `character_profiles` for durable per-character race, class, gender, and optional manual level overrides. Existing character-model settings are copied forward when available. Parsed level history remains unchanged and is preferred whenever no manual override exists. Older builds ignore this additive table and continue to read their existing settings.
+
+Schema 42 adds `experience_backfill_cursors`, an additive cursor table used only by the XP-message backfill. The backfill scans bounded log ranges and inserts `experience_gain_events` idempotently by source file and byte offset; it does not reset or replay the general history, combat, loot, or group cursors. Older builds ignore the cursor table and existing XP records remain readable.
+
+Schema 44 enriches only bundled spawn-timer catalog rows with reviewed wiki variance and cumulative-skip metadata. It does not alter kill history. Rows that users saved or imported are excluded by provenance, and older builds continue to read the same table while ignoring the new JSON semantics.
+
+Schema 45 adds the nullable `last_known_spawn_at` column to the spawn-timer catalog. It is a manual schedule anchor only: no kill-history rows are synthesized or changed. Older builds ignore the column; rolling application code back leaves the saved timestamp available for a newer build.
+
+Schema 46 only fills missing `zone_name` values on the original bundled/wiki spawn-timer rows. It does not touch manually saved or JSON-imported overrides, kill history, or active timer state. Rolling back the application leaves the improved reference metadata intact and readable by older builds.
+
+Schema 52 adds only a partial index over active damage encounters for the live parser's highest-frequency lookup. It does not alter combat rows or parser output. Older builds safely ignore the index, and it may be dropped without losing data if rollback profiling requires it.
 ## CH replay compatibility
 
 CH encounter replay is additive and does not change the SQLite schema. Portable `.eqch.json` files live in the `ch-chain-replays` application-data directory. Rolling back the application leaves those files untouched; older builds ignore them. Copy that directory before removing or editing replay files manually.

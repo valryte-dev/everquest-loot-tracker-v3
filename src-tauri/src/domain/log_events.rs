@@ -64,6 +64,11 @@ impl DamageType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LogEvent {
+    GameTime {
+        happened_at: NaiveDateTime,
+        game_date: String,
+        minutes_since_midnight: u16,
+    },
     Loot {
         happened_at: NaiveDateTime,
         looter: String,
@@ -73,6 +78,14 @@ pub enum LogEvent {
         happened_at: NaiveDateTime,
         level: u16,
         direction: LevelChangeKind,
+    },
+    ExperienceGained {
+        happened_at: NaiveDateTime,
+    },
+    ZoneChanged {
+        happened_at: NaiveDateTime,
+        zone_name: String,
+        evidence: String,
     },
 
     PlayerDeath {
@@ -105,6 +118,11 @@ pub enum LogEvent {
         happened_at: NaiveDateTime,
         mob_name: String,
         killer: Option<String>,
+    },
+    SpawnTimerTrigger {
+        happened_at: NaiveDateTime,
+        mob_name: String,
+        trigger_kind: String,
     },
     GroupChange {
         happened_at: NaiveDateTime,
@@ -182,11 +200,14 @@ pub enum LogEvent {
     },
 }
 
-fn envelope() -> &'static Regex {
-    static VALUE: OnceLock<Regex> = OnceLock::new();
-    VALUE.get_or_init(|| {
-        Regex::new(r"^\[(?<time>[^]]+)]\s*(?<body>.*)$").expect("valid envelope regex")
-    })
+/// P99 combat values are many orders of magnitude below this ceiling. Rejecting
+/// larger values prevents malformed or spoofed log lines from overflowing fight
+/// totals while leaving ample room for future legitimate content.
+pub const MAX_PLAUSIBLE_DAMAGE: u64 = 1_000_000;
+
+fn parse_damage_amount(value: &str) -> Option<u64> {
+    let amount = value.parse::<u64>().ok()?;
+    (amount <= MAX_PLAUSIBLE_DAMAGE).then_some(amount)
 }
 
 fn loot() -> &'static Regex {
@@ -215,6 +236,39 @@ fn lost_level() -> &'static Regex {
     })
 }
 
+fn experience_gained() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)^You gain (?:party )?experience!+$")
+            .expect("valid experience gained regex")
+    })
+}
+
+fn game_time() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^Game Time:\s*(?<date>.+?)\s*-\s*(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<period>AM|PM)\s*$",
+        )
+        .expect("valid game time regex")
+    })
+}
+
+fn entered_zone() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)^You have entered (?<zone>.+?)\.?$").expect("valid entered zone regex")
+    })
+}
+
+fn who_zone() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)^(?:Players in|There (?:is|are) \d+ players? in) (?<zone>.+?):?\.?$")
+            .expect("valid who zone regex")
+    })
+}
+
 fn local_kill() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -225,8 +279,16 @@ fn local_kill() -> &'static Regex {
 fn remote_kill() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
-        Regex::new(r"^(?<mob>.+) has been slain by (?<killer>[A-Za-z][A-Za-z'_-]*)!$")
+        Regex::new(r"^(?<mob>.+) has been slain by (?<killer>.+)!$")
             .expect("valid remote kill regex")
+    })
+}
+
+fn angry_goblin_timer_trigger() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"(?i)^an angry goblin howls in triumph!$")
+            .expect("valid angry goblin timer trigger regex")
     })
 }
 
@@ -484,13 +546,42 @@ fn merchant_intent() -> &'static Regex {
 }
 
 pub fn parse_envelope(line: &str) -> Option<(NaiveDateTime, &str)> {
-    let outer = envelope().captures(line.trim())?;
-    let happened_at = NaiveDateTime::parse_from_str(&outer["time"], "%a %b %d %H:%M:%S %Y").ok()?;
-    Some((happened_at, outer.name("body")?.as_str()))
+    // EverQuest's envelope has a fixed 24-byte timestamp. Slice it directly instead of
+    // running a regular expression for every line; combat bursts can contain thousands of
+    // otherwise ordinary melee messages. Keep trim/whitespace behavior equivalent to the
+    // previous envelope regex.
+    let line = line.trim();
+    let envelope = line.strip_prefix('[')?;
+    let timestamp = envelope.get(..24)?;
+    let remainder = envelope.get(24..)?.strip_prefix(']')?;
+    let happened_at = NaiveDateTime::parse_from_str(timestamp, "%a %b %d %H:%M:%S %Y").ok()?;
+    Some((happened_at, remainder.trim_start()))
 }
 
 pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     let (happened_at, body) = parse_envelope(line)?;
+    if let Some(value) = game_time().captures(body) {
+        let hour = value.name("hour")?.as_str().parse::<u16>().ok()?;
+        let minute = value
+            .name("minute")
+            .map(|part| part.as_str().parse::<u16>().ok())
+            .unwrap_or(Some(0))?;
+        if !(1..=12).contains(&hour) || minute > 59 {
+            return None;
+        }
+        let period = value.name("period")?.as_str();
+        let hour_24 = match (hour, period.eq_ignore_ascii_case("PM")) {
+            (12, false) => 0,
+            (12, true) => 12,
+            (value, true) => value + 12,
+            (value, false) => value,
+        };
+        return Some(LogEvent::GameTime {
+            happened_at,
+            game_date: value.name("date")?.as_str().trim().to_owned(),
+            minutes_since_midnight: hour_24 * 60 + minute,
+        });
+    }
     for (pattern, direction) in [
         (gained_level(), LevelChangeKind::Gained),
         (lost_level(), LevelChangeKind::Lost),
@@ -503,6 +594,24 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             });
         }
     }
+    if experience_gained().is_match(body) {
+        return Some(LogEvent::ExperienceGained { happened_at });
+    }
+    for (pattern, evidence) in [(entered_zone(), "entered"), (who_zone(), "who")] {
+        if let Some(value) = pattern.captures(body) {
+            let zone_name = value.name("zone")?.as_str().trim();
+            // Friends and server-wide /who output ends with "players in EverQuest". It is a
+            // population summary, not a zone transition, and must not replace the last real zone.
+            if evidence == "who" && zone_name.eq_ignore_ascii_case("EverQuest") {
+                return None;
+            }
+            return Some(LogEvent::ZoneChanged {
+                happened_at,
+                zone_name: zone_name.to_owned(),
+                evidence: evidence.to_owned(),
+            });
+        }
+    }
     if let Some(value) = player_death().captures(body) {
         return Some(LogEvent::PlayerDeath {
             happened_at,
@@ -511,6 +620,60 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     }
     if healing_message().is_match(body) {
         return None;
+    }
+    // Match the overwhelmingly common combat forms before spell-state and chat patterns.
+    // EqTool follows the same first-handler-wins strategy and explicitly puts damage first so
+    // raid spam does not traverse every uncommon parser for every swing.
+    if let Some(value) = combat_attempt().captures(body) {
+        let attacker = value["attacker"].trim();
+        return Some(LogEvent::CombatAttempt {
+            happened_at,
+            attacker_name: if attacker.eq_ignore_ascii_case("You") {
+                active_character.to_owned()
+            } else {
+                attacker.to_owned()
+            },
+            mob_name: value["mob"].trim().to_owned(),
+            attack: value["attack"].to_ascii_lowercase(),
+        });
+    }
+    if let Some(value) = melee_damage().captures(body) {
+        return Some(LogEvent::Damage {
+            happened_at,
+            attacker_name: active_character.to_owned(),
+            mob_name: value["mob"].trim().to_owned(),
+            attack: value["attack"].to_ascii_lowercase(),
+            amount: parse_damage_amount(&value["damage"])?,
+            damage_type: DamageType::Melee,
+        });
+    }
+    if let Some(value) = incoming_spell_damage().captures(body) {
+        return Some(LogEvent::IncomingDamage {
+            happened_at,
+            attacker_name: value["attacker"].trim().to_owned(),
+            target_name: active_character.to_owned(),
+            attack: value["spell"].trim().to_owned(),
+            amount: parse_damage_amount(&value["damage"])?,
+        });
+    }
+    if let Some(value) = observed_melee_damage().captures(body) {
+        let target = value["target"].trim();
+        if target.eq_ignore_ascii_case("YOU") {
+            return Some(LogEvent::IncomingDamage {
+                happened_at,
+                attacker_name: value["subject"].trim().to_owned(),
+                target_name: active_character.to_owned(),
+                attack: normalized_other_attack(&value["attack"]).to_owned(),
+                amount: parse_damage_amount(&value["damage"])?,
+            });
+        }
+        return Some(LogEvent::ObservedMelee {
+            happened_at,
+            subject_name: value["subject"].trim().to_owned(),
+            target_name: target.to_owned(),
+            attack: normalized_other_attack(&value["attack"]).to_owned(),
+            amount: parse_damage_amount(&value["damage"])?,
+        });
     }
     if let Some(value) = spell_cast_started().captures(body) {
         return Some(LogEvent::SpellCastStarted {
@@ -549,64 +712,13 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             item_name: value["item"].trim().to_owned(),
         });
     }
-    if let Some(value) = combat_attempt().captures(body) {
-        let attacker = value["attacker"].trim();
-        return Some(LogEvent::CombatAttempt {
-            happened_at,
-            attacker_name: if attacker.eq_ignore_ascii_case("You") {
-                active_character.to_owned()
-            } else {
-                attacker.to_owned()
-            },
-            mob_name: value["mob"].trim().to_owned(),
-            attack: value["attack"].to_ascii_lowercase(),
-        });
-    }
-    if let Some(value) = melee_damage().captures(body) {
-        return Some(LogEvent::Damage {
-            happened_at,
-            attacker_name: active_character.to_owned(),
-            mob_name: value["mob"].trim().to_owned(),
-            attack: value["attack"].to_ascii_lowercase(),
-            amount: value["damage"].parse().ok()?,
-            damage_type: DamageType::Melee,
-        });
-    }
-    if let Some(value) = incoming_spell_damage().captures(body) {
-        return Some(LogEvent::IncomingDamage {
-            happened_at,
-            attacker_name: value["attacker"].trim().to_owned(),
-            target_name: active_character.to_owned(),
-            attack: value["spell"].trim().to_owned(),
-            amount: value["damage"].parse().ok()?,
-        });
-    }
-    if let Some(value) = observed_melee_damage().captures(body) {
-        let target = value["target"].trim();
-        if target.eq_ignore_ascii_case("YOU") {
-            return Some(LogEvent::IncomingDamage {
-                happened_at,
-                attacker_name: value["subject"].trim().to_owned(),
-                target_name: active_character.to_owned(),
-                attack: normalized_other_attack(&value["attack"]).to_owned(),
-                amount: value["damage"].parse().ok()?,
-            });
-        }
-        return Some(LogEvent::ObservedMelee {
-            happened_at,
-            subject_name: value["subject"].trim().to_owned(),
-            target_name: target.to_owned(),
-            attack: normalized_other_attack(&value["attack"]).to_owned(),
-            amount: value["damage"].parse().ok()?,
-        });
-    }
     if let Some(value) = non_melee_damage().captures(body) {
         return Some(LogEvent::Damage {
             happened_at,
             attacker_name: active_character.to_owned(),
             mob_name: value["mob"].trim().to_owned(),
             attack: "non-melee".to_owned(),
-            amount: value["damage"].parse().ok()?,
+            amount: parse_damage_amount(&value["damage"])?,
             damage_type: DamageType::Spell,
         });
     }
@@ -616,7 +728,7 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             attacker_name: active_character.to_owned(),
             mob_name: value["mob"].trim().to_owned(),
             attack: value["spell"].trim().to_owned(),
-            amount: value["damage"].parse().ok()?,
+            amount: parse_damage_amount(&value["damage"])?,
             damage_type: DamageType::Spell,
         });
     }
@@ -786,6 +898,13 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
             killer: Some(value["killer"].to_owned()),
         });
     }
+    if angry_goblin_timer_trigger().is_match(body) {
+        return Some(LogEvent::SpawnTimerTrigger {
+            happened_at,
+            mob_name: "an angry goblin".to_owned(),
+            trigger_kind: "triumphEmote".to_owned(),
+        });
+    }
     if removed_from_group().is_match(body) {
         return Some(LogEvent::GroupCleared { happened_at });
     }
@@ -897,6 +1016,49 @@ fn unquote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn mass_combat_spam_parser_stays_bounded() {
+        const LINE_COUNT: usize = 20_000;
+        let started = Instant::now();
+        let parsed = (0..LINE_COUNT)
+            .filter(|index| {
+                let line = format!(
+                    "[Sat Sep 05 10:00:00 2026] Fighter{} crushes a raid target for {} points of damage.",
+                    index % 200,
+                    index % 500 + 1
+                );
+                matches!(
+                    parse_log_event(&line, "Tester"),
+                    Some(LogEvent::ObservedMelee { .. })
+                )
+            })
+            .count();
+        let elapsed = started.elapsed();
+        eprintln!("parsed {LINE_COUNT} mass-combat lines in {elapsed:?}");
+        assert_eq!(parsed, LINE_COUNT);
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "mass-combat parsing took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn parses_angry_goblin_triumph_as_a_timer_trigger_not_a_kill() {
+        let event = parse_log_event(
+            "[Thu Oct 29 14:10:13 2026] an angry goblin howls in triumph!",
+            "Tester",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::SpawnTimerTrigger {
+                ref mob_name,
+                ref trigger_kind,
+                ..
+            }) if mob_name == "an angry goblin" && trigger_kind == "triumphEmote"
+        ));
+    }
 
     #[test]
     fn parses_melee_non_melee_and_damage_over_time() {
@@ -938,6 +1100,26 @@ mod tests {
             other,
             Some(LogEvent::ObservedMelee { ref subject_name, ref target_name, ref attack, amount: 81, .. })
                 if subject_name == "Legiteral" && target_name == "a mortiferous golem" && attack == "crush"
+        ));
+    }
+
+    #[test]
+    fn rejects_impossible_damage_values_before_they_reach_combat_storage() {
+        let impossible = parse_log_event(
+            "[Sat Sep 05 10:00:00 2026] Rimurok slashes a raid target for 9999999999999999 points of damage.",
+            "Youngman",
+        );
+        let ceiling = parse_log_event(
+            "[Sat Sep 05 10:00:01 2026] You slash a raid target for 1000000 points of damage.",
+            "Youngman",
+        );
+        assert!(impossible.is_none());
+        assert!(matches!(
+            ceiling,
+            Some(LogEvent::Damage {
+                amount: MAX_PLAUSIBLE_DAMAGE,
+                ..
+            })
         ));
     }
 
@@ -1014,6 +1196,111 @@ mod tests {
                 direction: LevelChangeKind::Lost,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn parses_experience_gain_messages() {
+        for line in [
+            "[Fri Oct 23 12:34:56 2026] You gain experience!!",
+            "[Fri Oct 23 12:34:57 2026] You gain party experience!!",
+        ] {
+            assert!(matches!(
+                parse_log_event(line, "Tester"),
+                Some(LogEvent::ExperienceGained { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn parses_game_time_as_minutes_since_midnight() {
+        let morning = parse_log_event(
+            "[Wed Oct 28 08:53:48 2026] Game Time: Tuesday, September 17, 3253 - 6 AM",
+            "Utrido",
+        );
+        assert!(matches!(
+            morning,
+            Some(LogEvent::GameTime {
+                ref game_date,
+                minutes_since_midnight: 360,
+                ..
+            }) if game_date == "Tuesday, September 17, 3253"
+        ));
+
+        let midnight = parse_log_event(
+            "[Wed Oct 28 08:53:48 2026] Game Time: Tuesday, September 17, 3253 - 12 AM",
+            "Utrido",
+        );
+        assert!(matches!(
+            midnight,
+            Some(LogEvent::GameTime {
+                minutes_since_midnight: 0,
+                ..
+            })
+        ));
+
+        let afternoon = parse_log_event(
+            "[Wed Oct 28 08:53:48 2026] Game Time: Tuesday, September 17, 3253 - 1:15 PM",
+            "Utrido",
+        );
+        assert!(matches!(
+            afternoon,
+            Some(LogEvent::GameTime {
+                minutes_since_midnight: 795,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_explicit_and_who_zone_evidence() {
+        for (line, expected, evidence) in [
+            (
+                "[Fri Oct 23 12:34:56 2026] You have entered The Wakening Land.",
+                "The Wakening Land",
+                "entered",
+            ),
+            (
+                "[Fri Oct 23 12:34:56 2026] Players in Eastern Wastes:",
+                "Eastern Wastes",
+                "who",
+            ),
+            (
+                "[Fri Oct 23 12:34:56 2026] There are 12 players in Kael Drakkel.",
+                "Kael Drakkel",
+                "who",
+            ),
+        ] {
+            assert!(matches!(
+                parse_log_event(line, "Tester"),
+                Some(LogEvent::ZoneChanged { zone_name, evidence: found, .. })
+                    if zone_name == expected && found == evidence
+            ));
+        }
+    }
+
+    #[test]
+    fn ignores_server_wide_who_population_as_zone_evidence() {
+        assert!(parse_log_event(
+            "[Sat Oct 31 08:17:12 2026] There are 2 players in EverQuest.",
+            "Valmezz",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn parses_remote_kills_credited_to_multiword_pets() {
+        let event = parse_log_event(
+            "[Sat Oct 31 08:17:12 2026] Grink has been slain by Guard McStinkles!",
+            "Valmezz",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::MobSlain {
+                ref mob_name,
+                killer: Some(ref killer),
+                ..
+            }) if mob_name == "Grink" && killer == "Guard McStinkles"
         ));
     }
 

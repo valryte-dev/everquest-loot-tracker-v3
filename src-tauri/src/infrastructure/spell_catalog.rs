@@ -16,11 +16,26 @@ use std::{
 };
 
 const WIKI_API: &str = "https://wiki.project1999.com/api.php";
-const SPELL_SELECT: &str = "SELECT spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,focus,where_to_obtain,cast_on_you,cast_on_other,wears_off,damage_kind,damage_per_tick,tick_count,tick_interval_seconds,total_dot_damage,direct_damage,fetched_at FROM spell_info";
+const CLASS_ROSTER_VERSION: &str = "1";
+const CLASS_SPELL_PAGES: &[&str] = &[
+    "Bard",
+    "Cleric",
+    "Druid",
+    "Enchanter",
+    "Magician",
+    "Necromancer",
+    "Paladin",
+    "Ranger",
+    "Shadow Knight",
+    "Shaman",
+    "Wizard",
+];
+const SPELL_SELECT: &str = "SELECT spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,focus,where_to_obtain,cast_on_you,cast_on_other,wears_off,damage_kind,damage_per_tick,tick_count,tick_interval_seconds,total_dot_damage,direct_damage,fetched_at,icon_letter FROM spell_info";
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS spell_info (
  spell_name TEXT PRIMARY KEY COLLATE NOCASE, wiki_url TEXT NOT NULL,
- description TEXT NOT NULL DEFAULT '', classes_json TEXT NOT NULL DEFAULT '[]',
+ description TEXT NOT NULL DEFAULT '', icon_letter TEXT NOT NULL DEFAULT '',
+ classes_json TEXT NOT NULL DEFAULT '[]',
  effects_json TEXT NOT NULL DEFAULT '[]', mana TEXT NOT NULL DEFAULT '',
  skill TEXT NOT NULL DEFAULT '', casting_time TEXT NOT NULL DEFAULT '',
  recast_time TEXT NOT NULL DEFAULT '', fizzle_time TEXT NOT NULL DEFAULT '',
@@ -71,6 +86,7 @@ pub struct SpellInfo {
     pub spell_name: String,
     pub wiki_url: String,
     pub description: String,
+    pub icon_letter: String,
     pub classes: Vec<SpellClass>,
     pub effects: Vec<SpellEffect>,
     pub mana: String,
@@ -429,8 +445,54 @@ impl SpellCatalog {
             }
             thread::sleep(StdDuration::from_millis(100));
         }
+        self.refresh_class_assignments()?;
+        self.set_meta("class_roster_version", CLASS_ROSTER_VERSION)?;
         self.set_meta("last_refresh_at", &Utc::now().to_rfc3339())?;
         Ok(())
+    }
+
+    fn refresh_class_assignments(&self) -> Result<(), String> {
+        let mut assignments: HashMap<String, Vec<SpellClass>> = HashMap::new();
+        for class_name in CLASS_SPELL_PAGES {
+            let body = self.get_wiki_json(&[
+                ("action", "parse"),
+                ("page", class_name),
+                ("prop", "wikitext"),
+                ("format", "json"),
+            ])?;
+            if let Some(message) = body.pointer("/error/info").and_then(Value::as_str) {
+                return Err(format!(
+                    "Project 1999 wiki class page {class_name}: {message}"
+                ));
+            }
+            let text = body
+                .pointer("/parse/wikitext/*")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("No spell list was found on the {class_name} class page"))?;
+            let rows = parse_class_spell_rows(text);
+            if rows.is_empty() {
+                return Err(format!(
+                    "No spell rows were recognized on the {class_name} class page"
+                ));
+            }
+            for (spell_name, level) in rows {
+                let classes = assignments
+                    .entry(spell_lookup_key(&spell_name))
+                    .or_default();
+                if !classes
+                    .iter()
+                    .any(|entry| entry.name == *class_name && entry.level == level)
+                {
+                    classes.push(SpellClass {
+                        name: (*class_name).to_string(),
+                        level,
+                    });
+                }
+            }
+        }
+
+        let mut connection = connect(&self.path)?;
+        replace_class_assignments(&mut connection, &assignments)
     }
 
     fn get_wiki_json(&self, query: &[(&str, &str)]) -> Result<Value, String> {
@@ -457,6 +519,7 @@ fn migrate_catalog(connection: &Connection) -> Result<(), String> {
         ("tick_interval_seconds", "INTEGER NOT NULL DEFAULT 6"),
         ("total_dot_damage", "INTEGER"),
         ("direct_damage", "INTEGER"),
+        ("icon_letter", "TEXT NOT NULL DEFAULT ''"),
     ];
     let mut upgraded = false;
     for (name, definition) in columns {
@@ -519,7 +582,16 @@ fn migrate_catalog(connection: &Connection) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
         }
     }
-    set_meta_on(connection, "combat_schema_version", "3")
+    set_meta_on(connection, "combat_schema_version", "3")?;
+    if meta(connection, "class_roster_version")?.as_deref() != Some(CLASS_ROSTER_VERSION) {
+        connection
+            .execute(
+                "DELETE FROM spell_catalog_meta WHERE key='last_refresh_at'",
+                [],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn request_json(client: &Client, query: &[(&str, &str)]) -> Result<Value, reqwest::Error> {
@@ -541,13 +613,27 @@ fn certificate_chain_detail(detail: &str) -> bool {
 }
 
 fn save_on(connection: &Connection, i: &SpellInfo) -> Result<(), String> {
+    let classes_json =
+        if meta(connection, "class_roster_version")?.as_deref() == Some(CLASS_ROSTER_VERSION) {
+            connection
+                .query_row(
+                    "SELECT classes_json FROM spell_info WHERE spell_name=?1 COLLATE NOCASE",
+                    [&i.spell_name],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?
+                .unwrap_or_else(|| "[]".to_string())
+        } else {
+            serde_json::to_string(&i.classes).map_err(|error| error.to_string())?
+        };
     connection.execute(
         "INSERT INTO spell_info(
             spell_name,wiki_url,description,classes_json,effects_json,mana,skill,casting_time,
             recast_time,fizzle_time,resist,range_value,target_type,spell_type,duration,reagent,
             focus,where_to_obtain,cast_on_you,cast_on_other,wears_off,damage_kind,damage_per_tick,
-            tick_count,tick_interval_seconds,total_dot_damage,direct_damage,fetched_at
-         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
+            tick_count,tick_interval_seconds,total_dot_damage,direct_damage,fetched_at,icon_letter
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)
          ON CONFLICT(spell_name) DO UPDATE SET
             wiki_url=excluded.wiki_url,description=excluded.description,classes_json=excluded.classes_json,
             effects_json=excluded.effects_json,mana=excluded.mana,skill=excluded.skill,
@@ -559,14 +645,15 @@ fn save_on(connection: &Connection, i: &SpellInfo) -> Result<(), String> {
             wears_off=excluded.wears_off,damage_kind=excluded.damage_kind,
             damage_per_tick=excluded.damage_per_tick,tick_count=excluded.tick_count,
             tick_interval_seconds=excluded.tick_interval_seconds,total_dot_damage=excluded.total_dot_damage,
-            direct_damage=excluded.direct_damage,fetched_at=excluded.fetched_at",
+            direct_damage=excluded.direct_damage,fetched_at=excluded.fetched_at,
+            icon_letter=excluded.icon_letter",
         params![
-            i.spell_name,i.wiki_url,i.description,serde_json::to_string(&i.classes).map_err(|e|e.to_string())?,
+            i.spell_name,i.wiki_url,i.description,classes_json,
             serde_json::to_string(&i.effects).map_err(|e|e.to_string())?,i.mana,i.skill,i.casting_time,
             i.recast_time,i.fizzle_time,i.resist,i.range,i.target_type,i.spell_type,i.duration,
             i.reagent,i.focus,i.where_to_obtain,i.cast_on_you,i.cast_on_other,i.wears_off,
             i.damage_kind,i.damage_per_tick,i.tick_count,i.tick_interval_seconds,i.total_dot_damage,
-            i.direct_damage,i.fetched_at
+            i.direct_damage,i.fetched_at,i.icon_letter
         ],
     ).map_err(|error| error.to_string())?;
     Ok(())
@@ -616,6 +703,7 @@ fn row_to_info(row: &rusqlite::Row<'_>) -> rusqlite::Result<SpellInfo> {
         spell_name: row.get(0)?,
         wiki_url: row.get(1)?,
         description: row.get(2)?,
+        icon_letter: row.get(28)?,
         classes: serde_json::from_str(&classes).unwrap_or_default(),
         effects: serde_json::from_str(&effects).unwrap_or_default(),
         mana: row.get(5)?,
@@ -698,6 +786,117 @@ fn clean(value: &str) -> String {
         .to_string()
 }
 
+fn replace_class_assignments(
+    connection: &mut Connection,
+    assignments: &HashMap<String, Vec<SpellClass>>,
+) -> Result<(), String> {
+    let spell_names = {
+        let mut statement = connection
+            .prepare("SELECT spell_name FROM spell_info")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        rows
+    };
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    for spell_name in spell_names {
+        let mut classes = assignments
+            .get(&spell_lookup_key(&spell_name))
+            .cloned()
+            .unwrap_or_default();
+        classes.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then(left.level.cmp(&right.level))
+        });
+        transaction
+            .execute(
+                "UPDATE spell_info SET classes_json=?1 WHERE spell_name=?2 COLLATE NOCASE",
+                params![
+                    serde_json::to_string(&classes).map_err(|error| error.to_string())?,
+                    spell_name
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
+}
+fn spell_lookup_key(value: &str) -> String {
+    normalize_spell_name(value)
+        .unwrap_or_else(|| value.trim().to_string())
+        .to_lowercase()
+}
+
+fn parse_class_spell_rows(text: &str) -> Vec<(String, u32)> {
+    let heading = Regex::new(r"(?i)^={2,3}\s*level\s+(\d+)\s*={2,3}\s*$").unwrap();
+    let row_start =
+        Regex::new(r"(?i)^\s*\{\{\s*(?:template\s*:\s*)?(?:spellrow|radspellrow2?|songrow)\b")
+            .unwrap();
+    let name_field = Regex::new(r"(?i)^\s*\|\s*name\s*=\s*(.*?)\s*$").unwrap();
+    let level_field = Regex::new(r"(?i)^\s*\|\s*level\s*=\s*(\d+)\s*$").unwrap();
+    let inline_name = Regex::new(r"(?i)\|\s*name\s*=\s*([^|}\r\n]+)").unwrap();
+    let inline_level = Regex::new(r"(?i)\|\s*level\s*=\s*(\d+)").unwrap();
+    let mut current_level = None;
+    let mut in_row = false;
+    let mut row_name: Option<String> = None;
+    let mut row_level = None;
+    let mut rows = Vec::new();
+
+    let finish_row = |rows: &mut Vec<(String, u32)>,
+                      name: &mut Option<String>,
+                      level: &mut Option<u32>,
+                      fallback: Option<u32>| {
+        if let (Some(name), Some(level)) = (name.take(), level.take().or(fallback)) {
+            let cleaned = clean(&name);
+            if !cleaned.is_empty() {
+                rows.push((cleaned, level));
+            }
+        } else {
+            *name = None;
+            *level = None;
+        }
+    };
+
+    for line in text.lines() {
+        if let Some(capture) = heading.captures(line.trim()) {
+            current_level = capture[1].parse().ok();
+        }
+        if row_start.is_match(line) {
+            if in_row {
+                finish_row(&mut rows, &mut row_name, &mut row_level, current_level);
+            }
+            in_row = true;
+            if let Some(capture) = inline_name.captures(line) {
+                row_name = Some(capture[1].trim().to_string());
+            }
+            if let Some(capture) = inline_level.captures(line) {
+                row_level = capture[1].parse().ok();
+            }
+        }
+        if !in_row {
+            continue;
+        }
+        if let Some(capture) = name_field.captures(line) {
+            row_name = Some(capture[1].trim().to_string());
+        }
+        if let Some(capture) = level_field.captures(line) {
+            row_level = capture[1].parse().ok();
+        }
+        if line.trim_end().ends_with("}}") {
+            finish_row(&mut rows, &mut row_name, &mut row_level, current_level);
+            in_row = false;
+        }
+    }
+    if in_row {
+        finish_row(&mut rows, &mut row_name, &mut row_level, current_level);
+    }
+    rows
+}
 fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
     let fields = parse_fields(text);
     if fields.is_empty() {
@@ -751,6 +950,7 @@ fn parse_spell_template(title: &str, text: &str) -> Result<SpellInfo, String> {
         wiki_url: format!("https://wiki.project1999.com/{}", name.replace(' ', "_")),
         spell_name: name,
         description,
+        icon_letter: clean(field(&fields, "spellicon")).to_ascii_uppercase(),
         classes,
         effects,
         mana: clean(field(&fields, "mana")),
@@ -884,6 +1084,7 @@ mod tests {
     use super::*;
     const SERVANT: &str = r#"{{Spellpage|
 | spellname = Servant of Bones
+| spellicon = G
 | description = Animates an undead servant. Consumes bone chips when cast.
 | classes = * [[Necromancer]] - Level 56
 | slots = {{SpellSlotRow | 1 | Summon Skeleton Pet: skel_pet_44_ }}
@@ -917,7 +1118,101 @@ mod tests {
             "Summon Skeleton Pet: skel_pet_44_"
         );
         assert_eq!(s.skill, "Conjuration");
+        assert_eq!(s.icon_letter, "G");
         assert_eq!(s.reagent, "Bone Chips x2");
+    }
+    #[test]
+    fn parses_all_supported_class_page_row_formats() {
+        let page = r#"
+==Level 9==
+{{SpellRow
+|name=Siphon Strength
+|description=Transfer strength.
+}}
+{{RadSpellRow
+|name=Disease Cloud
+|description=Damage over time.
+}}
+{{RadSpellRow2
+|name=[[Burst of Flame]]
+|description=Direct damage.
+}}
+{{SpellRow|name=Courage|description=HP and AC buff.|mana=12}}
+{{Template:SongRow
+|name=Chant of Battle
+|level=1
+|description=Party buff.
+}}"#;
+        assert_eq!(
+            parse_class_spell_rows(page),
+            vec![
+                ("Siphon Strength".to_string(), 9),
+                ("Disease Cloud".to_string(), 9),
+                ("Burst of Flame".to_string(), 9),
+                ("Courage".to_string(), 9),
+                ("Chant of Battle".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn authoritative_class_roster_removes_recourses_and_survives_spell_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog = SpellCatalog::open(directory.path().join("spell-info.db")).unwrap();
+        let recourse = r#"{{Spellpage|
+| spellname = Siphon Strength Recourse
+| classes = * [[Shadow Knight]] - Level 39
+| description = Internal buff component.
+}}"#;
+        let castable = r#"{{Spellpage|
+| spellname = Siphon Strength
+| classes = * [[Shadow Knight]] - Level 9
+| description = Player-cast strength siphon.
+}}"#;
+        catalog
+            .save(&parse_spell_template("Siphon Strength Recourse", recourse).unwrap())
+            .unwrap();
+        catalog
+            .save(&parse_spell_template("Siphon Strength", castable).unwrap())
+            .unwrap();
+
+        let mut assignments = HashMap::new();
+        assignments.insert(
+            spell_lookup_key("Siphon Strength"),
+            vec![SpellClass {
+                name: "Shadow Knight".to_string(),
+                level: 9,
+            }],
+        );
+        let mut connection = connect(&catalog.path).unwrap();
+        replace_class_assignments(&mut connection, &assignments).unwrap();
+        set_meta_on(&connection, "class_roster_version", CLASS_ROSTER_VERSION).unwrap();
+        drop(connection);
+
+        assert!(catalog
+            .read_cached("Siphon Strength Recourse")
+            .unwrap()
+            .unwrap()
+            .classes
+            .is_empty());
+        assert_eq!(
+            catalog
+                .read_cached("Siphon Strength")
+                .unwrap()
+                .unwrap()
+                .classes,
+            assignments[&spell_lookup_key("Siphon Strength")]
+        );
+
+        catalog
+            .save(&parse_spell_template("Siphon Strength Recourse", recourse).unwrap())
+            .unwrap();
+        assert!(catalog
+            .read_cached("Siphon Strength Recourse")
+            .unwrap()
+            .unwrap()
+            .classes
+            .is_empty());
     }
     #[test]
     fn normalizes_scroll_name() {
@@ -954,12 +1249,38 @@ mod tests {
         let c = SpellCatalog::open(d.path().join("spell-info.db")).unwrap();
         let s = parse_spell_template("Servant of Bones", SERVANT).unwrap();
         c.save(&s).unwrap();
-        assert_eq!(
-            c.read_cached("servant of bones").unwrap().unwrap().classes[0].level,
-            56
-        );
+        let cached = c.read_cached("servant of bones").unwrap().unwrap();
+        assert_eq!(cached.classes[0].level, 56);
+        assert_eq!(cached.icon_letter, "G");
     }
 
+    #[test]
+    fn existing_catalog_adds_icon_letter_and_requests_a_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("spell-info.db");
+        let legacy_schema = SCHEMA.replace(", icon_letter TEXT NOT NULL DEFAULT ''", "");
+        let connection = connect(&path).unwrap();
+        connection.execute_batch(&legacy_schema).unwrap();
+        connection
+            .execute(
+                "INSERT INTO spell_catalog_meta(key,value) VALUES('last_refresh_at','2026-01-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        SpellCatalog::open(&path).unwrap();
+        let connection = connect(&path).unwrap();
+        let icon_columns: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('spell_info') WHERE name='icon_letter'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(icon_columns, 1);
+        assert_eq!(meta(&connection, "last_refresh_at").unwrap(), None);
+    }
     #[test]
     fn classifies_dawncall_and_preserves_cast_message() {
         let dawncall = r#"{{Spellpage|
@@ -1151,5 +1472,17 @@ mod tests {
             status.cached_count
         );
         assert!(status.last_refresh_at.is_some());
+        let recourse = catalog.get("Siphon Strength Recourse").unwrap();
+        assert!(recourse.classes.is_empty());
+        let siphon = catalog.get("Siphon Strength").unwrap();
+        assert!(siphon
+            .classes
+            .iter()
+            .any(|entry| entry.name == "Shadow Knight" && entry.level == 9));
+        assert!(
+            meta(&connect(&catalog.path).unwrap(), "class_roster_version")
+                .unwrap()
+                .is_some_and(|version| version == CLASS_ROSTER_VERSION)
+        );
     }
 }

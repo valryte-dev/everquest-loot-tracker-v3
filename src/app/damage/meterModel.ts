@@ -6,6 +6,7 @@ export interface MeterPlayer extends DamageParticipant {
  rank:number;
  contribution:number;
  dps:number;
+ liveDps:number;
 }
 
 export interface IncomingTarget extends DamageTarget {
@@ -109,6 +110,41 @@ export function summarizePlayerEffects(encounter:DamageEncounter,events:DamageEv
  };
 }
 
+export function summarizeEncounterPlayerEffects(encounter:DamageEncounter,events:DamageEvent[]):Map<string,PlayerEffectTotals>{
+ const metricsByPlayer=new Map<string,DamageSpellMetric[]>();
+ for(const metric of encounter.spellMetrics||[]){
+  const key=metric.playerName.trim().toLowerCase();
+  const rows=metricsByPlayer.get(key)||[];
+  rows.push(metric);
+  metricsByPlayer.set(key,rows);
+ }
+ const directByPlayer=new Map<string,{count:number;damage:number}>();
+ for(const event of events){
+  if(event.damageType!=="spell"||event.source==="proc"||event.source==="dot")continue;
+  const key=event.attacker.trim().toLowerCase();
+  const current=directByPlayer.get(key)||{count:0,damage:0};
+  current.count++;
+  current.damage+=event.damage;
+  directByPlayer.set(key,current);
+ }
+ const totals=new Map<string,PlayerEffectTotals>();
+ for(const player of encounter.players){
+  const key=player.name.trim().toLowerCase();
+  const metrics=metricsByPlayer.get(key)||[];
+  const proc=summarizeSpellMetrics(metrics);
+  const direct=directByPlayer.get(key)||{count:0,damage:0};
+  totals.set(key,{
+   procCount:proc.procCount,
+   procDirectDamage:proc.directProcDamage,
+   procDotDamage:proc.procDotDamage,
+   spellCount:direct.count+metrics.filter(metric=>metric.dotDamage>metric.procDotDamage).length,
+   spellDirectDamage:direct.damage,
+   spellDotDamage:Math.max(0,proc.dotDamage-proc.procDotDamage),
+  });
+ }
+ return totals;
+}
+
 export function damageComposition(encounter:Pick<DamageEncounter,"totalDamage"|"meleeDamage"|"spellDamage"|"dotDamage">):DamageComposition{
  const dot=Math.max(0,Math.min(encounter.dotDamage||0,encounter.spellDamage));
  const direct=Math.max(0,encounter.spellDamage-dot);
@@ -158,14 +194,15 @@ export function participantCombatSeconds(player:DamageParticipant,encounterEndMs
  return Math.max(0,Math.floor((encounterEndMs-stamp(player.firstDamageAt))/1000));
 }
 
-export function rankMeterPlayers(players:DamageParticipant[],totalDamage:number,durationSeconds:number):MeterPlayer[]{
+export function rankMeterPlayers(players:DamageParticipant[],totalDamage:number,encounterEndMs:number):MeterPlayer[]{
  return [...players]
   .sort((a,b)=>b.totalDamage-a.totalDamage||a.name.localeCompare(b.name))
   .map((player,index)=>({
    ...player,
    rank:index+1,
    contribution:player.totalDamage/Math.max(1,totalDamage)*100,
-   dps:player.totalDamage/Math.max(1,durationSeconds),
+   dps:player.totalDamage/Math.max(1,participantCombatSeconds(player,encounterEndMs)),
+   liveDps:(player.recentDamage12||0)/12,
   }));
 }
 

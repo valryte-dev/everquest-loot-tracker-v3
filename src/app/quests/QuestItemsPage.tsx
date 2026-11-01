@@ -2,6 +2,7 @@ import {useMemo,useState} from "react";
 import {openUrl} from "@tauri-apps/plugin-opener";
 import type {AppSnapshot,QuestCatalogItem} from "../../shared/contracts";
 import {money} from "../ui";
+import {ItemHover} from "../items/ItemHover";
 import {buildQuestCards,buildVeliousArmorTypeCards,groupQuestCards,questCardFaction,VELIOUS_FACTIONS,type QuestCardView} from "./model";
 import "./quest-items.css";
 
@@ -84,17 +85,20 @@ function QuestCard({card,expanded,toggle}:{card:QuestCardView;expanded:boolean;t
  const epicPreview=card.category==="epic";
  return <article className={`quest-card ${card.ready?"ready":card.owned?"started":"missing"} ${expanded?"expanded":""}`}>
   <header>
-   <button className="quest-card-toggle" onClick={toggle} aria-expanded={expanded}>
+   {card.category!=="velious_armor"?<ItemHover itemName={card.rewardName} itemId={card.rewardItemId} iconId={card.rewardIconId} className="quest-reward-hover" focusable={false}><button className="quest-card-toggle" onClick={toggle} aria-expanded={expanded}>
     <span className="quest-reward-icon">{card.rewardIconId?<img src={icon(card.rewardIconId)} alt=""/>:<b>{card.className.slice(0,2)}</b>}</span>
     <span><small>{card.className}</small><strong>{card.rewardName}</strong><em>{card.owned} of {card.required} requirements available</em></span>
-   </button>
+   </button></ItemHover>:<button className="quest-card-toggle" onClick={toggle} aria-expanded={expanded}>
+    <span className="quest-reward-icon">{card.rewardIconId?<img src={icon(card.rewardIconId)} alt=""/>:<b>{card.className.slice(0,2)}</b>}</span>
+    <span><small>{card.className}</small><strong>{card.rewardName}</strong><em>{card.owned} of {card.required} requirements available</em></span>
+   </button>}
    <button className="quest-source" title="Open P99 Wiki source" aria-label="Open P99 Wiki source" onClick={()=>openUrl(card.sourceUrl)}>Open</button>
   </header>
   <div className="quest-progress"><i style={{width:`${progress}%`}}/><span>{progress}%</span></div>
-  {!expanded&&<div className={`quest-preview ${epicPreview?"quest-preview-vertical":""}`}>{preview.map(component=><span key={component.componentId} className={component.held?"owned":"missing"} title={`${component.itemName}: ${component.held} held`}>{component.iconId?<img src={icon(component.iconId)} alt=""/>:<b>?</b>}{epicPreview&&<em>{component.itemName}</em>}<i>{component.held||"-"}</i></span>)}{epicPreview&&card.components.length>preview.length&&<small className="quest-preview-more">+ {card.components.length-preview.length} more requirements</small>}</div>}
+  {!expanded&&<div className={`quest-preview ${epicPreview?"quest-preview-vertical":""}`}>{preview.map(component=><ItemHover key={component.componentId} itemName={component.itemName} itemId={component.itemId} iconId={component.iconId} valuePp={component.valuePp} className={component.held?"owned":"missing"} title={`${component.itemName}: ${component.held} held`}>{component.iconId?<img src={icon(component.iconId)} alt=""/>:<b>?</b>}{epicPreview&&<em>{component.itemName}</em>}<i>{component.held||"-"}</i></ItemHover>)}{epicPreview&&card.components.length>preview.length&&<small className="quest-preview-more">+ {card.components.length-preview.length} more requirements</small>}</div>}
   {expanded&&<div className="quest-components">{card.components.map(component=><article key={component.componentId} className={component.held>=component.quantity?"owned":"missing"}>
-   {component.iconId?<img src={icon(component.iconId)} alt=""/>:<span className="quest-icon-fallback">?</span>}
-   <div><small>{component.slot||component.faction||"Quest item"}</small><strong>{component.itemName}</strong><em>{component.valuePp?money(component.valuePp):"No stored value"}</em></div>
+   <ItemHover itemName={component.itemName} itemId={component.itemId} iconId={component.iconId} valuePp={component.valuePp}>{component.iconId?<img src={icon(component.iconId)} alt=""/>:<span className="quest-icon-fallback">?</span>}</ItemHover>
+   <div><small>{component.slot||component.faction||"Quest item"}</small><ItemHover itemName={component.itemName} itemId={component.itemId} iconId={component.iconId} valuePp={component.valuePp}><strong>{component.itemName}</strong></ItemHover><em>{component.valuePp?money(component.valuePp):"No stored value"}</em></div>
    <b>{component.held} / {component.quantity}</b>
    {component.holders.length>0&&<details><summary>{component.holders.length} holder{component.holders.length===1?"":"s"}</summary>{component.holders.map(holder=><p key={holder.character}><strong>{holder.character}</strong><span>x{holder.count}</span><small>{holder.locations.join(", ")}</small></p>)}</details>}
   </article>)}</div>}

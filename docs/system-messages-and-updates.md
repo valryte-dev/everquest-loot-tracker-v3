@@ -17,7 +17,9 @@ Versions are compared using Semantic Versioning. Draft and prerelease builds are
 
 ## Update action
 
-**View update** and **Download update** open the public GitHub release page. Automatic binary replacement is not enabled until Tauri updater signing and platform code-signing secrets are configured. Never silently install an unsigned package.
+**Get update** opens the native install package selected from the public GitHub release assets (Windows setup executable, macOS disk image, or Linux package). If no trusted platform package is present, it falls back to the public release page. The user remains in control of launching and approving the downloaded installer.
+
+The backend accepts only this repository's GitHub release and download URLs and records the asset SHA-256 digest when GitHub supplies one. Automatic in-app binary replacement remains disabled until Tauri updater signing and platform code-signing secrets are configured. Never silently install an unsigned package.
 
 ## Future rule
 

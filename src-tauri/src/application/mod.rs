@@ -6,6 +6,9 @@ mod data;
 mod database_management;
 mod dot_tracking;
 mod dot_training;
+mod eq_time;
+mod experience_tracking;
+mod friends_sync;
 mod model_pack;
 mod proc_coach;
 mod proc_evidence;
@@ -13,6 +16,7 @@ mod quest_catalog;
 mod replay_library;
 mod runtime;
 mod services;
+mod spawn_timers;
 mod spell_research;
 mod split_reconciliation;
 mod system_tasks;
@@ -103,7 +107,12 @@ impl AppState {
         );
         services::start_market_refresh(
             self.database_path.clone(),
-            app_handle,
+            app_handle.clone(),
+            self.revision.clone(),
+        );
+        experience_tracking::start(
+            self.database.clone(),
+            app_handle.clone(),
             self.revision.clone(),
         );
         services::start_web(self.database_path.clone());
@@ -140,6 +149,210 @@ pub fn app_page_snapshot(state: tauri::State<'_, AppState>, page: String) -> Res
 #[tauri::command]
 pub fn activity_history_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
     data::activity_history_snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn spawn_timer_snapshot(
+    state: tauri::State<'_, AppState>,
+) -> Result<spawn_timers::SpawnTimerSnapshot, String> {
+    spawn_timers::snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn spawn_timer_correct_mob(
+    state: tauri::State<'_, AppState>,
+    experience_event_id: i64,
+    encounter_id: Option<i64>,
+    mob_name: String,
+) -> Result<(), String> {
+    spawn_timers::correct_mob(
+        &state.database,
+        experience_event_id,
+        encounter_id,
+        &mob_name,
+    )
+}
+
+#[tauri::command]
+pub fn spawn_timer_linger_set(
+    state: tauri::State<'_, AppState>,
+    linger_seconds: i64,
+) -> Result<(), String> {
+    spawn_timers::set_linger_seconds(&state.database, linger_seconds)
+}
+
+#[tauri::command]
+pub fn spawn_timer_lookup(
+    state: tauri::State<'_, AppState>,
+    mob_name: String,
+    zone_name: Option<String>,
+) -> Result<Vec<spawn_timers::SpawnTimerLookupResult>, String> {
+    spawn_timers::lookup(&state.database, &mob_name, zone_name.as_deref())
+}
+
+#[tauri::command]
+pub fn spawn_timer_catalog_snapshot(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<spawn_timers::SpawnTimerOverride>, String> {
+    spawn_timers::catalog_snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn spawn_timer_kill_scan_options(
+    state: tauri::State<'_, AppState>,
+) -> Result<spawn_timers::SpawnKillScanOptions, String> {
+    spawn_timers::kill_scan_options(&state.database)
+}
+
+#[tauri::command]
+pub fn spawn_timer_anchor_from_last_kill(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    nickname: String,
+    character: String,
+) -> Result<spawn_timers::SpawnKillScanResult, String> {
+    let result = spawn_timers::anchor_from_last_kill(&state.database, &nickname, &character)?;
+    state.revision.fetch_add(1, Ordering::Relaxed);
+    let _ = app_handle.emit("data-changed", "spawn-timer.anchor");
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn spawn_timer_catalog_save(
+    state: tauri::State<'_, AppState>,
+    row: spawn_timers::SpawnTimerOverride,
+) -> Result<(), String> {
+    spawn_timers::catalog_save(&state.database, row)
+}
+
+#[tauri::command]
+pub fn spawn_timer_catalog_delete(
+    state: tauri::State<'_, AppState>,
+    nickname: String,
+) -> Result<(), String> {
+    spawn_timers::catalog_delete(&state.database, &nickname)
+}
+
+#[tauri::command]
+pub fn spawn_timer_catalog_import(
+    state: tauri::State<'_, AppState>,
+    json: String,
+    replace: bool,
+) -> Result<spawn_timers::SpawnTimerCatalogImportResult, String> {
+    spawn_timers::catalog_import(&state.database, &json, replace)
+}
+
+#[tauri::command]
+pub async fn experience_capture_preview(
+    state: tauri::State<'_, AppState>,
+    delay_ms: u64,
+) -> Result<experience_tracking::CapturePreview, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        experience_tracking::capture_preview(&database, delay_ms)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn experience_calibrate(
+    state: tauri::State<'_, AppState>,
+    region: experience_tracking::GaugeRegion,
+    displayed_percent: Option<f64>,
+    delay_ms: u64,
+) -> Result<experience_tracking::GaugeReading, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        experience_tracking::calibrate(&database, region, displayed_percent, delay_ms)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn experience_read_now(
+    state: tauri::State<'_, AppState>,
+    delay_ms: u64,
+) -> Result<experience_tracking::GaugeReading, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || experience_tracking::read_now(&database, delay_ms))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn experience_rebuild_history(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<Value, String> {
+    let database = state.database.clone();
+    let progress_handle = app_handle.clone();
+    let progress_tasks = state.tasks.clone();
+    state.tasks.start(
+        "experience-history-rebuild",
+        "Rebuilding XP message history",
+        "Scanning every configured character log",
+        None,
+    );
+    let _ = app_handle.emit("system-task-changed", "experience-history-rebuild");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        runtime::rebuild_experience_history(&database, |progress| {
+            let detail = if progress.current_file.is_empty() {
+                "Discovering character logs"
+            } else {
+                progress.current_file.as_str()
+            };
+            progress_tasks.progress(
+                "experience-history-rebuild",
+                detail,
+                Some(progress.completed_bytes),
+                Some(progress.total_bytes),
+            );
+            let _ = progress_handle.emit("experience-history-rebuild-progress", &progress);
+            let _ = progress_handle.emit("system-task-changed", "experience-history-rebuild");
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    state.tasks.finish(
+        "experience-history-rebuild",
+        &result,
+        "XP message history rebuild complete",
+    );
+    state.revision.fetch_add(1, Ordering::Relaxed);
+    let _ = app_handle.emit("system-task-changed", "experience-history-rebuild");
+    let _ = app_handle.emit("experience-changed", ());
+    result
+}
+
+#[tauri::command]
+pub fn experience_tracking_set_enabled(
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    experience_tracking::set_enabled(&state.database, enabled)
+}
+
+#[tauri::command]
+pub fn experience_capture_window_set(
+    state: tauri::State<'_, AppState>,
+    window_id: Option<String>,
+) -> Result<(), String> {
+    experience_tracking::set_capture_window(&state.database, window_id.as_deref())
+}
+
+#[tauri::command]
+pub fn experience_tracking_set_zone(
+    state: tauri::State<'_, AppState>,
+    zone_name: String,
+) -> Result<(), String> {
+    experience_tracking::set_zone(&state.database, &zone_name)
+}
+
+#[tauri::command]
+pub fn experience_tracking_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    experience_tracking::snapshot(&state.database)
 }
 
 #[tauri::command]
@@ -273,6 +486,13 @@ pub fn damage_encounter_details(
     data::damage_encounter_details(&state.database, id)
 }
 #[tauri::command]
+pub fn damage_encounter_telemetry(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<Value, String> {
+    data::damage_encounter_telemetry(&state.database, id)
+}
+#[tauri::command]
 pub async fn damage_proc_evidence(
     state: tauri::State<'_, AppState>,
     encounter_id: i64,
@@ -357,6 +577,38 @@ pub fn global_status_snapshot(state: tauri::State<'_, AppState>) -> Result<Value
     status["tasks"] =
         serde_json::to_value(state.tasks.snapshot()).map_err(|error| error.to_string())?;
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn friends_sync_snapshot(
+    state: tauri::State<'_, AppState>,
+) -> Result<friends_sync::FriendsSyncSnapshot, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || friends_sync::snapshot(&database))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn friends_sync_update(
+    state: tauri::State<'_, AppState>,
+    request: friends_sync::FriendsEditRequest,
+) -> Result<friends_sync::FriendsEditResult, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || friends_sync::update(&database, request))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn friends_sync_apply(
+    state: tauri::State<'_, AppState>,
+    request: friends_sync::FriendsSyncRequest,
+) -> Result<friends_sync::FriendsSyncResult, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || friends_sync::apply(&database, request))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

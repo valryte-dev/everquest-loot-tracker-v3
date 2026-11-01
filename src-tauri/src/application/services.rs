@@ -27,6 +27,40 @@ const LATEST_RELEASE_API: &str =
     "https://api.github.com/repos/valryte-dev/everquest-loot-tracker-v3/releases/latest";
 const RELEASES_URL: &str =
     "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/latest";
+const RELEASES_PREFIX: &str = "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/";
+const RELEASE_DOWNLOAD_PREFIX: &str =
+    "https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/download/";
+
+fn preferred_release_asset(release: &Value, platform: &str) -> Option<(String, String, String)> {
+    let suffixes: &[&str] = match platform {
+        "windows" => &["_x64-setup.exe", ".msi"],
+        "macos" => &["_universal.dmg", ".dmg"],
+        "linux" => &["_amd64.appimage", ".flatpak", "_amd64.deb", ".rpm"],
+        _ => return None,
+    };
+    let assets = release.get("assets")?.as_array()?;
+    for suffix in suffixes {
+        if let Some(asset) = assets.iter().find(|asset| {
+            asset
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.to_ascii_lowercase().ends_with(suffix))
+        }) {
+            let name = asset.get("name")?.as_str()?;
+            let url = asset.get("browser_download_url")?.as_str()?;
+            if !url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
+                continue;
+            }
+            let digest = asset
+                .get("digest")
+                .and_then(Value::as_str)
+                .filter(|value| value.starts_with("sha256:"))
+                .unwrap_or("");
+            return Some((url.to_owned(), name.to_owned(), digest.to_owned()));
+        }
+    }
+    None
+}
 
 pub fn start_update_check(
     database_path: PathBuf,
@@ -120,13 +154,18 @@ pub fn check_for_update(database: &Database) -> Result<Value, String> {
             let release_url = release
                 .get("html_url")
                 .and_then(Value::as_str)
-                .filter(|value| value.starts_with("https://github.com/valryte-dev/"))
+                .filter(|value| value.starts_with(RELEASES_PREFIX))
                 .unwrap_or(RELEASES_URL);
             let release_name = release.get("name").and_then(Value::as_str).unwrap_or(tag);
+            let (download_url, download_name, download_digest) =
+                preferred_release_asset(&release, std::env::consts::OS).unwrap_or_default();
             for (key, value) in [
                 ("update_latest_version", latest.to_owned()),
                 ("update_release_url", release_url.to_owned()),
                 ("update_release_name", release_name.to_owned()),
+                ("update_download_url", download_url.clone()),
+                ("update_download_name", download_name.clone()),
+                ("update_download_digest", download_digest),
                 ("update_checked_at", checked_at),
                 ("update_available", available.to_string()),
             ] {
@@ -147,7 +186,9 @@ pub fn check_for_update(database: &Database) -> Result<Value, String> {
                 "available": available,
                 "currentVersion": env!("CARGO_PKG_VERSION"),
                 "latestVersion": latest,
-                "releaseUrl": release_url
+                "releaseUrl": release_url,
+                "downloadUrl": download_url,
+                "downloadName": download_name
             }))
         }
         Err(message) => {
@@ -794,10 +835,11 @@ fn sql(e: rusqlite::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_response_body, auction_bytes, backup, output_directory, prune_older_database_backups,
-        restore, version_is_newer, write_social,
+        asset_response_body, auction_bytes, backup, output_directory, preferred_release_asset,
+        prune_older_database_backups, restore, version_is_newer, write_social,
     };
     use crate::infrastructure::database::Database;
+    use serde_json::json;
     use std::path::Path;
     use tiny_http::Method;
 
@@ -875,6 +917,33 @@ mod tests {
         assert!(current.exists());
         assert!(recovery.exists());
     }
+    #[test]
+    fn release_assets_choose_the_native_install_package() {
+        let release = json!({"assets":[
+            {"name":"EverQuest.Loot.Tracker_3.21.0_amd64.AppImage","browser_download_url":"https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/download/v3.21.0/app.AppImage","digest":"sha256:linux"},
+            {"name":"EverQuest.Loot.Tracker_3.21.0_x64_en-US.msi","browser_download_url":"https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/download/v3.21.0/app.msi","digest":"sha256:msi"},
+            {"name":"EverQuest.Loot.Tracker_3.21.0_x64-setup.exe","browser_download_url":"https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/download/v3.21.0/app.exe","digest":"sha256:exe"},
+            {"name":"EverQuest.Loot.Tracker_3.21.0_universal.dmg","browser_download_url":"https://github.com/valryte-dev/everquest-loot-tracker-v3/releases/download/v3.21.0/app.dmg","digest":"sha256:mac"}
+        ]});
+        let windows = preferred_release_asset(&release, "windows").unwrap();
+        assert!(windows.1.ends_with("x64-setup.exe"));
+        assert_eq!(windows.2, "sha256:exe");
+        assert!(preferred_release_asset(&release, "macos")
+            .unwrap()
+            .1
+            .ends_with(".dmg"));
+        assert!(preferred_release_asset(&release, "linux")
+            .unwrap()
+            .1
+            .ends_with(".AppImage"));
+    }
+
+    #[test]
+    fn release_assets_reject_untrusted_download_hosts() {
+        let release = json!({"assets":[{"name":"EverQuest.Loot.Tracker_3.21.0_x64-setup.exe","browser_download_url":"https://example.com/setup.exe"}]});
+        assert!(preferred_release_asset(&release, "windows").is_none());
+    }
+
     #[test]
     fn release_versions_are_compared_semantically() {
         assert!(version_is_newer("3.8.0", "3.7.0").unwrap());

@@ -228,10 +228,14 @@ fn load_item(item_id: Option<i64>, item_name: &str) -> Result<Option<WardrobeCat
     )
     .map_err(|error| format!("Could not open the embedded Wardrobe catalog: {error}"))?;
     let set_names = set_names_by_item();
+    // IDs supplied by the rest of the app belong to its canonical item layer, not the
+    // Wardrobe snapshot's private `id` column. When a name is available it is the identity
+    // guard: accepting an unrelated numeric match here can resolve one item as another.
     let sql = format!(
         "{ITEM_SELECT}
-         WHERE (?1 IS NOT NULL AND (id=?1 OR peqId=?1)) OR name=?2 COLLATE NOCASE
-         ORDER BY CASE WHEN peqId=?1 THEN 0 WHEN id=?1 THEN 1 ELSE 2 END
+         WHERE (?2 <> '' AND name=?2 COLLATE NOCASE)
+            OR (?2 = '' AND ?1 IS NOT NULL AND peqId=?1)
+         ORDER BY CASE WHEN peqId=?1 THEN 0 ELSE 1 END
          LIMIT 1"
     );
     connection
@@ -349,6 +353,16 @@ mod tests {
         assert_eq!(item.name, "Fungus Covered Scale Tunic");
         assert_eq!(item.ac, 21);
         assert!(!item.worn_name.is_empty());
+    }
+
+    #[test]
+    fn exact_name_prevents_cross_catalog_id_collisions() {
+        let item = load_item(Some(6832), "Spell: Quivering Veil of Xarn")
+            .unwrap()
+            .expect("the spell should resolve by its exact catalog name");
+        assert_eq!(item.name, "Spell: Quivering Veil of Xarn");
+        assert_eq!(item.peq_id, Some(19309));
+        assert_eq!(item.icon_id, Some(504));
     }
 
     #[test]

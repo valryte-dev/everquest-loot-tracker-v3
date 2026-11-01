@@ -21,6 +21,7 @@
 .quest-card.ready{border-color:color-mix(in srgb,var(--good) 58%,var(--line))}
 .quest-card.started{border-color:color-mix(in srgb,var(--accent) 42%,var(--line))}
 .quest-card>header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border-bottom:1px solid var(--line)}
+.quest-reward-hover{display:flex;width:100%;min-width:0}
 .quest-card-toggle{display:grid;grid-template-columns:42px minmax(0,1fr);gap:9px;align-items:center;width:100%;padding:9px 10px;text-align:left;background:transparent;border:0;border-radius:0}
 .quest-card-toggle:hover{background:var(--panel2)}
 .quest-card-toggle>span:last-child{min-width:0}.quest-card-toggle small,.quest-card-toggle strong,.quest-card-toggle em{display:block}

@@ -10,6 +10,19 @@ describe("spell research readiness",()=>{
   const recipes=buildResearchRecipes([row({})],[item("A","Part of Tasarin's Grimoire Pg. 23",1),item("B","Part of Tasarin's Grimoire Pg. 23",1)]);
   expect(recipes[0]).toMatchObject({ready:true,craftableCopies:1,ownedRequirements:1,totalRequirements:1});
   expect(recipes[0].components[0].holders).toHaveLength(2);
+  expect(recipes[0].completeToons).toEqual([]);
+ });
+ it("identifies every toon holding all recipe mats and respects quantities",()=>{
+  const catalog=[
+   row({componentId:1,itemName:"Rune Alpha",quantity:2}),
+   row({componentId:2,itemName:"Rune Beta",quantity:1}),
+  ];
+  const recipes=buildResearchRecipes(catalog,[
+   item("Complete","Rune Alpha",4),item("Complete","Rune Beta",2),
+   item("Partial","Rune Alpha",2),item("Other","Rune Beta",1),
+  ]);
+  expect(recipes[0].completeToons).toEqual([{character:"Complete",craftableCopies:2}]);
+  expect(recipes[0]).toMatchObject({ready:true,craftableCopies:3});
  });
  it("prefers canonical ids while retaining name-only matching",()=>{
   const recipes=buildResearchRecipes([row({itemId:77,itemName:"Rune of Test",quantity:1,componentKind:"rune"})],[item("A","Legacy Name",1,77)]);

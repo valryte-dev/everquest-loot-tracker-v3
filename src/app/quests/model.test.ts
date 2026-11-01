@@ -15,13 +15,14 @@ const inventory=(overrides:Partial<InventoryItem>):InventoryItem=>({
 describe("quest readiness model",()=>{
  it("matches canonical ids first and aggregates roster holders",()=>{
   const cards=buildQuestCards(
-   [row({itemId:42}),row({componentId:2,itemId:43,itemName:"Sky Emerald",valuePp:100})],
+   [row({rewardItemId:700,rewardIconId:88,itemId:42}),row({componentId:2,itemId:43,itemName:"Sky Emerald",valuePp:100})],
    [inventory({itemId:42,itemName:"Different captured spelling"}),inventory({id:2,character:"Alt",itemId:43,itemName:"Sky Emerald",count:2})]
   );
   expect(cards[0].owned).toBe(2);
   expect(cards[0].ready).toBe(true);
   expect(cards[0].components[1].holders[0].character).toBe("Alt");
   expect(cards[0].estimatedHeldValue).toBe(200);
+  expect(cards[0].rewardItemId).toBe(700);
  });
  it("combines Velious slot entries into one class and faction card",()=>{
   const cards=buildQuestCards([

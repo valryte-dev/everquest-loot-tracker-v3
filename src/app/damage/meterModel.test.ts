@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {DamageEncounter,DamageEvent,DamageParticipant} from "../../shared/contracts";
-import {buildMeterTrend,buildRollingDpsTrend,damageComposition,formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,rankMobsByPerformance,rankProccers,summarizePlayerEffects,summarizeSpellMetrics} from "./meterModel";
+import {buildMeterTrend,buildRollingDpsTrend,damageComposition,formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,rankMobsByPerformance,rankProccers,summarizeEncounterPlayerEffects,summarizePlayerEffects,summarizeSpellMetrics} from "./meterModel";
 
 const player=(name:string,totalDamage:number):DamageParticipant=>({
  name,totalDamage,hitCount:2,firstDamageAt:"2026-09-05 10:00:00",lastDamageAt:"2026-09-05 10:00:10",
@@ -20,11 +20,13 @@ describe("damage meter model",()=>{
   expect(participantCombatSeconds(row,Date.parse("2026-09-05T10:00:25"))).toBe(25);
   expect(participantCombatSeconds(row,Date.parse("2026-09-05T09:59:59"))).toBe(0);
  });
- it("ranks players and uses the shared encounter duration for DPS",()=>{
-  const rows=rankMeterPlayers([player("Two",250),player("One",750)],1000,10);
-  expect(rows.map(row=>[row.rank,row.name,row.contribution,row.dps])).toEqual([
-   [1,"One",75,75],
-   [2,"Two",25,25],
+ it("ranks players using each fighter's active time and exposes 12-second DPS",()=>{
+  const one={...player("One",750),recentDamage12:120};
+  const two={...player("Two",250),firstDamageAt:"2026-09-05 10:00:05",recentDamage12:60};
+  const rows=rankMeterPlayers([two,one],1000,Date.parse("2026-09-05T10:00:10"));
+  expect(rows.map(row=>[row.rank,row.name,row.contribution,row.dps,row.liveDps])).toEqual([
+   [1,"One",75,75,10],
+   [2,"Two",25,50,5],
   ]);
  });
  it("ranks incoming targets by damage taken with stable shares",()=>{
@@ -47,7 +49,7 @@ describe("damage meter model",()=>{
    {second:3,totals:{One:160,Two:40}},
   ]);
  });
- it("builds a bounded 30-second rolling DPS series for every selected fighter",()=>{
+ it("builds a bounded 30-second rolling DPS trend for every selected fighter",()=>{
   const points=buildRollingDpsTrend([
    event(1,1,"One",60),event(2,2,"Two",30),event(3,31,"One",90),event(4,31,"Ignored",999),
   ],"2026-09-05 10:00:00",["One","Two"],31);
@@ -97,6 +99,20 @@ describe("damage meter model",()=>{
    {id:3,happenedAt:"2026-09-06 10:00:03",attacker:"Judoku",damageType:"spell",source:"dot",attack:"Dawncall",damage:125},
   ];
   expect(summarizePlayerEffects(encounter,events,"judoku")).toEqual({procCount:3,procDirectDamage:40,procDotDamage:750,spellCount:2,spellDirectDamage:300,spellDotDamage:125});
+ });
+ it("summarizes every raid fighter in one pass without mixing spell sources",()=>{
+  const encounter={players:[player("Judoku",1000),player("Balbazak",800)],spellMetrics:[
+   {playerName:"Judoku",spellName:"Essence Tap",procCount:2,directProcDamage:80,dotDamage:0,dotTickCount:0,procDotDamage:0,totalProcDamage:80},
+   {playerName:"Balbazak",spellName:"Dawncall",procCount:1,directProcDamage:0,dotDamage:250,dotTickCount:2,procDotDamage:250,totalProcDamage:250},
+  ]} as DamageEncounter;
+  const events:DamageEvent[]=[
+   {id:1,happenedAt:"2026-09-06 10:00:01",attacker:"Judoku",damageType:"spell",source:"explicit",attack:"Smite",damage:300},
+   {id:2,happenedAt:"2026-09-06 10:00:02",attacker:"Balbazak",damageType:"spell",source:"proc",attack:"Dawncall",damage:125},
+   {id:3,happenedAt:"2026-09-06 10:00:03",attacker:"Balbazak",damageType:"melee",source:"explicit",attack:"pierce",damage:100},
+  ];
+  const totals=summarizeEncounterPlayerEffects(encounter,events);
+  expect(totals.get("judoku")).toEqual({procCount:2,procDirectDamage:80,procDotDamage:0,spellCount:1,spellDirectDamage:300,spellDotDamage:0});
+  expect(totals.get("balbazak")).toEqual({procCount:1,procDirectDamage:0,procDotDamage:250,spellCount:0,spellDirectDamage:0,spellDotDamage:0});
  });
  it("splits spell damage into direct and dot composition",()=>{
   expect(damageComposition({totalDamage:1000,meleeDamage:400,spellDamage:600,dotDamage:250})).toEqual({

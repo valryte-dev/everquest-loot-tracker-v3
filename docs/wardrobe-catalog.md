@@ -19,6 +19,13 @@ The set catalog preserves P99 Planner's named item-to-slot groups rather than in
 
 `peqId` is treated as the canonical game item ID when available. It is used for master-market-value association and passed to the existing character model renderer. The catalog's icon, material, `idfile`, color, and item type fields feed the same renderer used by Character Details.
 
+## Quick Compare
+
+The Wardrobe draft keeps a local Quick Compare shortlist alongside the equipped outfit. Candidates are chosen through the same slot-, race-, class-, set-, tradeability-, handedness-, stat-filter-, and sort-aware catalog picker used for direct equipment changes.
+
+Each candidate can be enabled or disabled, assigned High, Normal, or Low conflict priority, annotated with a note, and removed without changing the equipped model. The comparison resolves all enabled candidates into one simulated loadout, shows per-item changes against the displaced slot, and reports combined combat, attribute, resist, weapon, weight, and market-value totals with signed deltas. Market values use the shared master-item snapshot by canonical `peqId` first and normalized name fallback; the estimated upgrade cost includes only enabled winning candidates and reports missing-price coverage. A winning two-handed primary candidate clears the simulated secondary slot. **Apply to wardrobe** is the only action that replaces the equipped draft; browsing and editing the shortlist remain non-destructive.
+
+The shortlist is stored in the existing local Wardrobe draft. Older drafts are normalized with an empty shortlist on read, and Character Details transfers start with an empty shortlist so copied equipment remains backward compatible.
 ## Refreshing the catalog
 
 Replace the embedded SQLite and set assets only from a verified P99 Planner data snapshot, update the snapshot identifier and counts above, then run:

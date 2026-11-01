@@ -1,0 +1,532 @@
+{
+  "kozz": {
+    "name": "Guardian Kozzalym",
+    "shortName": null,
+    "zone": "Western Wastes",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 7200,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "wuoshi": {
+    "name": "Wuoshi",
+    "shortName": null,
+    "zone": "The Wakening Land",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "eashen": {
+    "name": "Eashen of the Sky",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "phinny": {
+    "name": "Phinigel Autropos",
+    "shortName": null,
+    "zone": "Kedge Keep",
+    "continent": null,
+    "lastKnownTod": "2026-09-09T11:09:44.7036332-06:00",
+    "respawnMinutes": 720,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "telk": {
+    "name": "Telkorenar",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "draco": {
+    "name": "Dracoliche",
+    "shortName": null,
+    "zone": "Plane of Fear",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "inny": {
+    "name": "Innoruuk",
+    "shortName": null,
+    "zone": "Plane of Hate",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "fright": {
+    "name": "Fright",
+    "shortName": null,
+    "zone": "Plane of Fear",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "cekenr": {
+    "name": "Cekenar",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "grink": {
+    "name": "Grink",
+    "shortName": null,
+    "zone": "Plane of Mischief",
+    "continent": null,
+    "lastKnownTod": "2025-06-19T15:00:51.5468547-06:00",
+    "respawnMinutes": 70,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "ltk": {
+    "name": "Lendiniara the Keeper",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "brenn": {
+    "name": "Brenn",
+    "shortName": null,
+    "zone": "Plane of Mischief",
+    "continent": null,
+    "lastKnownTod": "2025-06-19T16:09:56.6514621-06:00",
+    "respawnMinutes": 70,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "statue": {
+    "name": "The Statue of Rallos Zek",
+    "shortName": null,
+    "zone": "Kael Drakkel",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 7200,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "gozz": {
+    "name": "Gozzrem",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "vindi": {
+    "name": "Derakor the Vindicator",
+    "shortName": null,
+    "zone": "Kael Drakkel",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 480,
+    "windowMinutes": 60,
+    "windows": null
+  },
+  "vs": {
+    "name": "Venril Sathir",
+    "shortName": null,
+    "zone": "Karnor's Castle",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "vyemm": {
+    "name": "Lord Vyemm",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "vilefang": {
+    "name": "Vilefang",
+    "shortName": null,
+    "zone": "Dragon Necropolis",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 1440,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "zlexak": {
+    "name": "Zlexak",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "trakanon": {
+    "name": "Trakanon",
+    "shortName": null,
+    "zone": "Old Sebilis",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "dagarn": {
+    "name": "Dagarn the Destroyer",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "jorrleag": {
+    "name": "Jorlleag",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "talendor": {
+    "name": "Talendor",
+    "shortName": null,
+    "zone": "Skyfire Mountains",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "ladym": {
+    "name": "Lady Mirenilla",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "ladyn": {
+    "name": "Lady Nevederia",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "glonk": {
+    "name": "Glonk",
+    "shortName": null,
+    "zone": "Plane of Mischief",
+    "continent": null,
+    "lastKnownTod": "2025-06-19T16:16:12.3125719-06:00",
+    "respawnMinutes": 70,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "feshlak": {
+    "name": "Lord Feshlak",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "gore": {
+    "name": "Gorenaire",
+    "shortName": null,
+    "zone": "Dreadlands",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "faydedar": {
+    "name": "Faydedar",
+    "shortName": null,
+    "zone": "Timorous Deep",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "sevalak": {
+    "name": "Sevalak",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "koi": {
+    "name": "Lord Koi'Doken",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "22": {
+    "name": "Twenty Two",
+    "shortName": "TwentyTwo",
+    "zone": "Plane of Mischief",
+    "continent": null,
+    "lastKnownTod": "2025-06-19T16:30:18.4584884-06:00",
+    "respawnMinutes": 70,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "lodi": {
+    "name": "Lodizal",
+    "shortName": null,
+    "zone": "Iceclad Ocean",
+    "continent": null,
+    "lastKnownTod": "2026-09-01T04:35:50.6050366-06:00",
+    "respawnMinutes": 1080,
+    "windowMinutes": 60,
+    "windows": {
+      "kind": "cumulativeSkip",
+      "maxSkips": 2,
+      "sourceUrl": "https://wiki.project1999.com/Lodizal"
+    }
+  },
+  "magi": {
+    "name": "Magi P'tasa",
+    "shortName": null,
+    "zone": "Plane of Hate",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 720,
+    "windows": null
+  },
+  "ikatiar": {
+    "name": "Ikatiar the Venom",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "velk": {
+    "name": "Velketor the Sorcerer",
+    "shortName": null,
+    "zone": "Velketor's Labyrinth",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "sev": {
+    "name": "Severilous",
+    "shortName": null,
+    "zone": "Emerald Jungle",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "vulak": {
+    "name": "Vulak'Aerr",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "kreizenn": {
+    "name": "Lord Kreizenn",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "aary": {
+    "name": "Aaryonar",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "angry": {
+    "name": "an angry goblin",
+    "shortName": null,
+    "zone": "Temple of Droga",
+    "continent": null,
+    "lastKnownTod": "2025-09-12T06:32:30.8723929-06:00",
+    "respawnMinutes": 4320,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "narandi": {
+    "name": "Sentry Badain",
+    "shortName": null,
+    "zone": "Great Divide",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4350,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "zlandicar": {
+    "name": "Zlandicar",
+    "shortName": null,
+    "zone": "Dragon Necropolis",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 6480,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "dread": {
+    "name": "Dread",
+    "shortName": null,
+    "zone": "Plane of Fear",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "terror": {
+    "name": "Terror",
+    "shortName": null,
+    "zone": "Plane of Fear",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 4320,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "scout": {
+    "name": "Scout",
+    "shortName": null,
+    "zone": "Western Wastes",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 600,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "kdt": {
+    "name": "Keldor Dek'Torek",
+    "shortName": null,
+    "zone": "Kael Drakkel",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 1080,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "dozekar": {
+    "name": "Dozekar the Cursed",
+    "shortName": null,
+    "zone": "Temple of Veeshan",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "grenn": {
+    "name": "Grenn",
+    "shortName": null,
+    "zone": "Plane of Mischief",
+    "continent": null,
+    "lastKnownTod": "2025-06-19T16:14:17.7536342-06:00",
+    "respawnMinutes": 70,
+    "windowMinutes": 0,
+    "windows": null
+  },
+  "kd": {
+    "name": "Kelorek'Dar",
+    "shortName": null,
+    "zone": "Cobalt Scar",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": null
+  },
+  "tormax": {
+    "name": "King Tormax",
+    "shortName": null,
+    "zone": "Kael Drakkel",
+    "continent": "Velious",
+    "lastKnownTod": null,
+    "respawnMinutes": 10080,
+    "windowMinutes": 480,
+    "windows": {
+      "sourceUrl": "https://wiki.project1999.com/King_Tormax"
+    }
+  },
+  "stormfeather": {
+    "name": "Stormfeather",
+    "shortName": null,
+    "zone": "Iceclad Ocean",
+    "continent": null,
+    "lastKnownTod": null,
+    "respawnMinutes": 1080,
+    "windowMinutes": 60,
+    "windows": {
+      "kind": "cumulativeSkip",
+      "maxSkips": 3,
+      "sourceUrl": "https://wiki.project1999.com/Stormfeather"
+    }
+  }
+}

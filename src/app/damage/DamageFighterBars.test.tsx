@@ -3,7 +3,7 @@ import {describe,expect,it} from "vitest";
 import {calculateProcDps,DamageFighterBars,formatFighterDuration,type DamageFighterBarRow} from "./DamageFighterBars";
 
 const fighter:DamageFighterBarRow={
- name:"Asquatii",rank:1,totalDamage:750,dps:125,procDps:24.1667,combatSeconds:6,contribution:100,
+ name:"Asquatii",rank:1,totalDamage:750,dps:125,liveDps:62.5,procDps:24.1667,combatSeconds:6,contribution:100,
  incomingDamage:42,mine:true,shareDetail:"3 events",
  effects:{procCount:1,procDirectDamage:20,procDotDamage:125,spellCount:1,spellDirectDamage:0,spellDotDamage:625},
 };
@@ -34,8 +34,8 @@ describe("shared damage fighter bars",()=>{
   expect(html).toContain("42");
   expect(html).toContain("INCOMING DMG");
   expect(html).toContain("PROCS 1");
-  expect(html).toContain("24.2");
-  expect(html).toContain("PROC DPS");
+  expect(html).toContain("62.5");
+  expect(html).toContain("12S DPS");
   expect(html).toContain("SPELL 1");
   expect(html).toContain("ME");
  });

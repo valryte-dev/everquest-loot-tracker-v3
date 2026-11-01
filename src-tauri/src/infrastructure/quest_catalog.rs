@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+﻿use rusqlite::{params, Connection, OptionalExtension};
 
 const EMBEDDED_CATALOG: &str = include_str!("../../assets/p99-quest-items.tsv");
 const CATALOG_VERSION: &str = "p99-2026-09-11-v2";
@@ -101,7 +101,7 @@ mod tests {
     fn bundled_catalog_covers_every_requested_family_and_class() {
         let folder = tempdir().unwrap();
         let database = Database::open(folder.path().join("loot.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let counts = connection
             .prepare(

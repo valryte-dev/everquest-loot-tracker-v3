@@ -1,0 +1,118 @@
+import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent} from "react";
+import {listen} from "@tauri-apps/api/event";
+import {calibrateExperienceGauge,captureExperiencePreview,getExperienceTrackingSnapshot,readExperienceNow,rebuildExperienceHistory,setExperienceCaptureWindow,setExperienceTrackingEnabled,setExperienceTrackingZone} from "../../shared/backend";
+import type {ExperienceCapturePreview,ExperienceGainEvent,ExperienceGaugeRegion,ExperienceHistoryProgress,ExperienceObservation,ExperienceTrackingSnapshot} from "../../shared/contracts";
+import {HistoryAnalytics} from "../history/HistoryCharts";
+import {activeHoursForTimes,combinedHistoricalRate,historicalLevelPaces,visualExperienceRate} from "./model";
+import "./experience-tracker.css";
+
+const EMPTY:ExperienceTrackingSnapshot={enabled:false,calibrated:false,activeCharacter:"",currentGroup:[],captureWindows:[],observations:[],gainEvents:[],levelEvents:[]};
+const stamp=(value:string)=>new Date(value.includes("T")?value:value.replace(" ","T"));
+const clock=(value:string)=>stamp(value).toLocaleString();
+
+type ContextSample={event:ExperienceGainEvent;xp:number};
+type ContextRow={label:string;gains:number;xp:number;xpPerGain:number;perHour?:number;detail?:string};
+
+function contextualize(rows:ExperienceObservation[],events:ExperienceGainEvent[]){
+ const ordered=[...rows].sort((a,b)=>stamp(a.happenedAt).getTime()-stamp(b.happenedAt).getTime()),result:ContextSample[]=[];
+ for(let index=1;index<ordered.length;index++){
+  const previous=ordered[index-1],current=ordered[index];
+  let gained=current.percent-previous.percent;
+  if(current.level!=null&&previous.level!=null&&current.level===previous.level+1)gained=100-previous.percent+current.percent;
+  if(gained<=0||gained>100)continue;
+  const start=stamp(previous.happenedAt).getTime(),end=stamp(current.happenedAt).getTime();
+  const matched=events.filter(event=>{const time=stamp(event.happenedAt).getTime();return time>start&&time<=end});
+  if(!matched.length)continue;
+  matched.forEach(event=>result.push({event,xp:gained/matched.length}));
+ }
+ return result;
+}
+
+function summarize(samples:ContextSample[],label:(event:ExperienceGainEvent)=>string,detail?:(event:ExperienceGainEvent)=>string|undefined){
+ const groups=new Map<string,{gains:number;xp:number;times:string[];detail?:string}>();
+ samples.forEach(({event,xp})=>{
+  const key=label(event)||"Unknown",row=groups.get(key)||{gains:0,xp:0,times:[],detail:detail?.(event)};
+  row.gains++;row.xp+=xp;row.times.push(event.happenedAt);row.detail||=detail?.(event);groups.set(key,row);
+ });
+ return [...groups].map(([key,row]):ContextRow=>{
+  const hours=activeHoursForTimes(row.times);
+  return{label:key,gains:row.gains,xp:row.xp,xpPerGain:row.xp/row.gains,perHour:row.gains>1&&hours>.01?row.xp/hours:undefined,detail:row.detail};
+ }).sort((a,b)=>(b.perHour??b.xpPerGain)-(a.perHour??a.xpPerGain));
+}
+
+function Trend({rows}:{rows:ExperienceObservation[]}){
+ const points=[...rows].slice(0,80).reverse();
+ if(points.length<2)return <div className="xp-empty-chart">Two visual readings will create the progression trace.</div>;
+ const times=points.map(row=>stamp(row.happenedAt).getTime()),minimum=Math.min(...times),span=Math.max(1,Math.max(...times)-minimum);
+ const path=points.map((row,index)=>`${index?"L":"M"} ${20+((times[index]-minimum)/span)*760} ${190-row.percent*1.6}`).join(" ");
+ return <svg className="xp-trend" viewBox="0 0 800 210" role="img" aria-label="Experience percentage over time">
+  {[0,25,50,75,100].map(value=><g key={value}><line x1="20" x2="780" y1={190-value*1.6} y2={190-value*1.6}/><text x="4" y={194-value*1.6}>{value}</text></g>)}
+  <path d={path}/>{points.map((row,index)=><circle key={row.id} cx={20+((times[index]-minimum)/span)*760} cy={190-row.percent*1.6} r="3"><title>{row.percent.toFixed(1)}% - {clock(row.happenedAt)} - {row.gainEvents} gain messages</title></circle>)}
+ </svg>;
+}
+
+function EfficiencyTable({title,subtitle,rows}:{title:string;subtitle:string;rows:ContextRow[]}){
+ return <section className="xp-efficiency-card"><header><div><small>{subtitle}</small><h2>{title}</h2></div></header>{rows.length?<div className="xp-efficiency-list">{rows.slice(0,12).map(row=><article key={row.label}><div><strong>{row.label}</strong>{row.detail&&<small title={row.detail}>{row.detail}</small>}</div><span><b>{row.perHour==null?"Learning":`${row.perHour.toFixed(1)}%/hr`}</b><small>{row.gains} gain{row.gains===1?"":"s"} - {row.xpPerGain.toFixed(2)}% each</small></span></article>)}</div>:<div className="xp-empty">More correlated visual readings will build this comparison.</div>}</section>;
+}
+
+export function ExperienceTrackerPage(){
+ const[data,setData]=useState(EMPTY),[preview,setPreview]=useState<ExperienceCapturePreview>(),[region,setRegion]=useState<ExperienceGaugeRegion>(),[selected,setSelected]=useState(""),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[rebuildProgress,setRebuildProgress]=useState<ExperienceHistoryProgress>(),[zoneDraft,setZoneDraft]=useState(""),[displayedPercent,setDisplayedPercent]=useState(""),[zoom,setZoom]=useState(1);
+ const drag=useRef<{x:number;y:number}|null>(null),frame=useRef<HTMLDivElement>(null),autoStarted=useRef("");
+ const refresh=useCallback(()=>getExperienceTrackingSnapshot().then(value=>{setData(value);setSelected(current=>current||value.activeCharacter||value.observations[0]?.character||value.levelEvents[0]?.character||"")}).catch(error=>setMessage(String(error))),[]);
+ useEffect(()=>{void refresh();const timer=window.setInterval(refresh,5000);let unlisten:(()=>void)|undefined;listen("experience-changed",refresh).then(value=>unlisten=value);return()=>{window.clearInterval(timer);unlisten?.()}},[refresh]);
+ useEffect(()=>{if(!("__TAURI_INTERNALS__" in window))return;let unlisten:(()=>void)|undefined;void listen<ExperienceHistoryProgress>("experience-history-rebuild-progress",event=>setRebuildProgress(event.payload)).then(value=>unlisten=value);return()=>unlisten?.()},[]);
+ useEffect(()=>setZoneDraft(data.currentZone||""),[data.currentZone,data.activeCharacter]);
+ useEffect(()=>{if(data.activeCharacter)setSelected(data.activeCharacter)},[data.activeCharacter]);
+ useEffect(()=>{if(data.calibrated&&data.activeCharacter&&autoStarted.current!==data.activeCharacter){autoStarted.current=data.activeCharacter;if(!data.enabled)void setExperienceTrackingEnabled(true).then(refresh)}},[data.calibrated,data.activeCharacter,data.enabled,refresh]);
+ const characters=useMemo(()=>[...new Set([...data.observations.map(row=>row.character),...data.levelEvents.map(row=>row.character)])].sort((a,b)=>a.localeCompare(b)),[data.observations,data.levelEvents]);
+ const rows=useMemo(()=>data.observations.filter(row=>row.character===selected),[data.observations,selected]);
+ const selectedEvents=useMemo(()=>data.gainEvents.filter(row=>row.character===selected),[data.gainEvents,selected]);
+ const latestByCharacter=useMemo(()=>characters.map(character=>{const characterRows=data.observations.filter(row=>row.character===character),latest=characterRows[0],latestLevel=data.levelEvents.find(row=>row.character===character&&row.direction==="gained")?.level,hourRate=visualExperienceRate(characterRows,Date.now()),gains=data.gainEvents.filter(row=>row.character===character&&Date.now()-stamp(row.happenedAt).getTime()<=3600000).length;return{character,latest,latestLevel,hourRate,gains}}),[characters,data]);
+ const contextSamples=useMemo(()=>contextualize(rows,selectedEvents),[rows,selectedEvents]);
+ const historicalPaces=useMemo(()=>historicalLevelPaces(data.levelEvents.filter(row=>row.character===selected),selectedEvents),[data.levelEvents,selectedEvents,selected]);
+ const historicalRate=useMemo(()=>combinedHistoricalRate(historicalPaces),[historicalPaces]);
+ const zoneRows=useMemo(()=>summarize(contextSamples,event=>event.zoneName||"Unknown zone",event=>event.zoneEvidence&&`${event.zoneEvidence} evidence`),[contextSamples]);
+ const mobRows=useMemo(()=>summarize(contextSamples,event=>event.mobName||"Unattributed kill",event=>event.mobEvidence),[contextSamples]);
+ const groupRows=useMemo(()=>summarize(contextSamples,event=>`${Math.max(1,event.groupMembers.length)} player${Math.max(1,event.groupMembers.length)===1?"":"s"}`,event=>event.groupMembers.join(", ")),[contextSamples]);
+ const levelAnalyticsRows=useMemo(()=>data.levelEvents.map(row=>({label:`Level ${row.level}`,happenedAt:row.happenedAt,actor:row.character,character:row.character,level:row.level,direction:row.direction})),[data.levelEvents]);
+ const selectedLatest=rows[0],selectedLevel=data.levelEvents.find(row=>row.character===selected&&row.direction==="gained")?.level,selectedRate=visualExperienceRate(rows,Date.now()),selectedGains=selectedEvents.filter(row=>Date.now()-stamp(row.happenedAt).getTime()<=3600000).length;
+ const selectedWindowId=data.captureWindows.find(window=>window.id===data.selectedCaptureWindow?.id||!!window.processName&&window.processName.toLocaleLowerCase()===data.selectedCaptureWindow?.processName.toLocaleLowerCase())?.id||"";
+ const chooseWindow=async(windowId:string)=>{setBusy("window");try{await setExperienceCaptureWindow(windowId||undefined);await refresh();setMessage(windowId?"XP reader window saved. Bring it to the foreground for captures and automatic readings.":"XP reader returned to automatic EverQuest title detection.")}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const capture=async()=>{setBusy("capture");setMessage("Switch to EverQuest now. Capturing in 3 seconds...");try{setPreview(await captureExperiencePreview());setRegion(undefined);setZoom(1);setMessage("Zoom as needed, then drag tightly around the colored interior of the XP bar.")}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const calibrate=async()=>{if(!region)return;const shown=Number(displayedPercent);setBusy("calibrate");setMessage("Switch to EverQuest now. Testing this region in 3 seconds...");try{const result=await calibrateExperienceGauge(region,Number.isFinite(shown)&&shown>0?shown:undefined);setMessage(`Read ${result.percent.toFixed(1)}% with ${Math.round(result.confidence*100)}% confidence. Automatic tracking is on.`);setPreview(undefined);await refresh()}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const read=async()=>{setBusy("read");setMessage("Switch to EverQuest now. Reading in 3 seconds...");try{const result=await readExperienceNow();setMessage(`Read ${result.percent.toFixed(1)}% for ${result.character} with ${Math.round(result.confidence*100)}% confidence.`);await refresh()}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const rebuild=async()=>{setBusy("rebuild");setRebuildProgress({completedBytes:0,totalBytes:0,completedFiles:0,totalFiles:0,currentFile:"",inserted:0,done:false});setMessage("Rebuilding XP messages from every configured character log...");try{const result=await rebuildExperienceHistory();setMessage(`XP history rebuilt from ${result.files.toLocaleString()} log file${result.files===1?"":"s"}; ${result.inserted.toLocaleString()} previously missing message${result.inserted===1?"":"s"} added.`);await refresh()}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const toggle=async()=>{setBusy("toggle");try{await setExperienceTrackingEnabled(!data.enabled);await refresh();setMessage(data.enabled?"Automatic visual readings paused.":"Automatic readings enabled while EverQuest is in the foreground.")}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const saveZone=async()=>{setBusy("zone");try{await setExperienceTrackingZone(zoneDraft);setMessage(`Zone set to ${zoneDraft.trim()} for ${data.activeCharacter}.`);await refresh()}catch(error){setMessage(String(error))}finally{setBusy("")}};
+ const position=(event:PointerEvent)=>{const box=frame.current!.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)),y:Math.max(0,Math.min(1,(event.clientY-box.top)/box.height))}};
+ const down=(event:PointerEvent)=>{event.currentTarget.setPointerCapture(event.pointerId);drag.current=position(event);setRegion({x:drag.current.x,y:drag.current.y,width:0,height:0})};
+ const move=(event:PointerEvent)=>{if(!drag.current)return;const now=position(event),start=drag.current;setRegion({x:Math.min(start.x,now.x),y:Math.min(start.y,now.y),width:Math.abs(now.x-start.x),height:Math.abs(now.y-start.y)})};
+ const up=()=>{drag.current=null};
+ return <div className="xp-page">
+  <section className="xp-status-card"><div><span className={data.enabled?"xp-live":"xp-paused"}/><div><small>Visual reader</small><strong>{data.enabled?"Tracking when EverQuest is active":"Paused"}</strong><p>{data.calibrated?`Calibration ready - active log: ${data.activeCharacter||"unknown"}`:"Capture the EverQuest window and select the XP bar once."}</p></div></div><div className="xp-actions"><button onClick={rebuild} disabled={!!busy}>{busy==="rebuild"?"Scanning all logs...":"Rebuild XP history"}</button><button onClick={capture} disabled={!!busy}>{busy==="capture"?"Capturing...":"Capture & calibrate"}</button><button onClick={read} disabled={!!busy||!data.calibrated}>{busy==="read"?"Reading...":"Read now"}</button><button className={data.enabled?"":"primary"} onClick={toggle} disabled={!!busy||!data.calibrated}>{data.enabled?"Pause":"Start tracking"}</button></div></section>
+  <section className="xp-window-card"><div><small>EQ capture window</small><strong>{data.captureWindows.find(window=>window.id===selectedWindowId)?.title||data.selectedCaptureWindow?.title||"Automatic title detection"}</strong><p>Choose the running EQ window once. The reader remembers its executable even if the window title changes.</p></div><div><select value={selectedWindowId} onChange={event=>void chooseWindow(event.target.value)} disabled={busy==="window"}><option value="">Automatic - title contains EverQuest</option>{data.captureWindows.map(window=><option key={window.id} value={window.id}>{window.title}{window.processName?` — ${window.processName}`:""}</option>)}</select><button onClick={()=>void refresh()} disabled={!!busy}>Refresh windows</button></div></section>
+  <section className="xp-live-group"><div><small>Current live group</small><strong>{Math.max(1,data.currentGroup.length)} player{Math.max(1,data.currentGroup.length)===1?"":"s"}</strong><p>This live roster will be attached to the next XP message. Earlier XP samples keep the group they had at that moment.</p></div><div>{(data.currentGroup.length?data.currentGroup:[data.activeCharacter||"Current character"]).map(name=><span key={name} className={name.toLocaleLowerCase()===data.activeCharacter.toLocaleLowerCase()?"active":""}>{name}</span>)}</div></section>
+  {message&&<div className="xp-message">{message}</div>}
+  {rebuildProgress&&<section className={"xp-rebuild-progress"+(rebuildProgress.done?" complete":"")} role="status"><div><strong>{rebuildProgress.done?"XP history rebuild complete":"Rebuilding XP message history"}</strong><span>{rebuildProgress.completedFiles.toLocaleString()} of {rebuildProgress.totalFiles.toLocaleString()} files</span><b>{rebuildProgress.totalBytes?Math.min(100,Math.round(rebuildProgress.completedBytes/rebuildProgress.totalBytes*100)):0}%</b></div><div className="xp-rebuild-track"><i style={{width:`${rebuildProgress.totalBytes?Math.min(100,rebuildProgress.completedBytes/rebuildProgress.totalBytes*100):0}%`}}/></div><small>{rebuildProgress.done?`${rebuildProgress.inserted.toLocaleString()} previously missing XP messages added`:rebuildProgress.currentFile||"Discovering character logs..."}</small></section>}
+  <section className="xp-zone-card"><div><small>Current camp</small><strong>{data.currentZone||"Zone not known yet"}</strong><p>Detected from zone or /who lines when available. Correct it here when the log cannot tell us.</p></div><div><input value={zoneDraft} onChange={event=>setZoneDraft(event.target.value)} placeholder="Zone name"/><button onClick={saveZone} disabled={!zoneDraft.trim()||busy==="zone"}>{busy==="zone"?"Saving...":"Set zone"}</button></div></section>
+  {data.verification&&<section className="xp-verification"><div className="xp-verification-copy"><small>Exact live scan</small><h2>These are the only pixels being read</h2><p>{data.activeCharacter||"Unknown character"} - {data.currentZone||"Unknown zone"} · {data.verification.width} × {data.verification.height}px</p>{data.verification.rawPercent!=null?<div className="xp-verification-metrics"><span><small>Detected edge</small><strong>{data.verification.rawPercent.toFixed(1)}%</strong></span><span><small>After calibration</small><strong>{data.verification.adjustedPercent?.toFixed(1)??"-"}%</strong></span><span><small>Confidence</small><strong>{Math.round((data.verification.confidence??0)*100)}%</strong></span></div>:<p className="warn">No colored fill edge was detected in this exact region.</p>}</div><div className="xp-exact-scan"><img src={data.verification.dataUrl} alt="Exact pixels used by the XP reader"/>{data.verification.rawPercent!=null&&<i style={{left:`${data.verification.rawPercent}%`}} title={`Detected fill edge: ${data.verification.rawPercent.toFixed(1)}%`}/>}</div></section>}
+  {preview&&<section className="xp-calibration"><header><div><small>Calibration preview</small><h2>Select the entire XP bar interior</h2><p>Zoom in, then drag from the inside-left edge to the inside-right edge. Enter the percentage shown by EQ as the accuracy anchor.</p></div><div className="xp-calibration-actions"><div className="xp-zoom" aria-label="Calibration zoom">{[1,2,3,4].map(value=><button key={value} className={zoom===value?"active":""} onClick={()=>setZoom(value)}>{value}x</button>)}</div><label><span>Displayed XP %</span><input inputMode="decimal" value={displayedPercent} onChange={event=>setDisplayedPercent(event.target.value)} placeholder="77"/></label><button className="primary" disabled={!region||region.width<.01||!Number(displayedPercent)||!!busy} onClick={calibrate}>{busy==="calibrate"?"Testing...":"Save region & test"}</button></div></header><div className="xp-capture-scroll"><div className="xp-capture" style={{width:`${zoom*100}%`}} ref={frame} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}><img src={preview.dataUrl} draggable={false} alt={`Captured ${preview.title}`}/>{region&&<div className="xp-selection" style={{left:`${region.x*100}%`,top:`${region.y*100}%`,width:`${region.width*100}%`,height:`${region.height*100}%`}}><span>XP BAR - {Math.round(region.width*preview.width)} x {Math.round(region.height*preview.height)} px</span></div>}</div></div></section>}
+  <section className="xp-summary">
+   <header><div><small>Roster pace</small><h2>Experience across characters</h2></div><span>Visual progress and parsed level history</span></header>
+   {latestByCharacter.length?<div className="xp-toons">{latestByCharacter.map(row=><button key={row.character} className={selected===row.character?"active":""} onClick={()=>setSelected(row.character)}><span>{row.character}</span><strong>{row.latest?`${row.latest.percent.toFixed(1)}%`:`Level ${row.latestLevel??"?"}`}</strong><small>{row.hourRate==null?"No recent visual pace":`${row.hourRate.toFixed(1)}% / active hr`} - {row.gains} gains/hr</small><i><b style={{width:`${row.latest?.percent??0}%`}}/></i></button>)}</div>:<div className="xp-empty">No visual readings or level history have been discovered yet.</div>}
+  </section>
+  {selected&&<section className="xp-metrics">
+   <article><small>Current progress</small><strong>{selectedLatest?`${selectedLatest.percent.toFixed(1)}%`:"-"}</strong><span>Level {selectedLatest?.level||selectedLevel||"?"}</span></article>
+   <article><small>Current pace</small><strong>{selectedRate==null?"-":`${selectedRate.toFixed(1)}%`}</strong><span>of level per active hour</span></article>
+   <article><small>Historical pace</small><strong>{historicalRate==null?"-":`${historicalRate.toFixed(1)}%`}</strong><span>per active log hour</span></article>
+   <article><small>XP messages</small><strong>{selectedGains}</strong><span>during the last hour</span></article>
+   <article><small>Reader confidence</small><strong>{selectedLatest?`${Math.round(selectedLatest.confidence*100)}%`:"-"}</strong><span>{selectedLatest?clock(selectedLatest.happenedAt):"No visual reading"}</span></article>
+  </section>}
+  {!!levelAnalyticsRows.length&&<section className="xp-level-archive">
+   <header><div><small>Combined log history</small><h2>Level progression</h2><p>Gained and lost levels from the History archive are shown here alongside XP pace.</p></div><span>{data.levelEvents.length} milestones</span></header>
+   <HistoryAnalytics rows={levelAnalyticsRows} categoryTitle="Levels reached" actorTitle="Level changes by character" levelPath/>
+  </section>}
+  {historicalPaces.length>0&&<section className="xp-history"><header><div><small>Retroactive analysis</small><h2>{selected} level-to-level pace</h2><p>Each completed level anchors exactly 100%. Only adjacent XP or level log messages within ten minutes contribute active elapsed time.</p></div></header><div>{historicalPaces.slice(0,12).map(row=><article key={`${row.startedAt}-${row.toLevel}`}><strong>{row.fromLevel} to {row.toLevel}</strong><span>{row.xpPerHour==null?"Insufficient data":`${row.xpPerHour.toFixed(1)}% / active hr`}</span><span>{row.gainCount} XP messages</span><span>{row.xpPerGain==null?"-":`${row.xpPerGain.toFixed(2)}% / gain`}</span><time>{row.activeHours.toFixed(1)}h active</time></article>)}</div></section>}
+  {selectedLatest&&<><section className="xp-efficiency-grid"><EfficiencyTable title="Zones by XP pace" subtitle="Camp efficiency" rows={zoneRows}/><EfficiencyTable title="Mobs by XP yield" subtitle="Kill efficiency" rows={mobRows}/><EfficiencyTable title="Group-size efficiency" subtitle="Roster comparison" rows={groupRows}/></section><section className="xp-chart-card"><header><div><small>{selected}</small><h2>Level progress trace</h2></div></header><Trend rows={rows}/></section><section className="xp-correlation"><header><div><small>Visual + log correlation</small><h2>Recent attributed gains</h2></div></header><div>{selectedEvents.slice(0,30).map(event=><article key={event.id}><time>{clock(event.happenedAt)}</time><strong>{event.mobName||"Unknown mob"}</strong><span>{event.zoneName||"Unknown zone"} - {Math.max(1,event.groupMembers.length)} player{Math.max(1,event.groupMembers.length)===1?"":"s"}</span><em title={event.groupMembers.join(", ")}>{event.groupMembers.join(", ")||event.character}</em></article>)}</div></section></>}
+ </div>;
+}

@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OpenFlags};
+﻿use rusqlite::{Connection, OpenFlags};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
@@ -60,6 +60,33 @@ const GUILD_SLOW_CALLS_MIGRATION: &str = include_str!("../migrations/036_guild_s
 const CHARACTER_PROFILES_MIGRATION: &str = include_str!("../migrations/037_character_profiles.sql");
 const SPELL_RESEARCH_CATALOG_MIGRATION: &str =
     include_str!("../migrations/038_spell_research_catalog.sql");
+const EXPERIENCE_TRACKING_MIGRATION: &str =
+    include_str!("../migrations/039_experience_tracking.sql");
+const EXPERIENCE_CONTEXT_MIGRATION: &str = include_str!("../migrations/040_experience_context.sql");
+const EXPERIENCE_NUMERIC_CALIBRATION_MIGRATION: &str =
+    include_str!("../migrations/041_experience_numeric_calibration.sql");
+const EXPERIENCE_MESSAGE_BACKFILL_MIGRATION: &str =
+    include_str!("../migrations/042_experience_message_backfill.sql");
+const SPAWN_TIMER_OVERRIDES_MIGRATION: &str =
+    include_str!("../migrations/043_spawn_timer_overrides.sql");
+const SPAWN_TIMER_WINDOWS_MIGRATION: &str =
+    include_str!("../migrations/044_spawn_timer_windows.sql");
+const SPAWN_TIMER_MANUAL_ANCHORS_MIGRATION: &str =
+    include_str!("../migrations/045_spawn_timer_manual_anchors.sql");
+const SPAWN_TIMER_ZONES_MIGRATION: &str = include_str!("../migrations/046_spawn_timer_zones.sql");
+const SPAWN_TIMER_WINDOW_SHAPES_MIGRATION: &str =
+    include_str!("../migrations/047_spawn_timer_window_shapes.sql");
+const KING_TORMAX_SPAWN_TIMER_MIGRATION: &str =
+    include_str!("../migrations/048_king_tormax_spawn_timer.sql");
+const SPAWN_TIMER_TRIGGER_HISTORY_MIGRATION: &str =
+    include_str!("../migrations/049_spawn_timer_trigger_history.sql");
+const TWENTY_TWO_ALIAS_MIGRATION: &str = include_str!("../migrations/050_twenty_two_alias.sql");
+const LOOT_MOB_HISTORY_INDEXES_MIGRATION: &str =
+    include_str!("../migrations/051_loot_mob_history_indexes.sql");
+const LIVE_COMBAT_LOOKUP_INDEX_MIGRATION: &str =
+    include_str!("../migrations/052_live_combat_lookup_index.sql");
+const REPAIR_DAMAGE_DPS_SUMMARIES_MIGRATION: &str =
+    include_str!("../migrations/053_repair_damage_dps_summaries.sql");
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -88,12 +115,19 @@ impl Database {
     }
 
     fn connection_at(path: &Path) -> Result<Connection, rusqlite::Error> {
-        Connection::open_with_flags(
+        let connection = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_WRITE
                 | OpenFlags::SQLITE_OPEN_CREATE
                 | OpenFlags::SQLITE_OPEN_FULL_MUTEX,
-        )
+        )?;
+        // The combat database is read-heavy and can grow beyond a gigabyte. SQLite's
+        // default 2 MB cache causes avoidable page churn during live summaries and history
+        // reads, while mmap lets the operating system share clean pages between connections.
+        connection.pragma_update(None, "cache_size", -32_768)?;
+        connection.pragma_update(None, "mmap_size", 268_435_456_i64)?;
+        connection.pragma_update(None, "temp_store", "MEMORY")?;
+        Ok(connection)
     }
 
     pub fn connect(&self) -> Result<Connection, DatabaseError> {
@@ -292,6 +326,77 @@ impl Database {
         if schema_version < 38 {
             transaction.execute_batch(SPELL_RESEARCH_CATALOG_MIGRATION)?;
         }
+        if schema_version < 39 {
+            transaction.execute_batch(EXPERIENCE_TRACKING_MIGRATION)?;
+        }
+        if schema_version < 40 {
+            transaction.execute_batch(EXPERIENCE_CONTEXT_MIGRATION)?;
+        }
+        if schema_version < 41 {
+            let scale_exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('experience_calibrations') WHERE name='scale'",
+                [],
+                |row| row.get(0),
+            )?;
+            if scale_exists == 0 {
+                transaction.execute_batch(EXPERIENCE_NUMERIC_CALIBRATION_MIGRATION)?;
+            } else {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version,name)
+                     VALUES(41,'experience numeric calibration')",
+                    [],
+                )?;
+            }
+        }
+        if schema_version < 42 {
+            transaction.execute_batch(EXPERIENCE_MESSAGE_BACKFILL_MIGRATION)?;
+        }
+        if schema_version < 43 {
+            transaction.execute_batch(SPAWN_TIMER_OVERRIDES_MIGRATION)?;
+        }
+        if schema_version < 44 {
+            transaction.execute_batch(SPAWN_TIMER_WINDOWS_MIGRATION)?;
+        }
+        if schema_version < 45 {
+            let anchor_exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('spawn_timer_overrides') WHERE name='last_known_spawn_at'",
+                [],
+                |row| row.get(0),
+            )?;
+            if anchor_exists == 0 {
+                transaction.execute_batch(SPAWN_TIMER_MANUAL_ANCHORS_MIGRATION)?;
+            } else {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version,name)
+                     VALUES(45,'spawn timer manual anchors')",
+                    [],
+                )?;
+            }
+        }
+        if schema_version < 46 {
+            transaction.execute_batch(SPAWN_TIMER_ZONES_MIGRATION)?;
+        }
+        if schema_version < 47 {
+            transaction.execute_batch(SPAWN_TIMER_WINDOW_SHAPES_MIGRATION)?;
+        }
+        if schema_version < 48 {
+            transaction.execute_batch(KING_TORMAX_SPAWN_TIMER_MIGRATION)?;
+        }
+        if schema_version < 49 {
+            transaction.execute_batch(SPAWN_TIMER_TRIGGER_HISTORY_MIGRATION)?;
+        }
+        if schema_version < 50 {
+            transaction.execute_batch(TWENTY_TWO_ALIAS_MIGRATION)?;
+        }
+        if schema_version < 51 {
+            transaction.execute_batch(LOOT_MOB_HISTORY_INDEXES_MIGRATION)?;
+        }
+        if schema_version < 52 {
+            transaction.execute_batch(LIVE_COMBAT_LOOKUP_INDEX_MIGRATION)?;
+        }
+        if schema_version < 53 {
+            transaction.execute_batch(REPAIR_DAMAGE_DPS_SUMMARIES_MIGRATION)?;
+        }
         super::proc_catalog::reconcile(&transaction)?;
         super::quest_catalog::reconcile(&transaction)?;
         super::spell_research_catalog::reconcile(&transaction)?;
@@ -329,11 +434,39 @@ mod tests {
     }
 
     #[test]
+    fn live_combat_lookup_uses_the_partial_active_encounter_index() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
+        assert_eq!(database.migrate().unwrap(), 53);
+        let connection = database.connect().unwrap();
+        let plan = connection
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT id,last_damage_at FROM damage_encounters
+                 WHERE source_file=? AND character_name=? COLLATE NOCASE
+                   AND mob_name=? COLLATE NOCASE AND outcome='active'
+                 ORDER BY last_source_offset DESC LIMIT 1",
+            )
+            .unwrap()
+            .query_map(["test.log", "Tester", "a raid target"], |row| {
+                row.get::<_, String>(3)
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join(" ");
+        assert!(
+            plan.contains("idx_damage_encounters_live_lookup"),
+            "unexpected query plan: {plan}"
+        );
+    }
+
+    #[test]
     fn migration_is_additive_and_repeatable() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         for table in [
             "proc_occurrences",
@@ -344,6 +477,15 @@ mod tests {
             "quest_catalog_components",
             "spell_research_components",
             "damage_attack_type_summaries",
+            "experience_gain_events",
+            "experience_observations",
+            "experience_calibrations",
+            "character_zone_history",
+            "experience_gain_contexts",
+            "experience_gain_group_members",
+            "experience_backfill_cursors",
+            "spawn_timer_overrides",
+            "spawn_timer_trigger_history",
         ] {
             let found: i64 = connection
                 .query_row(
@@ -360,7 +502,7 @@ mod tests {
     fn migrates_an_existing_schema_28_database_to_proc_metrics() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -392,7 +534,7 @@ mod tests {
                 .unwrap();
             assert_eq!(previous, 28);
         }
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let tables: i64 = connection
             .query_row(
@@ -422,7 +564,7 @@ mod tests {
     fn repairs_misordered_inferred_dot_event_timestamps() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         {
             let connection = database.connect().unwrap();
             connection.execute(
@@ -443,7 +585,7 @@ mod tests {
                 .execute("DELETE FROM schema_migrations WHERE version>=28", [])
                 .unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let repaired: (String, String) = connection.query_row(
             "SELECT happened_at,damage_type FROM damage_events WHERE source_file LIKE 'dot://%'",
@@ -461,7 +603,7 @@ mod tests {
     fn guild_only_cleric_calls_migration_removes_non_guild_rows() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot-tracker.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         {
             let connection = database.connect().unwrap();
             connection
@@ -479,7 +621,7 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let channels: Vec<String> = connection
             .prepare("SELECT channel FROM cleric_heal_calls ORDER BY id")
@@ -510,7 +652,7 @@ mod tests {
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy sale',100,'sold')", []).unwrap();
             connection.execute("INSERT INTO completed_split_items(item_name,value_pp,disposition) VALUES('Legacy consumed',50,'consumed')", []).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let sold: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy sale'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         let consumed: (String, Option<String>) = connection.query_row("SELECT payout_status,paid_at FROM completed_split_items WHERE item_name='Legacy consumed'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
@@ -542,7 +684,7 @@ mod tests {
             let item_id = connection.last_insert_rowid();
             connection.execute("INSERT INTO completed_split_members(completed_split_item_id,member_name) VALUES(?,'One'),(?,'Two')", [item_id,item_id]).unwrap();
         }
-        assert_eq!(database.migrate().unwrap(), 38);
+        assert_eq!(database.migrate().unwrap(), 53);
         let connection = database.connect().unwrap();
         let seeded: i64 = connection
             .query_row("SELECT COUNT(*) FROM completed_split_payouts", [], |row| {

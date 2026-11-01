@@ -55,7 +55,7 @@ function ReplayFight({frame,character}:{frame:Frame;character:string}){
  const fighters:DamageFighterBarRow[]=frame.fighters.map((fighter,index)=>{
   const effects={procCount:fighter.procCount,procDirectDamage:fighter.procDirectDamage,procDotDamage:fighter.procDotDamage,spellCount:fighter.spellCount,spellDirectDamage:fighter.spellDirectDamage,spellDotDamage:fighter.spellDotDamage};
   return {
-   name:fighter.name,rank:index+1,totalDamage:fighter.totalDamage,dps:fighter.dps,
+   name:fighter.name,rank:index+1,totalDamage:fighter.totalDamage,dps:fighter.dps,liveDps:fighter.liveDps,
    procDps:calculateProcDps(effects,fighter.combatSeconds),
    combatSeconds:fighter.combatSeconds,contribution:fighter.contribution,
    incomingDamage:fighter.incomingDamage,mine:fighter.name.toLowerCase()===character.toLowerCase(),

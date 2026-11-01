@@ -2,11 +2,11 @@ import {useEffect,useMemo,useRef,useState} from "react";
 import {totalIncomingDps} from "./DamageIncomingBars";
 import {listen} from "@tauri-apps/api/event";
 import type {AppSnapshot,ClericHealCall,DamageEncounter,DamageEncounterDetail,DamageEvent,DamageParticipant,DamageSpellMetric,GuildSlowCall} from "../../shared/contracts";
-import {getDamageEncounterDetails,saveClericHealReplay,saveDamageReplay} from "../../shared/backend";
+import {getDamageEncounterDetails,getDamageEncounterTelemetry,saveClericHealReplay,saveDamageReplay} from "../../shared/backend";
 import {DataTable,IconButton,Modal,when,type Column} from "../ui";
-import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId} from "./model";
+import {buildClericChainTimeline,buildDamageBurstSeries,buildLiveDpsSeries,dpsMomentum,latestHealChainBoundary,discordHealChainSummary,selectLiveEncounters,sortLiveEncountersByPlayerTarget,preferredDamageTargetId,stabilizeEncounterArchive} from "./model";
 import {closeCurrentFightWindow,DamageMeterPanel,openCurrentFightWindow} from "./DamageMeterWindow";
-import {damageComposition,formatCombatClock,playerSpellMetrics,rankMobsByPerformance,summarizeSpellMetrics,type MobPerformanceRanking} from "./meterModel";
+import {damageComposition,formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankMobsByPerformance,summarizeSpellMetrics,type MobPerformanceRanking} from "./meterModel";
 import {describeActiveDot,describeDamageEvent,describeSpellMetric,type DamageSourceExplanation} from "./damageSources";
 import {DamageProcSpellStack} from "./DamageProcSpellStack";
 import {ClericChainHistory} from "./ClericChainHistory";
@@ -21,7 +21,7 @@ const seconds=(r:DamageEncounter)=>Math.max(0,Math.round((time(r.lastDamageAt)-t
 const dps=(r:DamageEncounter)=>r.totalDamage/Math.max(1,seconds(r));
 const own=(r:DamageEncounter)=>(r.players||[]).find(player=>player.name.toLowerCase()===r.character.toLowerCase());
 const ownDamage=(r:DamageEncounter)=>own(r)?.totalDamage||0;
-const ownDps=(r:DamageEncounter)=>ownDamage(r)/Math.max(1,seconds(r));
+const ownDps=(r:DamageEncounter)=>{const player=own(r);return player?player.totalDamage/Math.max(1,participantCombatSeconds(player,time(r.lastDamageAt))):0};
 const num=(v:number)=>Math.round(v).toLocaleString();
 const elapsed=(v:number)=>v<60?`${v}s`:`${Math.floor(v/60)}m ${v%60}s`;
 const result=(v:DamageEncounter["outcome"])=>({active:"Open",slain:"Slain",playerDeath:"Player died",disengaged:"Disengaged"}[v]);
@@ -33,10 +33,13 @@ export function DamageTrackerPage({data,run}:{data:AppSnapshot;run:(a:string,p?:
  const[liveView,setLiveView]=useState<"compact"|"detail">(()=>["detail","previous"].includes(localStorage.getItem("damage-live-view")||"")?"detail":"compact");
  const[meterPlacement,setMeterPlacement]=useState<"docked"|"window">(()=>localStorage.getItem("damage-fight-placement")==="window"?"window":"docked");
  const rows=data.damageEncounters;
+ const archiveRowsRef=useRef<DamageEncounter[]>(rows);
+ archiveRowsRef.current=stabilizeEncounterArchive(archiveRowsRef.current,rows);
+ const archiveRows=archiveRowsRef.current;
  const preferredTargetId=preferredDamageTargetId(data.settings,data.settings.active_character);
  const summary=useMemo(()=>rows.reduce((s,r)=>({damage:s.damage+r.totalDamage,myDamage:s.myDamage+ownDamage(r),hits:s.hits+r.hitCount,duration:s.duration+seconds(r),procs:s.procs+(r.procCount||0),dot:s.dot+(r.dotDamage||0)}),{damage:0,myDamage:0,hits:0,duration:0,procs:0,dot:0}),[rows]);
- const largest=useMemo(()=>[...rows].sort((a,b)=>b.totalDamage-a.totalDamage)[0],[rows]);
- const mobRankings=useMemo(()=>rankMobsByPerformance(rows),[rows]),ranked=mobRankings.byDamage,rankedDps=mobRankings.byDps,max=Math.max(1,...ranked.map(r=>r.damage)),maxDps=Math.max(1,...rankedDps.map(r=>r.dps));
+ const largest=useMemo(()=>[...archiveRows].sort((a,b)=>b.totalDamage-a.totalDamage)[0],[archiveRows]);
+ const mobRankings=useMemo(()=>rankMobsByPerformance(archiveRows),[archiveRows]),ranked=mobRankings.byDamage,rankedDps=mobRankings.byDps,max=Math.max(1,...ranked.map(r=>r.damage)),maxDps=Math.max(1,...rankedDps.map(r=>r.dps));
  const columns:Column<DamageEncounter>[]=[
   {key:"time",label:"Engaged",value:r=>r.startedAt,render:r=>when(r.startedAt)},
   {key:"mob",label:"Mob",value:r=>r.mobName,render:r=><strong>{r.mobName}</strong>},
@@ -74,7 +77,7 @@ export function DamageTrackerPage({data,run}:{data:AppSnapshot;run:(a:string,p?:
   <DamageAnalyticsPanel ranked={ranked} rankedDps={rankedDps} max={max} maxDps={maxDps} attackTypes={data.damageAttackTypes}/>
   {error&&<div className="alert"><span>{error}</span><button onClick={()=>setError("")}>x</button></div>}
   {saved&&<div className="alert success"><span>{saved}</span><button onClick={()=>setSaved("")}>x</button></div>}
-  <RecordedEncountersPanel rows={rows} columns={columns} scanning={scanning} loading={loading} saving={saving} closing={closing} protecting={protecting} lastScanAt={data.settings.damage_tracker_last_scan_at} openDetails={open} saveReplay={saveReplay} closeFight={closeFight} protectFight={protectFight}/>
+  <RecordedEncountersPanel rows={archiveRows} columns={columns} scanning={scanning} loading={loading} saving={saving} closing={closing} protecting={protecting} lastScanAt={data.settings.damage_tracker_last_scan_at} openDetails={open} saveReplay={saveReplay} closeFight={closeFight} protectFight={protectFight}/>
   {detail&&<Details row={detail} close={()=>setDetail(null)}/>}
  </>;
 }
@@ -204,7 +207,7 @@ function UndockedFightSummary({row,now}:{row:DamageEncounter;now:number}){
 }
 function LiveFight({row,now,seenAt,view,meterDocked,newest,pinned,pin,unpin,close,open,run,targetSuggestions}:{row:DamageEncounter;now:number;seenAt:number;view:"compact"|"detail";meterDocked:boolean;newest:boolean;pinned:boolean;pin:()=>void;unpin:()=>void;close:()=>void;open:()=>void;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;targetSuggestions:DamageEncounter[]}){
  const[collapsed,setCollapsed]=useState(false),[correcting,setCorrecting]=useState(false),[manualCorrection,setManualCorrection]=useState(false);
- const idle=Math.max(0,Math.floor((now-seenAt)/1000)),finished=row.outcome!=="active"||idle>=30,duration=finished?Math.max(1,seconds(row)):Math.max(1,seconds(row)+idle),liveDps=row.totalDamage/duration,mine=own(row),myDamage=mine?.totalDamage||0,myDps=myDamage/duration,myShare=myDamage/Math.max(1,row.totalDamage)*100;
+ const idle=Math.max(0,Math.floor((now-seenAt)/1000)),finished=row.outcome!=="active"||idle>=30,duration=finished?Math.max(1,seconds(row)):Math.max(1,seconds(row)+idle),encounterEnd=finished?time(row.lastDamageAt):now,liveDps=row.totalDamage/duration,mine=own(row),myDamage=mine?.totalDamage||0,myDps=mine?myDamage/Math.max(1,participantCombatSeconds(mine,encounterEnd)):0,myShare=myDamage/Math.max(1,row.totalDamage)*100;
  const composition=damageComposition(row),myEffects=summarizeSpellMetrics(playerSpellMetrics(row,row.character));
  return <><article className={"damage-live "+(!pinned&&idle>=30?"is-fading ":"")+(pinned?"is-pinned":"")}>
   <header><div><span className="damage-live-pulse"><i/>{newest?"Current fight":"Pinned fight"}</span><span className="damage-combat-timer">Combat {formatCombatClock(duration)}</span><h2>{row.character} <small>vs.</small> {row.mobName}<span className="damage-title-weapons">Last snapshot: {row.weapons.join(" / ")||"none"}</span></h2><p>{idle===0?"Damage received now":idle+"s since last damage"} · {result(row.outcome)}</p></div><div className="damage-live-actions"><button className="damage-live-collapse" aria-label={collapsed?"Expand fight":"Collapse fight"} title={collapsed?"Expand fight":"Collapse fight"} onClick={()=>setCollapsed(value=>!value)}>{collapsed?"+":"-"}</button>{pinned?<><IconButton icon="pin" label="Unpin fight" onClick={unpin}/><IconButton icon="close" label="Close pinned fight" onClick={close}/></>:<IconButton icon="pin" label="Pin fight" onClick={pin}/>}<IconButton icon="edit" label={`Correct target for ${row.mobName}`} className={correcting?"active":""} onClick={()=>setCorrecting(value=>!value)}/><IconButton icon="external" label="Open fight details" onClick={open}/></div></header>
@@ -213,7 +216,7 @@ function LiveFight({row,now,seenAt,view,meterDocked,newest,pinned,pin,unpin,clos
   {!meterDocked&&<DamageProcSpellStack row={row}/>}
   <ActiveDotsPanel row={row} now={now}/>
   {meterDocked&&<div className="damage-meter-docked"><DamageMeterPanel row={row} now={now} embedded/></div>}
-  {view==="detail"&&<><SpellMetricsPanel metrics={row.spellMetrics||[]}/><LiveTelemetry row={row} duration={duration}/><PlayerCharts players={row.players}/><IncomingDamageChart row={row}/></>}</div>}
+  {view==="detail"&&<><SpellMetricsPanel metrics={row.spellMetrics||[]}/><LiveTelemetry row={row} duration={duration}/><PlayerCharts row={row} encounterEndMs={encounterEnd}/><IncomingDamageChart row={row}/></>}</div>}
  </article>{manualCorrection&&<CorrectFightTargetModal row={row} suggestions={targetSuggestions.map(value=>value.mobName)} run={run} close={()=>{setManualCorrection(false);setCorrecting(false)}}/>}</>
 }
 
@@ -260,8 +263,8 @@ function LiveTelemetry({row,duration}:{row:DamageEncounter;duration:number}){
  const[events,setEvents]=useState<DamageEvent[]>([]);
  useEffect(()=>{
   let cancelled=false;
-  getDamageEncounterDetails(row.id).then(value=>{if(!cancelled)setEvents(value.events)}).catch(()=>{});
-  return()=>{cancelled=true};
+  const timer=window.setTimeout(()=>getDamageEncounterTelemetry(row.id).then(value=>{if(!cancelled)setEvents(value)}).catch(()=>{}),250);
+  return()=>{cancelled=true;window.clearTimeout(timer)};
  },[row.id,row.hitCount,row.lastDamageAt]);
  const series=useMemo(()=>buildLiveDpsSeries(events,row.character,row.startedAt,duration),[events,row.character,row.startedAt,duration]);
  const bursts=useMemo(()=>buildDamageBurstSeries(events,row.character,row.startedAt,duration),[events,row.character,row.startedAt,duration]);
@@ -279,13 +282,13 @@ function LiveTelemetry({row,duration}:{row:DamageEncounter;duration:number}){
  </section>;
 }
 
-function participantDps(player:DamageParticipant){return player.totalDamage/Math.max(1,(time(player.lastDamageAt)-time(player.firstDamageAt))/1000)}
+function participantDps(player:DamageParticipant,encounterEndMs:number){return player.totalDamage/Math.max(1,participantCombatSeconds(player,encounterEndMs))}
 
-function PlayerCharts({players}:{players:DamageParticipant[]}){
- const damage=[...(players||[])].sort((a,b)=>b.totalDamage-a.totalDamage||a.name.localeCompare(b.name)),rates=[...(players||[])].sort((a,b)=>participantDps(b)-participantDps(a)||b.totalDamage-a.totalDamage),damageMax=Math.max(1,...damage.map(player=>player.totalDamage)),dpsMax=Math.max(1,...rates.map(participantDps));
+function PlayerCharts({row,encounterEndMs=time(row.lastDamageAt)}:{row:DamageEncounter;encounterEndMs?:number}){
+ const players=row.players||[],rate=(player:DamageParticipant)=>participantDps(player,encounterEndMs),damage=[...players].sort((a,b)=>b.totalDamage-a.totalDamage||a.name.localeCompare(b.name)),rates=[...players].sort((a,b)=>rate(b)-rate(a)||b.totalDamage-a.totalDamage),damageMax=Math.max(1,...damage.map(player=>player.totalDamage)),dpsMax=Math.max(1,...rates.map(rate));
  const chart=(title:string,caption:string,rows:DamageParticipant[],value:(player:DamageParticipant)=>number,max:number,format:(value:number)=>string)=><article className="damage-player-chart"><header><div><span className="eyebrow">Player ranking</span><h3>{title}</h3><p>{caption}</p></div><strong>{rows.length} player{rows.length===1?"":"s"}</strong></header>{rows.length?<div className="damage-player-bars">{rows.map((player,index)=>{const amount=value(player);return <div key={player.name}><b>{index+1}</b><span title={player.name}>{player.name}<small>{player.hitCount} hit{player.hitCount===1?"":"s"}</small></span><i><em style={{width:(amount/max*100)+"%"}}/></i><strong>{format(amount)}</strong></div>})}</div>:<div className="damage-player-empty">Waiting for player damage…</div>}</article>;
  const total=damage.reduce((sum,player)=>sum+player.totalDamage,0);
- return <section className="damage-player-charts">{chart("Total damage & contribution","Highest contribution first.",damage,player=>player.totalDamage,damageMax,value=>`${num(value)} - ${Math.round(value/Math.max(1,total)*100)}%`)}{chart("DPS","Highest active damage rate first.",rates,participantDps,dpsMax,value=>value.toFixed(1))}</section>
+ return <section className="damage-player-charts">{chart("Total damage & contribution","Highest contribution first.",damage,player=>player.totalDamage,damageMax,value=>`${num(value)} - ${Math.round(value/Math.max(1,total)*100)}%`)}{chart("DPS","Damage from each fighter's first landed hit through the encounter end.",rates,rate,dpsMax,value=>value.toFixed(1))}</section>
 }
 
 function IncomingDamageChart({row}:{row:DamageEncounter}){
@@ -296,7 +299,7 @@ function IncomingDamageChart({row}:{row:DamageEncounter}){
 function Mix({row}:{row:DamageEncounter}){const mix=damageComposition(row);return <div className="damage-mix damage-composition-bar" title={`Melee ${num(mix.melee)} - Direct ${num(mix.direct)} - DoT ${num(mix.dot)}`}><i className="melee" style={{width:`${mix.meleePercent}%`}}/><i className="direct" style={{width:`${mix.directPercent}%`}}/><i className="dot" style={{width:`${mix.dotPercent}%`}}/><span>{Math.round(mix.meleePercent)} / {Math.round(mix.directPercent)} / {Math.round(mix.dotPercent)}%</span></div>}
 
 function Details({row,close}:{row:DamageEncounterDetail;close:()=>void}){
- const mine=own(row),myDamage=mine?.totalDamage||0,myDps=myDamage/Math.max(1,seconds(row)),myShare=myDamage/Math.max(1,row.totalDamage)*100,myEffects=summarizeSpellMetrics(playerSpellMetrics(row,row.character));
+ const mine=own(row),myDamage=mine?.totalDamage||0,myDps=mine?myDamage/Math.max(1,participantCombatSeconds(mine,time(row.lastDamageAt))):0,myShare=myDamage/Math.max(1,row.totalDamage)*100,myEffects=summarizeSpellMetrics(playerSpellMetrics(row,row.character));
  const playerNames=useMemo(()=>[...new Set(row.events.map(event=>event.attacker))].sort((a,b)=>a.localeCompare(b)),[row.events]);
  const[visiblePlayers,setVisiblePlayers]=useState<Set<string>>(()=>new Set(playerNames));
  const shareRef=useRef<HTMLElement|null>(null);
@@ -318,7 +321,7 @@ function Details({row,close}:{row:DamageEncounterDetail;close:()=>void}){
    <DamageProcSpellStack row={row}/>
    <SpellMetricsPanel metrics={row.spellMetrics||[]}/>
    <section className="damage-weapon-card"><header><div><span className="eyebrow">Inventory evidence</span><h3>Last known weapon snapshots</h3></div><strong>{loadouts.length} loadout{loadouts.length===1?"":"s"}</strong></header><div className="damage-loadouts">{loadouts.length?loadouts.map((loadout,index)=><article key={`${loadout.primaryId||0}-${loadout.secondaryId||0}-${index}`}><b>{index+1}</b><div><span>Last known primary</span><strong>{loadout.primary||"Empty / unknown"}</strong>{loadout.primaryId&&<small>Item ID {loadout.primaryId}</small>}</div><div><span>Last known secondary</span><strong>{loadout.secondary||"Empty / unknown"}</strong>{loadout.secondaryId&&<small>Item ID {loadout.secondaryId}</small>}</div></article>):<p>No inventory weapon snapshot was available for this encounter.</p>}</div></section>
-   <PlayerCharts players={row.players}/>
+   <PlayerCharts row={row}/>
    <IncomingDamageChart row={row}/>
    <section className="damage-timeline-panel"><header><div><span className="eyebrow">Damage over time</span><h3>Cumulative damage</h3></div><strong>{filteredEvents.length} of {row.events.length} events</strong></header><div className="damage-timeline-filter"><div><button onClick={()=>setVisiblePlayers(new Set(playerNames))}>Show all</button><button className="primary" onClick={()=>setVisiblePlayers(new Set([row.character]))}>Only me</button><button onClick={()=>setVisiblePlayers(new Set())}>Clear</button></div><div>{playerNames.map(name=><label key={name} className={visiblePlayers.has(name)?"active":""}><input type="checkbox" checked={visiblePlayers.has(name)} onChange={()=>togglePlayer(name)}/><span>{name}</span></label>)}</div></div><Timeline row={row} events={filteredEvents}/></section>
   </section>

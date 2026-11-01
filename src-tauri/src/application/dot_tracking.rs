@@ -21,6 +21,7 @@ const UNIDENTIFIED_PLAYER: &str = "Unidentified player";
 struct CompiledProfile {
     profile: CombatSpellProfile,
     landing: Regex,
+    hint: String,
 }
 
 #[derive(Clone)]
@@ -69,6 +70,7 @@ pub struct DotTracker {
     recent_cast: Option<RecentCast>,
     recent_non_melee: Option<RecentNonMelee>,
     pending_proc: Option<PendingProc>,
+    last_flush_at: Option<NaiveDateTime>,
 }
 
 impl DotTracker {
@@ -81,6 +83,7 @@ impl DotTracker {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         }
     }
 
@@ -162,11 +165,10 @@ impl DotTracker {
                         || combat_actor.eq_ignore_ascii_case(character)
                     {
                         character
-                    } else if pending.allow_observed_caster
-                        || pending
-                            .candidate_caster
-                            .as_ref()
-                            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(combat_actor))
+                    } else if pending
+                        .candidate_caster
+                        .as_ref()
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(combat_actor))
                     {
                         combat_actor
                     } else {
@@ -198,7 +200,7 @@ impl DotTracker {
                 changed += disable_duplicate_inference(connection, source, mob_name, attack)?;
             }
         }
-        changed += self.flush_due(connection, happened_at)?;
+        changed += self.flush_due_if_advanced(connection, happened_at)?;
 
         if let Some(LogEvent::ItemGlow {
             owner_name,
@@ -250,10 +252,14 @@ impl DotTracker {
             }
         }
 
+        let normalized_body = body.to_ascii_lowercase();
         let matches = self
             .profiles
             .iter()
             .filter_map(|compiled| {
+                if !normalized_body.contains(&compiled.hint) {
+                    return None;
+                }
                 let captures = compiled.landing.captures(body)?;
                 Some((
                     compiled.profile.clone(),
@@ -504,7 +510,7 @@ impl DotTracker {
 
     pub fn flush_live(&mut self, connection: &rusqlite::Connection) -> Result<usize, String> {
         self.refresh_profiles();
-        self.flush_due(connection, Local::now().naive_local())
+        self.flush_due_if_advanced(connection, Local::now().naive_local())
     }
     pub(super) fn flush_through(
         &mut self,
@@ -512,7 +518,19 @@ impl DotTracker {
         through: NaiveDateTime,
     ) -> Result<usize, String> {
         self.refresh_profiles();
-        self.flush_due(connection, through)
+        self.flush_due_if_advanced(connection, through)
+    }
+
+    fn flush_due_if_advanced(
+        &mut self,
+        connection: &rusqlite::Connection,
+        now: NaiveDateTime,
+    ) -> Result<usize, String> {
+        if self.last_flush_at.is_some_and(|last| now <= last) {
+            return Ok(0);
+        }
+        self.last_flush_at = Some(now);
+        self.flush_due(connection, now)
     }
 
     fn flush_due(
@@ -661,9 +679,19 @@ fn compile_profile(profile: CombatSpellProfile) -> Option<CompiledProfile> {
         .replace(&escaped, "(?P<target>.+?)")
         .replace(" 's", "'s")
         .replace("'s", r"\s*'s");
+    let hint = profile
+        .cast_on_other
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|word| !word.eq_ignore_ascii_case("someone"))
+        .max_by_key(|word| word.len())?
+        .to_ascii_lowercase();
     Regex::new(&format!("(?i)^{source}$"))
         .ok()
-        .map(|landing| CompiledProfile { profile, landing })
+        .map(|landing| CompiledProfile {
+            profile,
+            landing,
+            hint,
+        })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1231,6 +1259,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let glow = "[Sun Sep 06 10:53:00 2026] Your Test Weapon begins to glow.";
@@ -1282,6 +1311,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (offset, line) in [
@@ -1349,6 +1379,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
 
@@ -1402,6 +1433,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let lines = [
@@ -1464,6 +1496,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (index, line) in [
@@ -1509,7 +1542,7 @@ mod tests {
     }
 
     #[test]
-    fn hundred_blows_attributes_local_and_named_dodged_proc_sequences() {
+    fn hundred_blows_attributes_local_but_keeps_observed_attacker_unidentified() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1527,6 +1560,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let lines = [
@@ -1563,20 +1597,20 @@ mod tests {
             .unwrap();
         assert_eq!(
             occurrences,
-            vec![("Valmezz".into(), 120), ("Sakkai".into(), 120)]
+            vec![("Valmezz".into(), 120), ("Unidentified player".into(), 120)]
         );
-        let sakkai_damage: i64 = connection
+        let unidentified_damage: i64 = connection
             .query_row(
-                "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Sakkai'",
+                "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Unidentified player'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(sakkai_damage, 120);
+        assert_eq!(unidentified_damage, 120);
     }
 
     #[test]
-    fn divine_might_landing_uses_the_next_same_target_attacker() {
+    fn divine_might_landing_keeps_the_next_attacker_unidentified() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1602,6 +1636,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (index, line) in [
@@ -1632,7 +1667,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             occurrence,
-            ("Balbazak".into(), "Divine Might Effect".into(), 65)
+            (
+                "Unidentified player".into(),
+                "Divine Might Effect".into(),
+                65
+            )
         );
         let source_name: String = connection
             .query_row("SELECT source_name FROM combat_spell_activity", [], |row| {
@@ -1657,6 +1696,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
 
@@ -1769,7 +1809,7 @@ mod tests {
         assert_eq!((activity_count, proc_count), (1, 1));
     }
     #[test]
-    fn root_landing_uses_the_next_same_target_attacker_as_the_likely_proccer() {
+    fn root_landing_keeps_the_next_attacker_unidentified() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1786,6 +1826,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let lines = [
@@ -1812,7 +1853,14 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(proc, ("Tokuo".into(), "Unidentified root proc".into(), 0));
+        assert_eq!(
+            proc,
+            (
+                "Unidentified player".into(),
+                "Unidentified root proc".into(),
+                0
+            )
+        );
     }
 
     #[test]
@@ -1833,6 +1881,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (offset, raw) in [
@@ -1882,6 +1931,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let lines = [
@@ -1925,6 +1975,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let non_melee =
@@ -2046,6 +2097,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         connection
@@ -2110,6 +2162,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let cast = "[Sun Sep 06 10:52:59 2026] You begin casting Dawncall.";
@@ -2167,6 +2220,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let source = "eqlog_Asquatii.txt";
@@ -2237,6 +2291,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (offset, line) in [
@@ -2284,6 +2339,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         for (offset, line) in [
@@ -2325,6 +2381,7 @@ mod tests {
             recent_cast: None,
             recent_non_melee: None,
             pending_proc: None,
+            last_flush_at: None,
         };
         let connection = database.connect().unwrap();
         let cast = "[Sun Sep 06 10:53:01 2026] You begin casting Dawncall.";

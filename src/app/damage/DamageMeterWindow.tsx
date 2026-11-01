@@ -4,7 +4,7 @@ import {getCurrentWindow} from "@tauri-apps/api/window";
 import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import type {DamageEncounter,DamageEncounterDetail,GlobalStatusSnapshot} from "../../shared/contracts";
 import {getDamageEncounterDetails,getGlobalStatus,getRevision} from "../../shared/backend";
-import {formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,summarizePlayerEffects} from "./meterModel";
+import {formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,summarizeEncounterPlayerEffects,summarizePlayerEffects} from "./meterModel";
 import {focusedDamageEncounter,sortLiveEncountersByPlayerTarget} from "./model";
 import {calculateProcDps,DamageFighterBars,spellEffectTitle,type DamageFighterBarRow} from "./DamageFighterBars";
 import {DamageIncomingBars,IncomingDamageTotal} from "./DamageIncomingBars";
@@ -147,22 +147,24 @@ export function DamageMeterPanel({row,now,embedded=false,ultraCompact=false}:{ro
  useEffect(()=>{
   let active=true;
   window.clearTimeout(detailTimer.current);
-  const delay=Math.max(0,500-(Date.now()-detailRequestedAt.current));
+  if(ultraCompact){setDetail(null);return()=>{active=false}};
+  const refreshInterval=row.players.length>=40||row.hitCount>=2000?1500:500;
+  const delay=Math.max(0,refreshInterval-(Date.now()-detailRequestedAt.current));
   detailTimer.current=window.setTimeout(()=>{
    detailRequestedAt.current=Date.now();
    void getDamageEncounterDetails(row.id).then(value=>{if(active)setDetail(value)}).catch(()=>{});
   },delay);
   return()=>{active=false;window.clearTimeout(detailTimer.current)};
- },[row.id,row.hitCount,row.lastDamageAt]);
+ },[row.id,row.hitCount,row.lastDamageAt,row.players.length,ultraCompact]);
  const encounterEnd=row.outcome==="active"?now:stamp(row.lastDamageAt);
  const duration=Math.max(1,Math.floor((encounterEnd-stamp(row.startedAt))/1000));
- const players=rankMeterPlayers(row.players,row.totalDamage,duration);
+ const players=rankMeterPlayers(row.players,row.totalDamage,encounterEnd);
  const incomingTargets=rankIncomingTargets(row.damageTargets||[]);
  const shares=new Map(previousShares.current);
- const effectsByPlayer=useMemo(()=>new Map(row.players.map(player=>{
+ const effectsByPlayer=useMemo(()=>{const totals=summarizeEncounterPlayerEffects(row,detail?.events||[]);return new Map(row.players.map(player=>{
   const metrics=playerSpellMetrics(row,player.name);
-  return [player.name.toLowerCase(),{effects:summarizePlayerEffects(row,detail?.events||[],player.name),title:spellEffectTitle(metrics)}] as const;
- })),[row.players,row.spellMetrics,detail?.events]);
+  return [player.name.toLowerCase(),{effects:totals.get(player.name.trim().toLowerCase())||summarizePlayerEffects(row,[],player.name),title:spellEffectTitle(metrics)}] as const;
+ }))},[row.players,row.spellMetrics,detail?.events]);
  useEffect(()=>{previousShares.current=new Map(players.map(player=>[player.name,player.contribution]))},[row.totalDamage,row.hitCount]);
  const names=players.slice(0,6).map(player=>player.name);
  const fighterRows:DamageFighterBarRow[]=players.map(player=>{
@@ -171,12 +173,12 @@ export function DamageMeterPanel({row,now,embedded=false,ultraCompact=false}:{ro
   const effects=effectsByPlayer.get(player.name.toLowerCase());
   const fighterEffects=effects?.effects||summarizePlayerEffects(row,[],player.name);
   return {
-   name:player.name,rank:player.rank,totalDamage:player.totalDamage,dps:player.dps,
-   procDps:calculateProcDps(fighterEffects,duration),
+   name:player.name,rank:player.rank,totalDamage:player.totalDamage,dps:player.dps,liveDps:player.liveDps,
+   procDps:calculateProcDps(fighterEffects,Math.max(1,participantCombatSeconds(player,encounterEnd))),
    combatSeconds:participantCombatSeconds(player,encounterEnd),contribution:player.contribution,
    contributionDelta:prior===undefined?0:player.contribution-prior,
    incomingDamage:row.damageTargets?.find(target=>target.name.toLowerCase()===player.name.toLowerCase())?.totalDamage||0,
-   mine,combatTimeTitle:`In combat since first hit at ${player.firstDamageAt}`,
+   mine,combatTimeTitle:`DPS clock started with first landed damage at ${player.firstDamageAt}`,
    effects:fighterEffects,effectsTitle:effects?.title,
   };
  });

@@ -22,6 +22,7 @@ The page offers:
 - recipe readiness grouped by research class;
 - class, spell-level, component-family, held, ready, and research-only filters;
 - the number of combines currently possible;
+- an **All mats on** indicator naming every character that individually holds the full recipe, including how many complete combines that character can make;
 - a component inventory showing every recipe that uses each item;
 - shared item hover cards and stored market values.
 

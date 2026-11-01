@@ -1,4 +1,4 @@
-import type {InventoryItem,WardrobeCatalogItem} from "../../shared/contracts";
+import type {InventoryItem,MasterItem,WardrobeCatalogItem} from "../../shared/contracts";
 import type {EquipmentSlot,EquipmentSlotKey} from "../characters/EquipmentPaperDoll";
 import type {CharacterModelProfile} from "../characters/characterProfile";
 
@@ -70,5 +70,62 @@ export function wardrobeTotals(items:WardrobeCatalogItem[]){
  return WARDROBE_STATS.filter(stat=>stat.key!=="damage"&&stat.key!=="delay").reduce<Record<string,number>>((totals,stat)=>{totals[stat.key]=items.reduce((sum,item)=>sum+item[stat.key],0);return totals},{});
 }
 
-export interface WardrobeDraft {profile:CharacterModelProfile;items:Partial<Record<EquipmentSlotKey,WardrobeCatalogItem>>}
-export const DEFAULT_WARDROBE_DRAFT:WardrobeDraft={profile:{race:"hu",gender:"m",classCode:"war"},items:{}};
+export type WardrobeMarketLookup=(item:WardrobeCatalogItem)=>MasterItem|undefined;
+export interface WardrobeValueSummary {totalPp:number;pricedCount:number;missingCount:number}
+
+export function createWardrobeMarketLookup(items:MasterItem[]):WardrobeMarketLookup{
+ const byId=new Map(items.map(item=>[item.id,item]));
+ const byName=new Map(items.map(item=>[item.name.trim().toLocaleLowerCase(),item]));
+ return item=>(item.peqId!=null?byId.get(item.peqId):undefined)||byName.get(item.name.trim().toLocaleLowerCase());
+}
+
+export function wardrobeValueSummary(items:WardrobeCatalogItem[],market:WardrobeMarketLookup):WardrobeValueSummary{
+ return items.reduce<WardrobeValueSummary>((summary,item)=>{
+  const match=market(item);
+  if(match&&match.valuePp>0){summary.totalPp+=match.valuePp;summary.pricedCount+=1}else summary.missingCount+=1;
+  return summary;
+ },{totalPp:0,pricedCount:0,missingCount:0});
+}
+
+export type WardrobeComparePriority=0|1|2;
+export interface WardrobeCompareEntry {id:string;item:WardrobeCatalogItem;slotKey:EquipmentSlotKey;priority:WardrobeComparePriority;enabled:boolean;note:string}
+
+const comparePriorityRank:Record<WardrobeComparePriority,number>={1:0,0:1,2:2};
+
+export function quickCompareBuild(
+ equipped:Partial<Record<EquipmentSlotKey,WardrobeCatalogItem>>,
+ entries:WardrobeCompareEntry[],
+){
+ const items={...equipped};
+ const claimed=new Set<EquipmentSlotKey>();
+ const ordered=entries.map((entry,index)=>({entry,index})).filter(value=>value.entry.enabled).sort((left,right)=>comparePriorityRank[left.entry.priority]-comparePriorityRank[right.entry.priority]||left.index-right.index);
+ for(const{entry}of ordered){
+  if(claimed.has(entry.slotKey))continue;
+  claimed.add(entry.slotKey);
+  items[entry.slotKey]=entry.item;
+  if(entry.slotKey==="primary"&&weaponHandedness(entry.item)==="2h"){
+   claimed.add("secondary");
+   delete items.secondary;
+  }
+ }
+ return items;
+}
+
+export function quickCompareSelectedUpgrades(
+ equipped:Partial<Record<EquipmentSlotKey,WardrobeCatalogItem>>,
+ entries:WardrobeCompareEntry[],
+){
+ const compared=quickCompareBuild(equipped,entries);
+ return entries.filter(entry=>entry.enabled&&compared[entry.slotKey]?.id===entry.item.id&&equipped[entry.slotKey]?.id!==entry.item.id).map(entry=>entry.item);
+}
+
+export function wardrobeStatDeltas(item:WardrobeCatalogItem,baseline?:WardrobeCatalogItem){
+ return WARDROBE_STATS.reduce<Partial<Record<WardrobeStatKey,number>>>((deltas,stat)=>{
+  const difference=item[stat.key]-(baseline?.[stat.key]||0);
+  if(difference)deltas[stat.key]=difference;
+  return deltas;
+ },{});
+}
+
+export interface WardrobeDraft {profile:CharacterModelProfile;items:Partial<Record<EquipmentSlotKey,WardrobeCatalogItem>>;compare:WardrobeCompareEntry[]}
+export const DEFAULT_WARDROBE_DRAFT:WardrobeDraft={profile:{race:"hu",gender:"m",classCode:"war"},items:{},compare:[]};

@@ -236,6 +236,67 @@ pub(super) fn insert_or_get_damage_encounter(
         )
         .map_err(|error| error.to_string())
 }
+
+/// Combat attempts remain useful parser evidence, but they must not create a
+/// damage encounter or advance its clock. EqTool starts a fighter's elapsed
+/// DPS time with the first landed damage event, and rescanning an old miss must
+/// never create an empty encounter beside a completed fight.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn record_combat_attempt_start(
+    _connection: &Connection,
+    _source: &str,
+    _source_offset: i64,
+    _character: &str,
+    _attacker_name: &str,
+    _happened_at: NaiveDateTime,
+    _mob_name: &str,
+) -> Result<usize, String> {
+    Ok(0)
+}
+
+pub fn load_recent_damage_for_encounters(
+    connection: &Connection,
+    encounter_ids: &[i64],
+) -> Result<HashMap<i64, HashMap<String, u64>>, String> {
+    let mut by_encounter: HashMap<i64, HashMap<String, u64>> = HashMap::new();
+    for chunk in encounter_ids.chunks(QUERY_CHUNK_SIZE) {
+        let placeholders = std::iter::repeat_n("?", chunk.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT event.encounter_id,event.attacker_name,SUM(event.damage)
+             FROM damage_events event
+             JOIN damage_encounters encounter ON encounter.id=event.encounter_id
+             WHERE event.encounter_id IN ({placeholders})
+               AND datetime(event.happened_at)>=datetime(
+                   CASE WHEN encounter.outcome='active' THEN datetime('now','localtime')
+                        ELSE encounter.last_damage_at END,
+                   '-12 seconds'
+               )
+             GROUP BY event.encounter_id,event.attacker_name COLLATE NOCASE"
+        );
+        let mut statement = connection
+            .prepare(&sql)
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(params_from_iter(chunk.iter().copied()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, u64>(2)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?;
+        for row in rows {
+            let (encounter_id, attacker, damage) = row.map_err(|error| error.to_string())?;
+            by_encounter
+                .entry(encounter_id)
+                .or_default()
+                .insert(attacker.to_lowercase(), damage);
+        }
+    }
+    Ok(by_encounter)
+}
 pub fn load_for_encounters(
     connection: &Connection,
     encounter_ids: &[i64],
@@ -653,6 +714,61 @@ pub(super) fn correct_encounter_target(
     Ok(corrected_id)
 }
 
+pub(super) fn correct_recorded_encounter_target(
+    connection: &mut Connection,
+    encounter_id: i64,
+    corrected_mob_name: &str,
+) -> Result<i64, String> {
+    let corrected = corrected_mob_name.trim();
+    if corrected.is_empty() || corrected.len() > 120 || corrected.chars().any(char::is_control) {
+        return Err("Enter a target name between 1 and 120 characters.".into());
+    }
+    let outcome: Option<String> = connection
+        .query_row(
+            "SELECT outcome FROM damage_encounters WHERE id=?",
+            [encounter_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let outcome = outcome.ok_or_else(|| "The combat record no longer exists.".to_string())?;
+    if outcome == "active" {
+        return correct_encounter_target(connection, encounter_id, corrected);
+    }
+
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let observed: String = transaction
+        .query_row(
+            "SELECT mob_name FROM damage_encounters WHERE id=?",
+            [encounter_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    for table in [
+        "dot_applications",
+        "proc_occurrences",
+        "combat_spell_activity",
+    ] {
+        transaction
+            .execute(
+                &format!("UPDATE {table} SET target_name=? WHERE encounter_id=? AND target_name=? COLLATE NOCASE"),
+                params![corrected, encounter_id, observed],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction
+        .execute(
+            "UPDATE damage_encounters SET mob_name=? WHERE id=?",
+            params![corrected, encounter_id],
+        )
+        .map_err(|error| error.to_string())?;
+    remove_corrected_target_from_meters(&transaction, encounter_id, corrected)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(encounter_id)
+}
+
 fn remove_corrected_target_from_meters(
     connection: &Connection,
     encounter_id: i64,
@@ -739,6 +855,47 @@ fn remove_corrected_target_from_meters(
 mod tests {
     use super::*;
     use crate::infrastructure::database::Database;
+
+    #[test]
+    fn combat_attempts_do_not_start_damage_encounters_or_participant_clocks() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(directory.path().join("loot.db")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        let happened_at =
+            NaiveDateTime::parse_from_str("2026-09-08 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+        assert_eq!(
+            record_combat_attempt_start(
+                &connection,
+                "test.log",
+                10,
+                "Tester",
+                "Tester",
+                happened_at,
+                "Target",
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM damage_encounters", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM damage_participant_summaries",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
 
     #[test]
     fn manually_closing_an_encounter_preserves_it_as_disengaged() {
