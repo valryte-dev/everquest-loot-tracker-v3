@@ -117,7 +117,7 @@ For one recognized landing, priority is:
 
 1. Recent item glow.
 2. Matching local direct cast.
-3. Kept memory-only while eligible for one-line proc confirmation, with immediately preceding generic non-melee evidence retained when present.
+3. Kept memory-only while eligible for one-line local-proc confirmation, with immediately preceding generic non-melee evidence retained when present.
 
 ### Item click
 
@@ -158,18 +158,19 @@ Some item effects do not emit another player's `begins to glow` line. The spell 
 
 This keeps the landing visible in the live fight without assigning it to the next attacker or corrupting damage totals. The initial rule maps `Curse of the Spirits` (`Someone is consumed by the raging spirits of the land.`) to a possible `Spear of Fate` item click.
 
-### Proc
+### Local proc
 
 Without a qualifying active-character glow, direct cast, or cataloged item-click-only rule, the landing is not written to the database. It remains memory-only for exactly the next parsed line. The tracker also remembers whether the immediately preceding line was generic non-melee damage against the same target. The next line confirms a proc when it is a same-target:
 
 - failed same-target combat attempt ending in `miss!`, `misses!`, `ripostes!`, `blocks!`, `parries!`, or `dodges!`;
 - local melee damage event; or
-- observed melee damage event.
+- observed melee damage event whose attacker is the active character represented by `You`.
 
-Caster selection then has two branches. If matching generic non-melee damage immediately preceded the landing, the caster is forced to the active character and the logged amount is used as direct proc damage. Otherwise, the attacker on the confirming combat line becomes the caster, including an observed player; fixed catalog direct damage is used when available. DoT attribution and activity become `proc`, and a `proc_occurrences` row is created. Any intervening line, different target/source, or unsupported event consumes and discards the candidate.
+Caster selection is intentionally limited to the active character. If matching generic non-melee damage immediately preceded the landing, the caster is the active character and the logged amount is used as direct proc damage. Otherwise, the confirming combat actor must be the active character represented by `You`; fixed catalog direct damage is used when available. A confirming attack by any other player consumes and discards the candidate without adding proc count, direct damage, or calculated DoT ticks. DoT attribution and activity become `proc`, and a `proc_occurrences` row is created only for the active character.
 
-**Audit flags:** inserted log chatter can make valid procs fail; only one pending proc exists across simultaneous fights; without preceding non-melee evidence, the next attacker is a probabilistic attribution rather than proof; an item-click-only spell needs a catalog source rule to avoid that ambiguity; no rule proves which equipped weapon caused the proc.
-Observed-player example:
+**Audit flags:** inserted log chatter can make valid local procs fail; only one pending proc exists across simultaneous fights; an item-click-only spell needs a catalog source rule to remain visible without corrupting totals; no rule proves which equipped weapon caused the proc.
+
+Observed-player inference is paused. For example, this sequence creates no proc occurrence or inferred damage because the confirming attacker is not the active character:
 
 ```text
 [Mon Sep 07 08:55:39 2026] Lizzyflop says 'Ahhh, I feel much better now\...'
@@ -177,15 +178,16 @@ Observed-player example:
 [Mon Sep 07 08:55:39 2026] Lizzyflop crushes Grink for 30 points of damage.
 ```
 
-The first line is ordinary flavor text. `Grink staggers.` uniquely matches Essence Tap. Because there is no immediately preceding generic non-melee line, the next same-target combat action identifies Lizzyflop as the probable proccer. The 30-point crush remains melee damage, while Essence Tap contributes its separate catalog direct-damage estimate.
-Observed-player DoT-proc example:
+The 30-point crush remains ordinary observed melee damage. `Grink staggers.` is not used to infer Essence Tap damage or a proc for Lizzyflop.
+
+The same rule applies to observed-player DoT candidates:
 
 ```text
 [Sun Sep 06 20:46:11 2026] Drusella Sathir staggers as the light of dawn washes over it.
 [Sun Sep 06 20:46:11 2026] Balbazak pierces Drusella Sathir for 271 points of damage.
 ```
 
-The landing uniquely matches Dawncall. Balbazak's immediately following same-target pierce makes Balbazak the probable proccer. The 271-point pierce remains melee damage. Dawncall is stored as a proc-attributed DoT application, and its calculated ticks accrue separately to Balbazak for the catalog duration unless refreshed, explicitly superseded, or ended with the encounter.
+The 271-point pierce remains ordinary observed melee damage. Dawncall is not stored as a DoT application and no calculated ticks accrue to Balbazak.
 
 ## Direct damage accounting
 
@@ -207,7 +209,7 @@ The confirming melee hit remains separate. Pure direct casts and item clicks do 
 
 ## DoT accounting
 
-A matched profile with damage per tick and tick count creates an application after attribution by active-character direct cast, active-character item click, or an attack-confirmed proc. A proc may be attributed to an observed player by the next-combat rule. Unconfirmed landings create no application or inferred ticks.
+A matched profile with damage per tick and tick count creates an application after attribution by active-character direct cast, active-character item click, or an active-character attack-confirmed proc. Observed-player attacks do not create applications or inferred ticks. Unconfirmed landings create no application or inferred ticks.
 
 Before insertion, every active same-encounter, same-target, same-spell application is marked `refreshed`, regardless of caster. The replacement resets duration:
 
@@ -274,7 +276,8 @@ Complete timestamped line
             +-- else matching cast time -> direct
             +-- else -> keep memory-only and wait one line for proc evidence
             +-- preceding generic non-melee + confirmation -> active-character proc, logged damage
-            +-- otherwise confirmation -> confirming attacker proc, catalog damage
+            +-- otherwise `You` confirmation -> active-character proc, catalog damage
+            +-- otherwise observed-player confirmation -> discard
             +-- confirmed attribution -> persist activity/application/encounter
 ```
 

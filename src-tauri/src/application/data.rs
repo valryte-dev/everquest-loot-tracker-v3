@@ -44,6 +44,7 @@ fn payouts(value: Option<String>) -> Vec<Value> {
 fn page_fields(page: &str) -> &'static [&'static str] {
     match page {
         "live" => &["loot", "tracked", "items", "mobs"],
+        "live-stream" => &["loot"],
         "linked" => &["linkedLoot"],
         "tracked" => &["tracked"],
         "death-reports" => &["deathReports"],
@@ -119,8 +120,18 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
         },
     )?;
 
-    let loot = query_values_if(wants("loot"),
-        &connection,
+    let quest_usage_index = if wants("loot") || wants("linkedLoot") {
+        Some(super::quest_catalog::usage_index(&connection)?)
+    } else {
+        None
+    };
+
+    let loot_limit = if page == Some("live-stream") {
+        100
+    } else {
+        1000
+    };
+    let loot_sql = format!(
         "SELECT d.id,d.happened_at,d.item_name,COALESCE(m.name,d.mob_name),d.looter_name,
                 rv.value_pp,rv.value_basis,COALESCE(rv.sample_count,0),COALESCE(d.item_id,rv.item_id),
                 EXISTS(SELECT 1 FROM split_loot_items s WHERE s.loot_drop_id=d.id),
@@ -129,16 +140,24 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
          LEFT JOIN mobs m ON m.id=d.mob_id
          LEFT JOIN item_name_resolutions ni ON ni.item_name=d.item_name COLLATE NOCASE
          LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(d.item_id,ni.item_id)
-         ORDER BY d.happened_at DESC,d.id DESC LIMIT 1000",
-        |row| Ok(json!({
+         ORDER BY d.happened_at DESC,d.id DESC LIMIT {loot_limit}"
+    );
+    let loot = query_values_if(wants("loot"), &connection, &loot_sql, |row| {
+        let item_name = row.get::<_, String>(2)?;
+        let item_id = row.get::<_, Option<i64>>(8)?;
+        let quest_uses = quest_usage_index
+            .as_ref()
+            .map(|index| index.lookup(item_id, &item_name))
+            .unwrap_or_default();
+        Ok(json!({
             "id": row.get::<_, i64>(0)?, "happenedAt": row.get::<_, String>(1)?,
-            "itemName":row.get::<_,String>(2)?,"mobName":row.get::<_,Option<String>>(3)?,
+            "itemName":item_name,"mobName":row.get::<_,Option<String>>(3)?,
             "looterName":row.get::<_,Option<String>>(4)?,"valuePp":row.get::<_,Option<i64>>(5)?,
             "valueBasis":row.get::<_,Option<String>>(6)?,"valueSamples":row.get::<_,i64>(7)?,
-            "itemId":row.get::<_,Option<i64>>(8)?,"splitListed":row.get::<_,bool>(9)?,
-            "attendees":names(row.get::<_,Option<String>>(10)?)
-        })),
-    )?;
+            "itemId":item_id,"splitListed":row.get::<_,bool>(9)?,
+            "attendees":names(row.get::<_,Option<String>>(10)?),"questUses":quest_uses
+        }))
+    })?;
 
     let splits = query_values_if(wants("splits"),
         &connection,
@@ -383,12 +402,18 @@ fn snapshot_selected(database: &Database, page: Option<&str>) -> Result<Value, S
          LEFT JOIN resolved_item_values rv ON rv.item_id=COALESCE(l.item_id,ni.item_id)
          ORDER BY l.happened_at DESC,l.id DESC LIMIT 5000",
         |row| {
+            let item_name = row.get::<_, String>(4)?;
+            let item_id = row.get::<_, Option<i64>>(5)?;
+            let quest_uses = quest_usage_index
+                .as_ref()
+                .map(|index| index.lookup(item_id, &item_name))
+                .unwrap_or_default();
             Ok(json!({
                 "id":row.get::<_,i64>(0)?,"happenedAt":row.get::<_,String>(1)?,
                 "channel":row.get::<_,String>(2)?,"speakerName":row.get::<_,String>(3)?,
-                "itemName":row.get::<_,String>(4)?,"itemId":row.get::<_,Option<i64>>(5)?,
+                "itemName":item_name,"itemId":item_id,
                 "valuePp":row.get::<_,Option<i64>>(6)?,"count30d":row.get::<_,i64>(7)?,
-                "valueBasis":row.get::<_,Option<String>>(8)?
+                "valueBasis":row.get::<_,Option<String>>(8)?,"questUses":quest_uses
             }))
         },
     )?;
@@ -1003,8 +1028,22 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
     let loadout=active_character.as_deref().filter(|value|!value.is_empty()).and_then(|character|
         connection.query_row("SELECT captured_at,primary_weapon_name,primary_item_id,secondary_weapon_name,secondary_item_id FROM character_weapon_loadouts WHERE character_name=? COLLATE NOCASE ORDER BY captured_at DESC,id DESC LIMIT 1",
             [character],|row|Ok(json!({"character":character,"capturedAt":row.get::<_,String>(0)?,"primary":row.get::<_,Option<String>>(1)?,"primaryItemId":row.get::<_,Option<i64>>(2)?,"secondary":row.get::<_,Option<String>>(3)?,"secondaryItemId":row.get::<_,Option<i64>>(4)?}))).optional().ok().flatten());
+    let members = query_values(
+        &connection,
+        "SELECT known_members.id,known_members.name,current_group.member_id IS NOT NULL
+         FROM known_members
+         LEFT JOIN current_group ON current_group.member_id=known_members.id
+         ORDER BY current_group.member_id IS NULL,known_members.name COLLATE NOCASE",
+        |row| {
+            Ok(json!({
+                "id":row.get::<_,i64>(0)?,
+                "name":row.get::<_,String>(1)?,
+                "active":row.get::<_,bool>(2)?
+            }))
+        },
+    )?;
     Ok(
-        json!({"theme":theme,"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"eqTime":eq_time,"damageEncounters":encounters,"clericHealCalls":cleric_heal_calls,"guildSlowCalls":guild_slow_calls,"tasks":[]}),
+        json!({"theme":theme,"activeCharacter":active_character,"preferredTargetCharacter":preferred_target_character,"preferredTargetEncounterId":preferred_target_encounter_id,"currentWeaponLoadout":loadout,"eqTime":eq_time,"members":members,"damageEncounters":encounters,"clericHealCalls":cleric_heal_calls,"guildSlowCalls":guild_slow_calls,"tasks":[]}),
     )
 }
 

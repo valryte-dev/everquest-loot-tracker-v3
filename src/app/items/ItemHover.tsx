@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import {createPortal} from "react-dom";
 import {getWardrobeCatalogItem} from "../../shared/backend";
-import type {WardrobeCatalogItem} from "../../shared/contracts";
+import type {QuestUsage,WardrobeCatalogItem} from "../../shared/contracts";
 
 type LoadState={kind:"idle"}|{kind:"loading"}|{kind:"ready";item:WardrobeCatalogItem|null}|{kind:"error"};
 type Stat={label:string;value:number;signed?:boolean};
@@ -39,10 +39,10 @@ const requestItem=(itemId:number|undefined,itemName:string)=>{
 const iconPath=(iconId?:number)=>iconId&&iconId>0?`/item-icons/Item_${iconId}.png`:undefined;
 const pp=(value?:number)=>value&&value>0?`${Math.round(value).toLocaleString()} pp`:"No market estimate";
 
-export interface ItemHoverIdentity {itemName:string;itemId?:number;iconId?:number;valuePp?:number;details?:WardrobeCatalogItem}
+export interface ItemHoverIdentity {itemName:string;itemId?:number;iconId?:number;valuePp?:number;details?:WardrobeCatalogItem;questUses?:QuestUsage[]}
 export interface ItemHoverProps extends ItemHoverIdentity {children:ReactNode;focusable?:boolean;className?:string;title?:string}
 
-export function ItemHover({itemName,itemId,iconId,valuePp,details,children,focusable=true,className="",title}:ItemHoverProps){
+export function ItemHover({itemName,itemId,iconId,valuePp,details,questUses=[],children,focusable=true,className="",title}:ItemHoverProps){
  const anchor=useRef<HTMLSpanElement>(null);
  const mounted=useRef(true);
  const[state,setState]=useState<LoadState>(details?{kind:"ready",item:details}:{kind:"idle"});
@@ -58,15 +58,30 @@ export function ItemHover({itemName,itemId,iconId,valuePp,details,children,focus
  };
  return <span ref={anchor} className={`item-hover-anchor ${className}`.trim()} title={title} tabIndex={focusable?0:undefined} onMouseEnter={show} onMouseLeave={()=>setVisible(false)} onFocus={show} onBlur={()=>setVisible(false)}>
   {children}
-  {visible&&createPortal(<aside className="item-popover" style={position} role="tooltip"><ItemCard name={itemName} itemId={itemId} iconId={iconId} valuePp={valuePp} state={state}/></aside>,document.body)}
+  {visible&&createPortal(<aside className="item-popover" style={position} role="tooltip"><ItemCard name={itemName} itemId={itemId} iconId={iconId} valuePp={valuePp} questUses={questUses} state={state}/></aside>,document.body)}
  </span>;
 }
 
-function ItemCard({name,itemId,iconId,valuePp,state}:{name:string;itemId?:number;iconId?:number;valuePp?:number;state:LoadState}){
+const categoryLabel=(category:QuestUsage["category"])=>category==="plane_of_sky"?"Plane of Sky":category==="velious_armor"?"Velious armor":"Epic quest";
+const questTitle=(usage:QuestUsage)=>usage.rewardName&&usage.rewardName!==usage.questName?`${usage.questName} → ${usage.rewardName}`:usage.questName;
+
+export function QuestItemLabel({children,questUses=[]}:{children:ReactNode;questUses?:QuestUsage[]}){
+ if(!questUses.length)return <>{children}</>;
+ const label=questUses.length===1?questUses[0].questName:`${questUses[0].questName} +${questUses.length-1}`;
+ const title=questUses.map(usage=>`${usage.className} · ${questTitle(usage)}`).join("\n");
+ return <span className="quest-item-label">{children}<small title={title}><b>Quest piece</b>{label}</small></span>;
+}
+
+function QuestUsageSection({questUses}:{questUses:QuestUsage[]}){
+ if(!questUses.length)return null;
+ return <section className="item-quest-uses"><strong>Used for {questUses.length} quest{questUses.length===1?"":"s"}</strong>{questUses.map(usage=><p key={`${usage.entryId}:${usage.questName}`}><b>{categoryLabel(usage.category)} · {usage.className}</b><span>{questTitle(usage)}</span>{(usage.slot||usage.faction)&&<em>{[usage.faction,usage.slot].filter(Boolean).join(" · ")}</em>}</p>)}</section>;
+}
+
+function ItemCard({name,itemId,iconId,valuePp,questUses,state}:{name:string;itemId?:number;iconId?:number;valuePp?:number;questUses:QuestUsage[];state:LoadState}){
  if(state.kind==="loading")return <div className="item-popover-status"><i/><span>Loading item details...</span></div>;
  const item=state.kind==="ready"?state.item:null;
  const icon=iconPath(item?.iconId||iconId);
- if(!item)return <div className="item-card item-card-basic"><header>{icon?<img src={icon} alt=""/>:<i>?</i>}<div><small>EverQuest item</small><strong>{name}</strong></div></header><footer><span>{itemId?`Item ID ${itemId}`:"Catalog details unavailable"}</span><b>{pp(valuePp)}</b></footer></div>;
+ if(!item)return <div className="item-card item-card-basic"><header>{icon?<img src={icon} alt=""/>:<i>?</i>}<div><small>EverQuest item</small><strong>{name}</strong></div></header><QuestUsageSection questUses={questUses}/><footer><span>{itemId?`Item ID ${itemId}`:"Catalog details unavailable"}</span><b>{pp(valuePp)}</b></footer></div>;
  const stats=itemStats(item);
  const effects=[["Effect",item.wornName],["Focus",item.focusName],["Click",item.clickName],["Proc",item.procName]].filter((row):row is string[]=>Boolean(row[1]));
  const renderStats=(rows:Stat[])=><div className="item-stat-line">{rows.map(row=><span key={row.label}><b>{row.label}</b> {row.signed&&row.value>0?"+":""}{row.value}</span>)}</div>;
@@ -76,6 +91,7 @@ function ItemCard({name,itemId,iconId,valuePp,state}:{name:string;itemId?:number
   {(stats.attributes.length>0||stats.resists.length>0||stats.special.length>0)&&<section className="item-stat-groups">{stats.attributes.length>0&&renderStats(stats.attributes)}{stats.resists.length>0&&renderStats(stats.resists)}{stats.special.length>0&&renderStats(stats.special)}</section>}
   {effects.length>0&&<section className="item-effects">{effects.map(([label,value])=><p key={label}><b>{label}:</b> {value}</p>)}</section>}
   <section className="item-usable"><p><b>Class:</b> {itemClasses(item.classes)}</p><p><b>Race:</b> {itemRaces(item.races)}</p></section>
+  <QuestUsageSection questUses={questUses}/>
   <footer><span>ID {item.peqId||item.id} / WT {(item.weight/10).toFixed(1)}</span><b>{pp(valuePp)}</b></footer>
  </div>;
 }

@@ -345,23 +345,6 @@ fn spawn_match(zone_name: Option<&str>, mob_name: &str) -> SpawnMatch {
     }
 }
 
-fn experience_fallback_match(zone_name: Option<&str>) -> SpawnMatch {
-    let catalog = catalog();
-    let seconds = zone_name
-        .map(normalize)
-        .and_then(|zone| catalog.aliases.get(&zone).cloned().or(Some(zone)))
-        .and_then(|zone| catalog.zones.get(&zone).map(|rules| rules.default_seconds))
-        .unwrap_or(UNKNOWN_ZONE_SECONDS);
-    SpawnMatch {
-        seconds,
-        window_seconds: 0,
-        window_after: false,
-        max_skips: 0,
-        match_kind: "experienceFallback",
-        matched_rule: None,
-    }
-}
-
 fn load_overrides(connection: &rusqlite::Connection) -> Result<Vec<SpawnTimerOverride>, String> {
     let mut statement = connection
         .prepare(
@@ -1309,7 +1292,17 @@ pub fn snapshot(database: &Database) -> Result<SpawnTimerSnapshot, String> {
                            AND z.happened_at<=e.happened_at
                            AND z.zone_name<>'EverQuest' COLLATE NOCASE
                          ORDER BY z.happened_at DESC,z.id DESC LIMIT 1)),
-                    c.mob_name,d.id,d.mob_name
+                    c.mob_name,c.mob_evidence,d.id,d.mob_name,
+                    CASE WHEN c.mob_name IS NULL
+                              AND e.happened_at>=datetime('now','localtime','-6 hours')
+                         THEN (SELECT p.target_name FROM combat_pet_evidence p
+                               WHERE p.source_file=e.source_file
+                                 AND p.character_name=e.character_name COLLATE NOCASE
+                                 AND datetime(p.last_seen_at)<=datetime(e.happened_at)
+                                 AND datetime(p.last_seen_at)>=datetime(e.happened_at,'-5 minutes')
+                                 AND p.target_name<>p.pet_name COLLATE NOCASE
+                               ORDER BY datetime(p.last_seen_at) DESC,p.source_offset DESC LIMIT 1)
+                    END
              FROM experience_gain_events e
              LEFT JOIN experience_gain_contexts c ON c.experience_gain_event_id=e.id
              LEFT JOIN damage_encounters d ON d.id=(
@@ -1339,52 +1332,89 @@ pub fn snapshot(database: &Database) -> Result<SpawnTimerSnapshot, String> {
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<i64>>(5)?,
-                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
             ))
         })
         .map_err(|error| error.to_string())?
         .filter_map(Result::ok)
         .filter_map(
-            |(id, happened_at, character, zone_name, context_mob, encounter_id, encounter_mob)| {
+            |(
+                id,
+                happened_at,
+                character,
+                zone_name,
+                context_mob,
+                context_evidence,
+                encounter_id,
+                encounter_mob,
+                recent_pet_mob,
+            )| {
                 let killed_at = local_timestamp(&happened_at)?;
-                let active_candidate = (context_mob.is_none() && encounter_mob.is_none())
-                    .then(|| {
-                        unique_catalog_encounter(
-                            &overrides,
-                            catalog_encounters.get(&normalize(&character)),
-                            zone_name.as_deref(),
-                            killed_at,
-                        )
-                    })
-                    .flatten();
+                let active_candidate =
+                    (context_mob.is_none() && encounter_mob.is_none() && recent_pet_mob.is_none())
+                        .then(|| {
+                            unique_catalog_encounter(
+                                &overrides,
+                                catalog_encounters.get(&normalize(&character)),
+                                zone_name.as_deref(),
+                                killed_at,
+                            )
+                        })
+                        .flatten();
                 let resolved_encounter_id =
                     encounter_id.or(active_candidate.as_ref().map(|candidate| candidate.0));
                 let inferred_mob = context_mob
                     .clone()
                     .or(encounter_mob.clone())
+                    .or(recent_pet_mob.clone())
                     .or_else(|| active_candidate.map(|candidate| candidate.1));
-                let matched = inferred_mob
-                    .as_deref()
-                    .map(|mob| spawn_match_with_overrides(&overrides, zone_name.as_deref(), mob))
-                    .unwrap_or_else(|| experience_fallback_match(zone_name.as_deref()));
+                // XP is not proof of a kill: quest turn-ins and other rewards emit the same
+                // message. Only promote the event when it has independent mob evidence from a
+                // corrected context, a matching slain encounter, or one unambiguous catalog
+                // combat candidate. Bare or ambiguous XP remains available to XP tracking but
+                // must never originate a respawn timer.
+                let inferred_mob = inferred_mob?;
+                let matched =
+                    spawn_match_with_overrides(&overrides, zone_name.as_deref(), &inferred_mob);
                 if matched.seconds <= 0 {
                     return None;
                 }
+                let pet_target_evidence = context_evidence
+                    .as_deref()
+                    .is_some_and(|evidence| evidence == "pet-target-before-xp")
+                    || (context_mob.is_none()
+                        && encounter_mob.is_none()
+                        && recent_pet_mob.is_some());
+                if pet_target_evidence && matched.matched_rule.is_none() {
+                    return None;
+                }
                 let schedule = timer_schedule(killed_at, &matched, now, linger_seconds)?;
-                let origin_kind = if context_mob.is_some() {
+                let canonical_mob = if pet_target_evidence {
+                    matched
+                        .matched_rule
+                        .clone()
+                        .unwrap_or_else(|| inferred_mob.clone())
+                } else {
+                    inferred_mob
+                };
+                let origin_kind = if pet_target_evidence {
+                    "petTarget"
+                } else if context_mob.is_some() {
                     "correctedMob"
                 } else if resolved_encounter_id.is_some() {
                     "combatRecord"
                 } else {
-                    "experienceFallback"
+                    return None;
                 };
                 Some(SpawnTimer {
                     id: -id,
                     experience_event_id: Some(id),
                     encounter_id: resolved_encounter_id,
                     character,
-                    mob_name: inferred_mob.unwrap_or_else(|| "XP kill fallback".to_owned()),
+                    mob_name: canonical_mob,
                     killer_name: None,
                     zone_name,
                     killed_at: killed_at.to_rfc3339(),
@@ -1664,7 +1694,7 @@ mod tests {
     }
 
     #[test]
-    fn experience_fallback_uses_the_zone_default_without_a_slain_message() {
+    fn experience_without_mob_evidence_does_not_create_a_timer() {
         let directory = tempdir().unwrap();
         let database = Database::open(directory.path().join("xp-spawn-timers.sqlite3")).unwrap();
         database.migrate().unwrap();
@@ -1679,10 +1709,95 @@ mod tests {
         drop(connection);
 
         let result = snapshot(&database).unwrap();
+        assert!(result.timers.is_empty());
+    }
+
+    #[test]
+    fn recent_named_pet_target_creates_the_caster_xp_timer() {
+        let directory = tempdir().unwrap();
+        let database = Database::open(directory.path().join("xp-pet-target.sqlite3")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        let happened_at = (Local::now() - Duration::seconds(5))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let target_at = (Local::now() - Duration::minutes(2))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let self_spam_at = (Local::now() - Duration::seconds(6))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        connection.execute("INSERT INTO experience_gain_events(happened_at,character_name,raw_line,source_file,source_offset) VALUES(?1,'Valmezz','You gain experience!!','test.log',30)",[&happened_at]).unwrap();
+        let event_id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO experience_gain_contexts(experience_gain_event_id,zone_name,zone_evidence) VALUES(?1,'Plane of Mischief','entered')",[event_id]).unwrap();
+        connection.execute("INSERT INTO combat_pet_evidence(character_name,pet_name,target_name,last_seen_at,source_file,source_offset) VALUES('Valmezz','Treasure Chest','TwentyTwo',?1,'test.log',10)",[&target_at]).unwrap();
+        connection.execute("INSERT INTO combat_pet_evidence(character_name,pet_name,target_name,last_seen_at,source_file,source_offset) VALUES('Valmezz','Treasure Chest','Treasure Chest',?1,'test.log',20)",[&self_spam_at]).unwrap();
+        drop(connection);
+
+        let result = snapshot(&database).unwrap();
         assert_eq!(result.timers.len(), 1);
-        assert_eq!(result.timers[0].mob_name, "XP kill fallback");
-        assert_eq!(result.timers[0].respawn_seconds, 22 * 60);
-        assert_eq!(result.timers[0].match_kind, "experienceFallback");
+        assert_eq!(result.timers[0].mob_name, "Twenty Two");
+        assert_eq!(result.timers[0].origin_kind, "petTarget");
+        assert_eq!(result.timers[0].experience_event_id, Some(event_id));
+        assert_eq!(result.timers[0].respawn_seconds, 70 * 60);
+        assert_eq!(result.timers[0].match_kind, "catalogOverride");
+    }
+
+    #[test]
+    fn recent_unknown_pet_target_does_not_weaken_the_quest_xp_gate() {
+        let directory = tempdir().unwrap();
+        let database =
+            Database::open(directory.path().join("xp-unknown-pet-target.sqlite3")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        let happened_at = (Local::now() - Duration::seconds(5))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let target_at = (Local::now() - Duration::minutes(2))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        connection.execute("INSERT INTO experience_gain_events(happened_at,character_name,raw_line,source_file,source_offset) VALUES(?1,'Valmezz','You gain experience!!','test.log',30)",[&happened_at]).unwrap();
+        let event_id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO experience_gain_contexts(experience_gain_event_id,zone_name,zone_evidence) VALUES(?1,'Plane of Mischief','entered')",[event_id]).unwrap();
+        connection.execute("INSERT INTO combat_pet_evidence(character_name,pet_name,target_name,last_seen_at,source_file,source_offset) VALUES('Valmezz','Treasure Chest','Some Player',?1,'test.log',10)",[&target_at]).unwrap();
+        drop(connection);
+
+        let result = snapshot(&database).unwrap();
+        assert!(result.timers.is_empty());
+    }
+
+    #[test]
+    fn repeated_quest_turn_in_experience_does_not_create_timers() {
+        let directory = tempdir().unwrap();
+        let database = Database::open(directory.path().join("xp-quest-turn-in.sqlite3")).unwrap();
+        database.migrate().unwrap();
+        let connection = database.connect().unwrap();
+        let happened_at = (Local::now() - Duration::seconds(5))
+            .naive_local()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        for source_offset in 1..=4 {
+            connection.execute(
+                "INSERT INTO experience_gain_events(happened_at,character_name,raw_line,source_file,source_offset)
+                 VALUES(?1,'Smaash','You gain party experience!!','chardok.log',?2)",
+                params![happened_at, source_offset],
+            ).unwrap();
+            let event_id = connection.last_insert_rowid();
+            connection.execute(
+                "INSERT INTO experience_gain_contexts(experience_gain_event_id,zone_name,zone_evidence)
+                 VALUES(?1,'Chardok','entered')",
+                [event_id],
+            ).unwrap();
+        }
+        drop(connection);
+
+        let result = snapshot(&database).unwrap();
+        assert!(result.timers.is_empty());
     }
 
     #[test]
@@ -1749,10 +1864,7 @@ mod tests {
         drop(connection);
 
         let result = snapshot(&database).unwrap();
-        assert_eq!(result.timers.len(), 1);
-        assert_eq!(result.timers[0].mob_name, "XP kill fallback");
-        assert_eq!(result.timers[0].origin_kind, "experienceFallback");
-        assert_eq!(result.timers[0].encounter_id, None);
+        assert!(result.timers.is_empty());
     }
 
     #[test]
@@ -1913,9 +2025,7 @@ mod tests {
         drop(connection);
 
         let result = snapshot(&database).unwrap();
-        assert_eq!(result.timers.len(), 1);
-        assert_eq!(result.timers[0].mob_name, "XP kill fallback");
-        assert_eq!(result.timers[0].origin_kind, "experienceFallback");
+        assert!(result.timers.is_empty());
     }
 
     #[test]

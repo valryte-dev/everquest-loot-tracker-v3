@@ -61,9 +61,105 @@ struct TrackingConfiguration {
     target: Option<screen_capture::CaptureWindow>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrackingTrigger {
+    character: String,
+    gain_id: i64,
+    level_id: i64,
+    due: bool,
+}
+
+fn happened_after(observation: Option<&str>, event: Option<&str>) -> bool {
+    match (observation, event) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(observation), Some(event)) => event > observation,
+    }
+}
+
+fn tracking_trigger(
+    connection: &rusqlite::Connection,
+    character: &str,
+) -> Result<TrackingTrigger, String> {
+    let observation = connection
+        .query_row(
+            "SELECT happened_at FROM experience_observations
+             WHERE character_name=? COLLATE NOCASE
+             ORDER BY happened_at DESC,id DESC LIMIT 1",
+            [character],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let gain = connection
+        .query_row(
+            "SELECT id,happened_at FROM experience_gain_events
+             WHERE character_name=? COLLATE NOCASE
+             ORDER BY id DESC LIMIT 1",
+            [character],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let level = connection
+        .query_row(
+            "SELECT id,happened_at FROM activity_level_history
+             WHERE character_name=? COLLATE NOCASE
+             ORDER BY id DESC LIMIT 1",
+            [character],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let due = happened_after(
+        observation.as_deref(),
+        gain.as_ref().map(|(_, happened_at)| happened_at.as_str()),
+    ) || happened_after(
+        observation.as_deref(),
+        level.as_ref().map(|(_, happened_at)| happened_at.as_str()),
+    );
+    Ok(TrackingTrigger {
+        character: character.to_ascii_lowercase(),
+        gain_id: gain.map(|(id, _)| id).unwrap_or(0),
+        level_id: level.map(|(id, _)| id).unwrap_or(0),
+        due,
+    })
+}
+
 fn apply_scale(mut estimate: Estimate, scale: f64) -> Estimate {
     estimate.percent = (estimate.percent * scale).clamp(0.0, 100.0);
     estimate
+}
+
+fn scale_for_region(
+    capture: &screen_capture::CapturedWindow,
+    region: GaugeRegion,
+    saved_scale: f64,
+) -> f64 {
+    match selected_bounds(capture, region) {
+        Ok((_, _, 100, _)) => 1.0,
+        _ => saved_scale,
+    }
+}
+
+fn capture_saved_region(
+    target: Option<&screen_capture::CaptureWindow>,
+    region: GaugeRegion,
+) -> Result<(screen_capture::CapturedWindow, GaugeRegion), String> {
+    let capture = screen_capture::capture_region(
+        true,
+        target,
+        (region.x, region.y, region.width, region.height),
+    )?;
+    Ok((
+        capture,
+        GaugeRegion {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        },
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +210,9 @@ fn remember_verification(
                 height: cropped.height,
                 data_url: cropped.bmp_data_url(),
                 raw_percent: diagnostic.map(|value| value.percent),
-                adjusted_percent: diagnostic.map(|value| apply_scale(value, scale).percent),
+                adjusted_percent: diagnostic.map(|value| {
+                    apply_scale(value, scale_for_region(capture, region, scale)).percent
+                }),
                 confidence: diagnostic.map(|value| value.confidence),
             },
         });
@@ -245,7 +343,13 @@ fn estimate(
         .iter()
         .rposition(|value| *value)
         .ok_or_else(|| "No colored XP fill was detected inside the selected bar.".to_owned())?;
-    let percent = (((last + 1) as f64 / width as f64) * 1000.0).round() / 10.0;
+    let active_columns = active.iter().filter(|value| **value).count();
+    let measured_columns = if width == 100 {
+        active_columns
+    } else {
+        last + 1
+    };
+    let percent = ((measured_columns as f64 / width as f64) * 1000.0).round() / 10.0;
     let filled = last + 1;
     let continuity = active[..filled].iter().filter(|value| **value).count() as f64 / filled as f64;
     let density = matched as f64 / (width * height) as f64;
@@ -417,10 +521,15 @@ pub fn calibrate(
     };
     let capture = screen_capture::capture(true, target.as_ref())?;
     let initial = estimate(&capture, region, None)?;
-    let scale = displayed_percent
-        .filter(|value| *value > 0.0 && *value <= 100.0)
-        .map(|displayed| (displayed / initial.percent.max(0.1)).clamp(0.25, 4.0))
-        .unwrap_or(1.0);
+    let direct_ratio = selected_bounds(&capture, region)?.2 == 100;
+    let scale = if direct_ratio {
+        1.0
+    } else {
+        displayed_percent
+            .filter(|value| *value > 0.0 && *value <= 100.0)
+            .map(|displayed| (displayed / initial.percent.max(0.1)).clamp(0.25, 4.0))
+            .unwrap_or(1.0)
+    };
     let estimate = apply_scale(initial, scale);
     if estimate.confidence < 0.55 {
         return Err("The selected region did not produce a reliable XP reading. Select only the colored interior of the bar.".to_owned());
@@ -454,14 +563,16 @@ pub fn read_now(database: &Database, delay_ms: u64) -> Result<GaugeReading, Stri
         .ok_or_else(|| "Calibrate the XP gauge first.".to_owned())?;
     let target = load_capture_window(&connection)?;
     drop(connection);
-    let capture = screen_capture::capture(true, target.as_ref())?;
+    let (capture, captured_region) = capture_saved_region(target.as_ref(), region)?;
+    let effective_scale = scale_for_region(&capture, captured_region, scale);
     let estimate = reliable_estimate(
         database,
         &character,
         hue,
-        estimate(&capture, region, Some(hue)).map(|value| apply_scale(value, scale)),
+        estimate(&capture, captured_region, Some(hue))
+            .map(|value| apply_scale(value, effective_scale)),
     )?;
-    remember_verification(&capture, region, &character, hue, scale)?;
+    remember_verification(&capture, captured_region, &character, hue, scale)?;
     save_observation(database, &character, estimate)
 }
 
@@ -624,57 +735,75 @@ pub fn snapshot(database: &Database) -> Result<Value, String> {
 }
 
 pub fn start(database: Database, app: tauri::AppHandle, revision: Arc<AtomicU64>) {
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(5));
-        let configuration = (|| -> Result<Option<TrackingConfiguration>, String> {
-            let connection = database.connect().map_err(|error| error.to_string())?;
-            if setting(&connection, "xp_visual_enabled")?.as_deref() != Some("true") {
-                return Ok(None);
-            }
-            let character = active_character(&connection)?;
-            let target = load_capture_window(&connection)?;
-            Ok(
-                load_region(&connection, &character)?.map(|(region, hue, scale)| {
-                    TrackingConfiguration {
-                        character,
-                        region,
-                        hue,
-                        scale,
-                        target,
+    thread::spawn(move || {
+        let mut completed_trigger: Option<TrackingTrigger> = None;
+        loop {
+            thread::sleep(Duration::from_secs(5));
+            let configuration =
+                (|| -> Result<Option<(TrackingConfiguration, TrackingTrigger)>, String> {
+                    let connection = database.connect().map_err(|error| error.to_string())?;
+                    if setting(&connection, "xp_visual_enabled")?.as_deref() != Some("true") {
+                        return Ok(None);
                     }
+                    let character = active_character(&connection)?;
+                    let target = load_capture_window(&connection)?;
+                    let trigger = tracking_trigger(&connection, &character)?;
+                    Ok(
+                        load_region(&connection, &character)?.map(|(region, hue, scale)| {
+                            (
+                                TrackingConfiguration {
+                                    character,
+                                    region,
+                                    hue,
+                                    scale,
+                                    target,
+                                },
+                                trigger,
+                            )
+                        }),
+                    )
+                })();
+            let Ok(Some((configuration, trigger))) = configuration else {
+                continue;
+            };
+            if !trigger.due || completed_trigger.as_ref() == Some(&trigger) {
+                continue;
+            }
+            let Ok((capture, captured_region)) =
+                capture_saved_region(configuration.target.as_ref(), configuration.region)
+            else {
+                continue;
+            };
+            let Ok(value) = reliable_estimate(
+                &database,
+                &configuration.character,
+                configuration.hue,
+                estimate(&capture, captured_region, Some(configuration.hue)).map(|estimate| {
+                    apply_scale(
+                        estimate,
+                        scale_for_region(&capture, captured_region, configuration.scale),
+                    )
                 }),
-            )
-        })();
-        let Ok(Some(configuration)) = configuration else {
-            continue;
-        };
-        let Ok(capture) = screen_capture::capture(true, configuration.target.as_ref()) else {
-            continue;
-        };
-        let Ok(value) = reliable_estimate(
-            &database,
-            &configuration.character,
-            configuration.hue,
-            estimate(&capture, configuration.region, Some(configuration.hue))
-                .map(|estimate| apply_scale(estimate, configuration.scale)),
-        ) else {
-            continue;
-        };
-        let _ = remember_verification(
-            &capture,
-            configuration.region,
-            &configuration.character,
-            configuration.hue,
-            configuration.scale,
-        );
-        let should_save = database.connect().ok().and_then(|connection| connection.query_row(
+            ) else {
+                continue;
+            };
+            completed_trigger = Some(trigger);
+            let _ = remember_verification(
+                &capture,
+                captured_region,
+                &configuration.character,
+                configuration.hue,
+                configuration.scale,
+            );
+            let should_save = database.connect().ok().and_then(|connection| connection.query_row(
             "SELECT percent,happened_at FROM experience_observations WHERE character_name=? COLLATE NOCASE ORDER BY happened_at DESC,id DESC LIMIT 1",
             [&configuration.character], |row| Ok((row.get::<_,f64>(0)?,row.get::<_,String>(1)?))).optional().ok().flatten()).map(|(percent, happened_at)| {
                 (percent-value.percent).abs() >= 0.1 || chrono::NaiveDateTime::parse_from_str(&happened_at, "%Y-%m-%d %H:%M:%S").map(|time| Local::now().naive_local()-time >= chrono::Duration::seconds(60)).unwrap_or(true)
             }).unwrap_or(true);
-        if should_save && save_observation(&database, &configuration.character, value).is_ok() {
-            revision.fetch_add(1, Ordering::Relaxed);
-            let _ = app.emit("experience-changed", ());
+            if should_save && save_observation(&database, &configuration.character, value).is_ok() {
+                revision.fetch_add(1, Ordering::Relaxed);
+                let _ = app.emit("experience-changed", ());
+            }
         }
     });
 }
@@ -714,6 +843,48 @@ mod tests {
         .unwrap();
         assert!((reading.percent - 50.0).abs() < 0.1);
         assert!(reading.confidence > 0.8);
+    }
+
+    #[test]
+    fn visual_read_is_due_only_when_an_event_is_newer_than_the_last_observation() {
+        assert!(happened_after(None, None));
+        assert!(happened_after(
+            Some("2026-11-05 10:00:00"),
+            Some("2026-11-05 10:00:01")
+        ));
+        assert!(!happened_after(
+            Some("2026-11-05 10:00:01"),
+            Some("2026-11-05 10:00:01")
+        ));
+        assert!(!happened_after(Some("2026-11-05 10:00:01"), None));
+    }
+
+    #[test]
+    fn hundred_pixel_bar_counts_colored_columns_instead_of_the_last_edge() {
+        let mut pixels = vec![0u8; 100 * 10 * 4];
+        for y in 0..10 {
+            for x in (0..25).chain(std::iter::once(99)) {
+                let offset = (y * 100 + x) * 4;
+                pixels[offset + 1] = 150;
+                pixels[offset + 2] = 220;
+                pixels[offset + 3] = 255;
+            }
+        }
+        let capture = screen_capture::CapturedWindow {
+            title: "test".into(),
+            width: 100,
+            height: 10,
+            pixels,
+        };
+        let region = GaugeRegion {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        };
+        let reading = estimate(&capture, region, None).unwrap();
+        assert_eq!(reading.percent, 26.0);
+        assert_eq!(scale_for_region(&capture, region, 77.0 / 60.7), 1.0);
     }
 
     #[test]

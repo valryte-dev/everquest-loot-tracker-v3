@@ -87,6 +87,12 @@ pub enum LogEvent {
         zone_name: String,
         evidence: String,
     },
+    PlayerLocation {
+        happened_at: NaiveDateTime,
+        north_south_milli: i64,
+        east_west_milli: i64,
+        elevation_milli: i64,
+    },
 
     PlayerDeath {
         happened_at: NaiveDateTime,
@@ -297,6 +303,13 @@ fn joined() -> &'static Regex {
     VALUE.get_or_init(|| {
         Regex::new(r"^(?<name>[A-Za-z][A-Za-z'_-]*) has joined the group\.$")
             .expect("valid join regex")
+    })
+}
+
+fn local_joined() -> &'static Regex {
+    static VALUE: OnceLock<Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        Regex::new(r"^You have joined the group\.$").expect("valid local join regex")
     })
 }
 
@@ -560,6 +573,25 @@ pub fn parse_envelope(line: &str) -> Option<(NaiveDateTime, &str)> {
 
 pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     let (happened_at, body) = parse_envelope(line)?;
+    if let Some(coordinates) = body.strip_prefix("Your Location is ") {
+        let values = coordinates
+            .split(',')
+            .map(|value| value.trim().parse::<f64>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        if values.len() == 3
+            && values
+                .iter()
+                .all(|value| value.is_finite() && value.abs() <= 1_000_000.0)
+        {
+            return Some(LogEvent::PlayerLocation {
+                happened_at,
+                north_south_milli: (values[0] * 1000.0).round() as i64,
+                east_west_milli: (values[1] * 1000.0).round() as i64,
+                elevation_milli: (values[2] * 1000.0).round() as i64,
+            });
+        }
+        return None;
+    }
     if let Some(value) = game_time().captures(body) {
         let hour = value.name("hour")?.as_str().parse::<u16>().ok()?;
         let minute = value
@@ -907,6 +939,13 @@ pub fn parse_log_event(line: &str, active_character: &str) -> Option<LogEvent> {
     }
     if removed_from_group().is_match(body) {
         return Some(LogEvent::GroupCleared { happened_at });
+    }
+    if local_joined().is_match(body) {
+        return Some(LogEvent::GroupChange {
+            happened_at,
+            character: active_character.to_owned(),
+            change: GroupChangeKind::Joined,
+        });
     }
     for (pattern, change) in [
         (joined(), GroupChangeKind::Joined),
@@ -1280,6 +1319,22 @@ mod tests {
     }
 
     #[test]
+    fn parses_player_location_without_floating_point_event_state() {
+        assert!(matches!(
+            parse_log_event(
+                "[Thu Nov 05 22:12:34 2026] Your Location is 123.45, -67.89, 4.25",
+                "Mapper"
+            ),
+            Some(LogEvent::PlayerLocation {
+                north_south_milli: 123450,
+                east_west_milli: -67890,
+                elevation_milli: 4250,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn ignores_server_wide_who_population_as_zone_evidence() {
         assert!(parse_log_event(
             "[Sat Oct 31 08:17:12 2026] There are 2 players in EverQuest.",
@@ -1365,6 +1420,22 @@ mod tests {
             "Youngman",
         );
         assert!(matches!(event, Some(LogEvent::GroupCleared { .. })));
+    }
+
+    #[test]
+    fn parses_local_player_joining_a_group() {
+        let event = parse_log_event(
+            "[Wed Nov 04 05:58:51 2026] You have joined the group.",
+            "Utrido",
+        );
+        assert!(matches!(
+            event,
+            Some(LogEvent::GroupChange {
+                character,
+                change: GroupChangeKind::Joined,
+                ..
+            }) if character == "Utrido"
+        ));
     }
 
     #[test]

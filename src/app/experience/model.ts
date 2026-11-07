@@ -14,6 +14,59 @@ export interface HistoricalLevelPace {
  xpPerGain?:number;
 }
 
+export interface CurrentLevelWindow {
+ level?:number;
+ startedAt?:string;
+ observations:ExperienceObservation[];
+ gainEvents:ExperienceGainEvent[];
+}
+
+export interface ExperienceContextSample {
+ event:ExperienceGainEvent;
+ xp:number;
+}
+
+export interface ExperienceContextSummary {
+ label:string;
+ gains:number;
+ correlatedGains:number;
+ xp:number;
+ xpPerGain?:number;
+ perHour?:number;
+ detail?:string;
+}
+
+export function summarizeExperienceContexts(samples:ExperienceContextSample[],events:ExperienceGainEvent[],label:(event:ExperienceGainEvent)=>string,detail?:(event:ExperienceGainEvent)=>string|undefined){
+ const groups=new Map<string,{gains:number;correlatedGains:number;xp:number;times:string[];detail?:string}>();
+ events.forEach(event=>{
+  const key=label(event)||"Unknown",row=groups.get(key)||{gains:0,correlatedGains:0,xp:0,times:[],detail:detail?.(event)};
+  row.gains++;row.detail||=detail?.(event);groups.set(key,row);
+ });
+ samples.forEach(({event,xp})=>{
+  const key=label(event)||"Unknown",row=groups.get(key)||{gains:1,correlatedGains:0,xp:0,times:[],detail:detail?.(event)};
+  row.correlatedGains++;row.xp+=xp;row.times.push(event.happenedAt);row.detail||=detail?.(event);groups.set(key,row);
+ });
+ return [...groups].map(([key,row]):ExperienceContextSummary=>{
+  const hours=activeHoursForTimes(row.times);
+  return{label:key,gains:row.gains,correlatedGains:row.correlatedGains,xp:row.xp,xpPerGain:row.correlatedGains?row.xp/row.correlatedGains:undefined,perHour:row.correlatedGains>1&&hours>.01?row.xp/hours:undefined,detail:row.detail};
+ }).sort((a,b)=>(b.perHour??b.xpPerGain??-1)-(a.perHour??a.xpPerGain??-1)||b.gains-a.gains||a.label.localeCompare(b.label));
+}
+
+export function currentLevelWindow(character:string,observations:ExperienceObservation[],gainEvents:ExperienceGainEvent[],levelEvents:ExperienceLevelEvent[]):CurrentLevelWindow{
+ const characterObservations=observations.filter(row=>row.character===character).sort((a,b)=>time(b.happenedAt)-time(a.happenedAt));
+ const latestTransition=levelEvents.filter(row=>row.character===character).sort((a,b)=>time(b.happenedAt)-time(a.happenedAt))[0];
+ const level=latestTransition?.level??characterObservations[0]?.level;
+ const transitionTime=latestTransition?time(latestTransition.happenedAt):undefined;
+ let currentObservations=characterObservations.filter(row=>(transitionTime==null||time(row.happenedAt)>transitionTime)&&(level==null||row.level==null||row.level===level));
+ if(transitionTime==null&&level!=null)currentObservations=characterObservations.filter(row=>row.level==null||row.level===level);
+ const inferredStart=currentObservations.length?Math.min(...currentObservations.map(row=>time(row.happenedAt))):undefined;
+ const cutoff=transitionTime??inferredStart;
+ const currentGainEvents=gainEvents
+  .filter(row=>row.character===character&&(cutoff==null||time(row.happenedAt)>cutoff))
+  .sort((a,b)=>time(b.happenedAt)-time(a.happenedAt));
+ return{level,startedAt:latestTransition?.happenedAt??(inferredStart==null?undefined:new Date(inferredStart).toISOString()),observations:currentObservations,gainEvents:currentGainEvents};
+}
+
 function activeElapsedMilliseconds(values:number[]){
  const ordered=[...values].sort((a,b)=>a-b);
  let total=0;

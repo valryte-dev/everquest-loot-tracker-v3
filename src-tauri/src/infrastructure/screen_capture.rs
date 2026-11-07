@@ -284,9 +284,10 @@ mod windows {
         windows
     }
 
-    pub fn capture(
+    fn capture_impl(
         require_foreground: bool,
         target: Option<&CaptureWindow>,
+        region: Option<(f64, f64, f64, f64)>,
     ) -> Result<CapturedWindow, String> {
         let (window, title) = if require_foreground {
             let foreground = unsafe { GetForegroundWindow() };
@@ -331,10 +332,27 @@ mod windows {
         if unsafe { GetWindowRect(window, &mut rect) } == 0 {
             return Err("Unable to read the EverQuest window bounds.".to_owned());
         }
-        let width = rect.right - rect.left;
-        let height = rect.bottom - rect.top;
-        if width <= 0 || height <= 0 {
+        let window_width = rect.right - rect.left;
+        let window_height = rect.bottom - rect.top;
+        if window_width <= 0 || window_height <= 0 {
             return Err("The EverQuest window has no visible capture area.".to_owned());
+        }
+        let (source_x, source_y, width, height) = region
+            .map(|(x, y, width, height)| {
+                let left = (x.clamp(0.0, 1.0) * window_width as f64).round() as i32;
+                let top = (y.clamp(0.0, 1.0) * window_height as f64).round() as i32;
+                let width = (width.clamp(0.0, 1.0) * window_width as f64).round() as i32;
+                let height = (height.clamp(0.0, 1.0) * window_height as f64).round() as i32;
+                (
+                    rect.left + left,
+                    rect.top + top,
+                    width.min(window_width - left),
+                    height.min(window_height - top),
+                )
+            })
+            .unwrap_or((rect.left, rect.top, window_width, window_height));
+        if width <= 0 || height <= 0 {
+            return Err("The selected capture area has no visible pixels.".to_owned());
         }
         let screen = unsafe { GetDC(0) };
         if screen == 0 {
@@ -357,7 +375,7 @@ mod windows {
         let previous = unsafe { SelectObject(memory, bitmap) };
         let copied = unsafe {
             BitBlt(
-                memory, 0, 0, width, height, screen, rect.left, rect.top, 0x40CC0020,
+                memory, 0, 0, width, height, screen, source_x, source_y, 0x40CC0020,
             )
         };
         let mut pixels = vec![0u8; width as usize * height as usize * 4];
@@ -413,15 +431,39 @@ mod windows {
             pixels,
         })
     }
+
+    pub fn capture(
+        require_foreground: bool,
+        target: Option<&CaptureWindow>,
+    ) -> Result<CapturedWindow, String> {
+        capture_impl(require_foreground, target, None)
+    }
+
+    pub fn capture_region(
+        require_foreground: bool,
+        target: Option<&CaptureWindow>,
+        region: (f64, f64, f64, f64),
+    ) -> Result<CapturedWindow, String> {
+        capture_impl(require_foreground, target, Some(region))
+    }
 }
 
 #[cfg(target_os = "windows")]
-pub use windows::{capture, list_windows};
+pub use windows::{capture, capture_region, list_windows};
 
 #[cfg(not(target_os = "windows"))]
 pub fn capture(
     _require_foreground: bool,
     _target: Option<&CaptureWindow>,
+) -> Result<CapturedWindow, String> {
+    Err("Visual experience capture is currently available on Windows.".to_owned())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn capture_region(
+    _require_foreground: bool,
+    _target: Option<&CaptureWindow>,
+    _region: (f64, f64, f64, f64),
 ) -> Result<CapturedWindow, String> {
     Err("Visual experience capture is currently available on Windows.".to_owned())
 }

@@ -35,4 +35,6 @@ The script uses the MediaWiki API, validates linked item pages, writes a determi
 
 The workspace provides category tabs, a class selector, text filtering with a one-click clear control, readiness/name/class sorting, owned-only and ready-only filters, and expand/collapse-all controls. Compact cards show reward imagery, completion progress, and component previews. Expanded cards show stored values plus character, quantity, and carried/banked location details.
 
+Live Loot and Linked Loot snapshots reuse the same catalog to mark recognized components as **Quest pieces**. The row shows the matching quest name, and the shared item hover card lists every matching quest, class, reward, faction, and armor slot. Resolution prefers the canonical item ID and uses a normalized captured name only when no canonical match is available; this enrichment runs in the bounded page query and never in the live log parser.
+
 Repeated requirements shared by multiple quests are counted once in the page-level owned-value summary. Quest readiness remains scoped to each quest.

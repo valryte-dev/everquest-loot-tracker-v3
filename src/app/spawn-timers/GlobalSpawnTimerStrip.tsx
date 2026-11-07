@@ -24,7 +24,7 @@ type StripTimer={id:string;name:string;detail:string;dueAt?:string;category:"glo
 export function GlobalSpawnTimerStrip(){
  const[data,setData]=useState<SpawnTimerSnapshot>(EMPTY),[hidden,setHidden]=useState<Set<string>>(sessionHiddenTimers),[now,setNow]=useState(Date.now());
  const refresh=useCallback(()=>getSpawnTimerSnapshot().then(setData).catch(()=>{}),[]);
- useEffect(()=>{void refresh();const poll=window.setInterval(refresh,30000),clock=window.setInterval(()=>setNow(Date.now()),1000);let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen("data-changed",refresh).then(value=>unlisten=value);return()=>{window.clearInterval(poll);window.clearInterval(clock);unlisten?.()}},[refresh]);
+ useEffect(()=>{void refresh();const poll=window.setInterval(refresh,30000),clock=window.setInterval(()=>setNow(Date.now()),1000);let unlistenLive:(()=>void)|undefined,unlistenData:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window){listen<string[]>("live-log-changed",event=>{if(event.payload.includes("spawnTimers"))void refresh()}).then(value=>unlistenLive=value);listen<string>("data-changed",event=>{if(event.payload==="spawn-timer.anchor"||event.payload.startsWith("spawnTimer."))void refresh()}).then(value=>unlistenData=value)}return()=>{window.clearInterval(poll);window.clearInterval(clock);unlistenLive?.();unlistenData?.()}},[refresh]);
  const visible=useMemo<StripTimer[]>(()=>[
   ...data.globalTimers.map(timer=>({id:`global:${timer.id}`,name:timer.name,detail:`${timer.server} · ${timer.origin}`,dueAt:timer.dueAt,category:"global" as const,uncertain:timer.uncertain})),
   ...data.timers.map(timer=>{const state=spawnTimerState(timer,now);return{id:`mob:${timer.id}`,name:timer.mobName,detail:`${timer.zoneName||"Unknown zone"}${timer.originKind==="manualSpawn"?" · manual anchor":""}${timer.totalWindows>1?` · ${state.windowLabel}`:""}`,dueAt:new Date(state.target).toISOString(),category:spawnTimerCategory(timer),uncertain:false,inWindow:state.phase==="window",windowPercent:spawnWindowRemainingPercent(timer,now)}}),
@@ -41,7 +41,7 @@ export function GlobalSpawnTimerStrip(){
 function GlobalSpawnTimerCard({timer,now,dismiss}:{timer:StripTimer;now:number;dismiss:()=>void}){
  const remaining=parsedTime(timer.dueAt)-now,due=remaining<=0;
  return <article className={`${due?"due":""} ${timer.category}`}>
-  <div><strong>{timer.name}</strong><small>{timer.detail}</small></div>
+  <div><strong title={timer.name}>{timer.name}</strong><small title={timer.detail}>{timer.detail}</small></div>
   <time className={timer.uncertain?"uncertain":""} dateTime={timer.dueAt}>{timer.category==="window"?(timer.inWindow?`IN WINDOW · ${countdown(remaining).replace("Respawn due","closing")}`:`OPENS IN ${countdown(remaining)}`):countdown(remaining)}</time>
   <button type="button" title="Clear from workspace" aria-label={`Clear ${timer.name} from workspace`} onClick={dismiss}>×</button>
   {timer.windowPercent!==undefined&&<span className="global-window-progress" title={`${Math.round(timer.windowPercent)}% of the spawn window remains`}><i style={{width:`${timer.windowPercent}%`}}/></span>}

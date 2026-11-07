@@ -672,6 +672,7 @@ fn event_kind(event: &LogEvent) -> &'static str {
         LogEvent::LevelChanged { .. } => "levelChanged",
         LogEvent::ExperienceGained { .. } => "experienceGained",
         LogEvent::ZoneChanged { .. } => "zoneChanged",
+        LogEvent::PlayerLocation { .. } => "playerLocation",
         LogEvent::PlayerDeath { .. } => "playerDeath",
         LogEvent::Damage { .. } => "damage",
         LogEvent::ObservedMelee { .. } => "observedMelee",
@@ -811,25 +812,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(observed_dot_proc_report.encounters.len(), 1);
-        assert_eq!(observed_dot_proc_report.encounters[0].total_damage, 1_021);
-        assert_eq!(observed_dot_proc_report.encounters[0].procs.len(), 1);
-        assert_eq!(observed_dot_proc_report.encounters[0].dots.len(), 1);
-        assert_eq!(
-            observed_dot_proc_report.encounters[0].procs[0].caster_name,
-            "Unidentified player"
-        );
-        assert_eq!(
-            observed_dot_proc_report.encounters[0].dots[0].caster_name,
-            "Unidentified player"
-        );
-        assert_eq!(
-            observed_dot_proc_report.encounters[0].dots[0].attribution_method,
-            "proc"
-        );
-        assert_eq!(
-            observed_dot_proc_report.encounters[0].dots[0].ticks_applied,
-            6
-        );
+        assert_eq!(observed_dot_proc_report.encounters[0].total_damage, 271);
+        assert!(observed_dot_proc_report.encounters[0].procs.is_empty());
+        assert!(observed_dot_proc_report.encounters[0].dots.is_empty());
         let other_player_report = analyze(
             &catalog,
             "[Mon Sep 07 08:55:39 2026] Lizzyflop says 'Ahhh, I feel much better now\\...'
@@ -839,12 +824,8 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(other_player_report.encounters[0].total_damage, 50);
-        assert_eq!(other_player_report.encounters[0].procs.len(), 1);
-        assert_eq!(
-            other_player_report.encounters[0].procs[0].caster_name,
-            "Lizzyflop"
-        );
+        assert_eq!(other_player_report.encounters[0].total_damage, 30);
+        assert!(other_player_report.encounters[0].procs.is_empty());
 
         let direct_proc_report = analyze(
             &catalog,

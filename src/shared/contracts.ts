@@ -5,12 +5,13 @@ export interface FriendsEditResult { sourceCharacter:string; friendCount:number;
 export interface FriendsSyncResult { sourceCharacter:string; friendCount:number; appliedCount:number; targetCharacters:string[]; backupDirectory:string }
 export interface ModelPackStatus { installed:boolean; valid:boolean; latestVersion:string; updateAvailable:boolean; name?:string; version?:string; path?:string; sourceUrl?:string; assetBaseUrl?:string; modelCount:number; fileCount:number; bytes:number; verifiedAt?:string; error?:string }
 export interface Member { id:number; name:string; active:boolean }
-export interface Loot { id:number; happenedAt:string; itemName:string; itemId?:number; mobName?:string; looterName?:string; valuePp?:number; valueBasis?:string; valueSamples?:number; splitListed:boolean; attendees:string[] }
+export interface QuestUsage { entryId:number; category:"plane_of_sky"|"velious_armor"|"epic"; className:string; questName:string; rewardName:string; slot:string; faction:string; sourceUrl:string }
+export interface Loot { id:number; happenedAt:string; itemName:string; itemId?:number; mobName?:string; looterName?:string; valuePp?:number; valueBasis?:string; valueSamples?:number; splitListed:boolean; attendees:string[]; questUses:QuestUsage[] }
 export interface Split { key:string; itemName:string; addedAt:string; mobName?:string; looterName?:string; payoutValuePp?:number; marketValuePp?:number; marketValueBasis?:string; marketValueSamples?:number; attendees:string[] }
 export interface SplitSaleReconciliationSale { key:string; valuePp:number; note:string }
 export interface SplitSaleReconciliationRequest { sales:SplitSaleReconciliationSale[] }
 export interface TrackedLoot { id:number; sourceLootId?:number; happenedAt:string; trackedAt:string; itemName:string; mobName?:string; looterName?:string; valuePp?:number; valueBasis?:string; valueSamples?:number; attendees:string[] }
-export interface LinkedLoot { id:number; happenedAt:string; channel:"group"|"guild"; speakerName:string; itemName:string; itemId?:number; valuePp?:number; valueBasis?:string; count30d:number }
+export interface LinkedLoot { id:number; happenedAt:string; channel:"group"|"guild"; speakerName:string; itemName:string; itemId?:number; valuePp?:number; valueBasis?:string; count30d:number; questUses:QuestUsage[] }
 export interface ActivityLoot { id:number; happenedAt:string; character:string; itemName:string; itemId?:number; looterName:string; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
 export interface ActivityMob { id:number; happenedAt:string; character:string; mobName:string; killerName?:string; sourceFile:string }
 export interface ActivityOffer { id:number; happenedAt:string; character:string; offererName:string; itemName:string; itemId?:number; sourceFile:string; valuePp?:number; valueBasis?:string; valueSamples:number }
@@ -50,7 +51,7 @@ export interface ClericHealReplayFile { formatVersion:number; title:string; save
 export interface ClericHealReplayEntry extends ClericHealReplaySummary { fileName:string; path:string; title:string; savedAt:string; character:string; targetMob:string }
 export interface SystemTaskStatus { id:string; label:string; state:"running"|"completed"|"failed"; detail:string; completed?:number; total?:number; startedAt:string; finishedAt?:string }
 export interface EqTimeSync { gameMinutes:number; synchronizedAt:string; gameDate:string; character:string }
-export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; theme?:string; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; eqTime?:EqTimeSync; damageEncounters:DamageEncounter[]; clericHealCalls?:ClericHealCall[]; guildSlowCalls?:GuildSlowCall[] }
+export interface GlobalStatusSnapshot { tasks:SystemTaskStatus[]; theme?:string; activeCharacter?:string; preferredTargetCharacter?:string; preferredTargetEncounterId?:number; currentWeaponLoadout?:CurrentWeaponLoadout; eqTime?:EqTimeSync; members?:Member[]; damageEncounters:DamageEncounter[]; clericHealCalls?:ClericHealCall[]; guildSlowCalls?:GuildSlowCall[] }
 export interface DamageParticipant { name:string; totalDamage:number; hitCount:number; firstDamageAt:string; lastDamageAt:string; recentDamage12?:number }
 export interface DamageTarget extends DamageParticipant { maxHit:number }
 export interface DamageSpellMetric { playerName:string; spellName:string; procCount:number; directProcDamage:number; dotDamage:number; dotTickCount:number; procDotDamage:number; totalProcDamage:number }
@@ -119,3 +120,5 @@ export interface DotTrainingParticipant { name:string; totalDamage:number; hitCo
 export interface DotTrainingEncounter { id:number; mobName:string; startedAt:string; endedAt?:string; lastDamageAt:string; totalDamage:number; meleeDamage:number; spellDamage:number; hitCount:number; outcome:string; participants:DotTrainingParticipant[]; events:DotTrainingEvent[]; incomingEvents:DotTrainingIncomingEvent[]; dots:DotTrainingApplication[]; procs:DotTrainingProc[] }
 export interface DotTrainingReport { activeCharacter:string; lineCount:number; recognizedCount:number; ignoredCount:number; dotProfileCount:number; combatProfileCount:number; projectedAllTicks:boolean; projectedThrough?:string; lines:DotTrainingLine[]; encounters:DotTrainingEncounter[]; warnings:string[] }
 export type LoadingState<T>={kind:"loading"}|{kind:"ready";value:T}|{kind:"error";message:string};
+export interface MapPosition { northSouth:number; eastWest:number; elevation:number; headingDegrees?:number; happenedAt:string }
+export interface MapSnapshot { activeCharacter:string; zoneName:string; position:MapPosition|null }

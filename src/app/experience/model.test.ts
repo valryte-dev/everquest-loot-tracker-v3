@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {ExperienceGainEvent,ExperienceLevelEvent,ExperienceObservation} from "../../shared/contracts";
-import {combinedHistoricalRate,historicalLevelPaces,visualExperienceRate} from "./model";
+import {combinedHistoricalRate,currentLevelWindow,historicalLevelPaces,summarizeExperienceContexts,visualExperienceRate} from "./model";
 
 const level=(id:number,happenedAt:string,value:number,direction:"gained"|"lost"="gained"):ExperienceLevelEvent=>({id,happenedAt,character:"Tester",level:value,direction,sourceFile:"eqlog_Tester.txt"});
 const gain=(id:number,happenedAt:string):ExperienceGainEvent=>({id,happenedAt,character:"Tester",groupMembers:["Tester"]});
@@ -79,5 +79,55 @@ describe("visual XP pace",()=>{
    observation(3,"2026-10-20 10:30:00",50,51),
   ];
   expect(visualExperienceRate(rows,now)).toBeCloseTo(120);
+ });
+});
+
+describe("current level window",()=>{
+ it("excludes every observation and gain from completed levels",()=>{
+  const observations=[
+   observation(1,"2026-11-02 12:40:00",98,44),
+   observation(2,"2026-11-02 12:50:35",100,44),
+   observation(3,"2026-11-02 13:00:00",2,45),
+   observation(4,"2026-11-02 13:10:00",4,45),
+  ];
+  const events=[gain(1,"2026-11-02 12:45:00"),gain(2,"2026-11-02 12:50:35"),gain(3,"2026-11-02 13:05:00")];
+  const window=currentLevelWindow("Tester",observations,events,[level(1,"2026-11-02 12:50:35",45)]);
+  expect(window.level).toBe(45);
+  expect(window.observations.map(row=>row.id)).toEqual([4,3]);
+  expect(window.gainEvents.map(row=>row.id)).toEqual([3]);
+ });
+
+ it("uses the latest transition for de-level and re-level boundaries",()=>{
+  const observations=[observation(1,"2026-11-02 13:05:00",20,44),observation(2,"2026-11-02 13:20:00",1,45)];
+  const transitions=[level(1,"2026-11-02 13:00:00",44,"lost"),level(2,"2026-11-02 13:15:00",45)];
+  const window=currentLevelWindow("Tester",observations,[gain(1,"2026-11-02 13:10:00"),gain(2,"2026-11-02 13:20:00")],transitions);
+  expect(window.level).toBe(45);
+  expect(window.observations.map(row=>row.id)).toEqual([2]);
+  expect(window.gainEvents.map(row=>row.id)).toEqual([2]);
+ });
+
+ it("falls back to the latest observed level when transition history is absent",()=>{
+  const observations=[observation(1,"2026-11-02 12:00:00",90,44),observation(2,"2026-11-02 13:00:00",5,45),observation(3,"2026-11-02 13:10:00",8,45)];
+  const window=currentLevelWindow("Tester",observations,[gain(1,"2026-11-02 12:30:00"),gain(2,"2026-11-02 13:05:00")],[]);
+  expect(window.level).toBe(45);
+  expect(window.observations.map(row=>row.id)).toEqual([3,2]);
+  expect(window.gainEvents.map(row=>row.id)).toEqual([2]);
+ });
+});
+
+describe("experience context summaries",()=>{
+ it("shows a newly observed roster before the next visual gauge reading",()=>{
+  const solo={...gain(1,"2026-11-04 06:00:00"),groupMembers:["Utrido"]};
+  const grouped={...gain(2,"2026-11-04 06:09:02"),groupMembers:["Utrido","Verosson"]};
+  const rows=summarizeExperienceContexts(
+   [{event:solo,xp:.75}],
+   [solo,grouped],
+   event=>`${event.groupMembers.length} players`,
+   event=>event.groupMembers.join(", "),
+  );
+  expect(rows).toEqual([
+   expect.objectContaining({label:"1 players",gains:1,correlatedGains:1,xpPerGain:.75}),
+   expect.objectContaining({label:"2 players",gains:1,correlatedGains:0,xpPerGain:undefined,detail:"Utrido, Verosson"}),
+  ]);
  });
 });

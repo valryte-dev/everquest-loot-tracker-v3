@@ -3,7 +3,7 @@ import {listen} from "@tauri-apps/api/event";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import {FEATURE_GROUPS,FEATURES,type FeatureKey} from "./features";
 import {bootstrapStatus,getActivityHistorySnapshot,getGlobalStatus,getPageSnapshot,getRevision,mutate} from "../shared/backend";
-import type {ActivityHistorySnapshot,ActivityLevel,ActivityLoot,ActivityMob,ActivityOffer,AppSnapshot,BootstrapStatus,DamageEncounter,GlobalStatusSnapshot,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,Split,TrackedLoot,WtsGroup,Runner} from "../shared/contracts";
+import type {ActivityHistorySnapshot,ActivityLevel,ActivityLoot,ActivityMob,ActivityOffer,AppSnapshot,BootstrapStatus,DamageEncounter,GlobalStatusSnapshot,History,InventoryItem,LinkedLoot,Loot,MasterItem,MerchantMessage,QuestUsage,Split,TrackedLoot,WtsGroup,Runner} from "../shared/contracts";
 import {DataTable,Field,IconButton,Modal,PathPicker,money,when,type Column} from "./ui";
 import {identifyArbitrage,scoreArbitrage,type ArbitrageOpportunity} from "./arbitrage";
 import {CompoundWorkspacePage} from "./compounds/CompoundPage";
@@ -42,11 +42,15 @@ import {createCharacterWardrobeTransfer,saveCharacterWardrobeTransfer} from "./w
 import {getUpdateUrl} from "./updates";
 import {FriendsSyncPage} from "./friends-sync/FriendsSyncPage";
 import {ExperienceTrackerPage} from "./experience/ExperienceTrackerPage";
+import {MapPage} from "./map/MapPage";
 import {EqTimeClock} from "./shell/EqTimeClock";
+import {QuestItemLabel} from "./items/ItemHover";
+import {mergePageSnapshot,pageSnapshotKey,type PageRefreshMode} from "./liveRefresh";
 
 const pageFromHash=():FeatureKey=>{const key=location.hash.replace(/^#\/?/,"") as FeatureKey;return FEATURES.some(f=>f.key===key)?key:"live"};
 const openExternal=(url?:string)=>url?openUrl(url):Promise.resolve();
-const itemHoverIdentity=(row:{itemName:string;itemId?:number;valuePp?:number})=>/^spell:\s*/i.test(row.itemName)?undefined:{itemName:row.itemName,itemId:row.itemId,valuePp:row.valuePp};
+const itemHoverIdentity=(row:{itemName:string;itemId?:number;valuePp?:number;questUses?:QuestUsage[]})=>/^spell:\s*/i.test(row.itemName)?undefined:{itemName:row.itemName,itemId:row.itemId,valuePp:row.valuePp,questUses:row.questUses};
+const questItemName=(row:{itemName:string;questUses?:QuestUsage[]})=><QuestItemLabel questUses={row.questUses}><SpellHover value={row.itemName}/></QuestItemLabel>;
 const marketWindow=(value?:number,basis="30-day WTS")=>value&&value>0?basis:"—";
 const empty:AppSnapshot={settings:{},members:[],loot:[],splits:[],tracked:[],linkedLoot:[],history:[],items:[],inventory:[],questCatalog:[],researchCatalog:[],spells:[],characterProfiles:[],wts:[],aliases:[],mobs:[],logs:[],imports:[],merchant:[],deathReports:[],damageEncounters:[],damageEncounterCount:0,damageDistinctMobCount:0,damageAttackTypes:[],compound:{projects:[],templates:[],activeId:null}};
 
@@ -54,16 +58,78 @@ export function App(){
  const[page,setPage]=useState(pageFromHash);const[data,setData]=useState<AppSnapshot>(empty);const[status,setStatus]=useState<BootstrapStatus|null>(null);const[globalStatus,setGlobalStatus]=useState<GlobalStatusSnapshot>({tasks:[],damageEncounters:[]});const[loading,setLoading]=useState(true);const[error,setError]=useState("");const[busy,setBusy]=useState(false);
  const refreshTimer=useRef<number|undefined>(undefined);
  const revision=useRef(0),pageRef=useRef(page),dataRef=useRef(data);
- const refreshRunning=useRef<Promise<void>|null>(null),refreshQueued=useRef(false),loadingRequested=useRef(true);
+  const refreshRunning=useRef<Promise<void>|null>(null),refreshQueued=useRef(false),loadingRequested=useRef(true);
+  const requestedRefresh = useRef<PageRefreshMode | null>(null);
  const windowBusy=useRef(false),refreshPending=useRef(false),windowSettle=useRef<number|undefined>(undefined);
- const refresh=useCallback((silent=false)=>{
-  refreshQueued.current=true;if(!silent)loadingRequested.current=true;
+  const refresh=useCallback((silent=false,mode:PageRefreshMode="full")=>{
+    refreshQueued.current=true;
+    requestedRefresh.current=requestedRefresh.current==="full"||mode==="full"?"full":"live-delta";
+    if(!silent)loadingRequested.current=true;
   if(refreshRunning.current)return refreshRunning.current;
-  const work=(async()=>{try{while(refreshQueued.current){refreshQueued.current=false;const targetPage=pageRef.current;const[value,currentRevision]=await Promise.all([getPageSnapshot(targetPage),getRevision()]);if(targetPage===pageRef.current){revision.current=currentRevision;refreshPending.current=false;dataRef.current=value;setData(value);setError("")}}}catch(e){setError(String(e))}finally{if(loadingRequested.current){loadingRequested.current=false;setLoading(false)}refreshRunning.current=null;if(refreshQueued.current)void refresh(true)}})();
+  const work=(async()=>{try{while(refreshQueued.current){refreshQueued.current=false;const refreshMode=requestedRefresh.current??"full";requestedRefresh.current=null;const targetPage=pageRef.current;const snapshotPage=pageSnapshotKey(targetPage,refreshMode);const[value,currentRevision]=await Promise.all([getPageSnapshot(snapshotPage),getRevision()]);if(targetPage===pageRef.current){revision.current=currentRevision;refreshPending.current=false;const nextValue=mergePageSnapshot(dataRef.current,value,targetPage,refreshMode);dataRef.current=nextValue;setData(nextValue);setError("")}}}catch(e){setError(String(e))}finally{if(loadingRequested.current){loadingRequested.current=false;setLoading(false)}refreshRunning.current=null;if(refreshQueued.current)void refresh(true,requestedRefresh.current??"full")}})();
   refreshRunning.current=work;return work;
- },[]); useEffect(()=>{const hash=()=>setPage(pageFromHash());addEventListener("hashchange",hash);bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));let unlisten:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen<string>("data-changed",event=>{window.clearTimeout(refreshTimer.current);const liveDamageUpdate=pageRef.current==="damage"&&(event.payload==="watcher"||event.payload==="damage.summary"||event.payload==="damage.dot-tick");const delay=liveDamageUpdate?3000:pageRef.current==="damage"?500:100;refreshTimer.current=window.setTimeout(()=>{if(windowBusy.current||document.querySelector(".modal")){refreshPending.current=true;return}refresh(true)},delay)}).then(value=>unlisten=value);const guard=window.setInterval(async()=>{const value=await getRevision();if(value!==revision.current&&!windowBusy.current&&!document.querySelector(".modal")){revision.current=value;if(pageRef.current!=="damage")await refresh(true)}},2000);return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);window.clearInterval(guard);unlisten?.()}},[refresh]);
+ },[]);
+ useEffect(()=>{
+  const hash=()=>setPage(pageFromHash());
+  const schedule=(delay:number,mode:PageRefreshMode="full")=>{
+   window.clearTimeout(refreshTimer.current);
+   refreshTimer.current=window.setTimeout(()=>{
+    if(windowBusy.current||document.querySelector(".modal")){refreshPending.current=true;return}
+    void refresh(true,mode);
+   },delay);
+  };
+  addEventListener("hashchange",hash);
+  bootstrapStatus().then(setStatus).catch(e=>setError(String(e)));
+  let unlistenData:(()=>void)|undefined,unlistenLive:(()=>void)|undefined;
+  if("__TAURI_INTERNALS__" in window){
+   listen<string>("data-changed",event=>{
+    if(event.payload==="watcher")return;
+    const damageUpdate=pageRef.current==="damage"&&(event.payload==="damage.summary"||event.payload==="damage.dot-tick");
+    schedule(damageUpdate?3000:pageRef.current==="damage"?500:100);
+   }).then(value=>unlistenData=value);
+   listen<string[]>("live-log-changed",event=>{
+    const scopes=new Set(event.payload);
+    if(pageRef.current==="live"&&scopes.has("loot"))schedule(100,"live-delta");
+    else if(pageRef.current==="linked"&&scopes.has("linked"))schedule(750);
+    else if(pageRef.current==="merchant"&&scopes.has("merchant"))schedule(750);
+    else if(pageRef.current==="damage"&&scopes.has("damage"))schedule(3000);
+   }).then(value=>unlistenLive=value);
+  }
+  return()=>{removeEventListener("hashchange",hash);window.clearTimeout(refreshTimer.current);unlistenData?.();unlistenLive?.()}
+ },[refresh]);
  useEffect(()=>{pageRef.current=page;setLoading(true);void refresh()},[page,refresh]);
- useEffect(()=>{let unlisten:(()=>void)|undefined,stopped=false;const poll=()=>getGlobalStatus().then(value=>{if(stopped)return;setGlobalStatus(value);if(pageRef.current!=="damage")return;const current=dataRef.current;const encountersChanged=damageEncounterSnapshotChanged(current.damageEncounters,value.damageEncounters);const callsChanged=Boolean(value.clericHealCalls?.some(row=>!current.clericHealCalls?.some(existing=>existing.id===row.id)));const slowsChanged=Boolean(value.guildSlowCalls?.some(row=>!current.guildSlowCalls?.some(existing=>existing.id===row.id)));if(!encountersChanged&&!callsChanged&&!slowsChanged&&value.currentWeaponLoadout?.capturedAt===current.currentWeaponLoadout?.capturedAt)return;const next={...current,damageEncounters:mergeLiveDamageEncounters(current.damageEncounters,value.damageEncounters),clericHealCalls:mergeRecentRows(current.clericHealCalls,value.clericHealCalls),guildSlowCalls:mergeRecentRows(current.guildSlowCalls,value.guildSlowCalls),currentWeaponLoadout:value.currentWeaponLoadout||current.currentWeaponLoadout};dataRef.current=next;setData(next)}).catch(()=>{});void poll();const timer=window.setInterval(poll,1000);if("__TAURI_INTERNALS__" in window)listen("system-task-changed",poll).then(value=>unlisten=value);return()=>{stopped=true;window.clearInterval(timer);unlisten?.()}},[]);
+ useEffect(()=>{
+  let unlisten:(()=>void)|undefined,stopped=false,running=false,queued=false,lastStatus="";
+  const poll=async()=>{
+   queued=true;
+   if(running)return;
+   running=true;
+   try{while(queued&&!stopped){
+    queued=false;
+    const value=await getGlobalStatus();
+    if(stopped)return;
+    const statusSignature=JSON.stringify(value);
+    if(statusSignature!==lastStatus){lastStatus=statusSignature;setGlobalStatus(value)}
+    const current=dataRef.current;
+    let next=current;
+    const incomingMembers=value.members||current.members;
+    const membersChanged=incomingMembers.length!==current.members.length||incomingMembers.some((member,index)=>{const existing=current.members[index];return !existing||existing.id!==member.id||existing.name!==member.name||existing.active!==member.active});
+    const characterChanged=Boolean(value.activeCharacter)&&value.activeCharacter!==current.settings.active_character;
+    if(membersChanged||characterChanged)next={...next,members:incomingMembers,settings:characterChanged?{...next.settings,active_character:value.activeCharacter||next.settings.active_character}:next.settings};
+    if(pageRef.current==="damage"){
+     const encountersChanged=damageEncounterSnapshotChanged(current.damageEncounters,value.damageEncounters);
+     const callsChanged=Boolean(value.clericHealCalls?.some(row=>!current.clericHealCalls?.some(existing=>existing.id===row.id)));
+     const slowsChanged=Boolean(value.guildSlowCalls?.some(row=>!current.guildSlowCalls?.some(existing=>existing.id===row.id)));
+     if(encountersChanged||callsChanged||slowsChanged||value.currentWeaponLoadout?.capturedAt!==current.currentWeaponLoadout?.capturedAt)next={...next,damageEncounters:mergeLiveDamageEncounters(current.damageEncounters,value.damageEncounters),clericHealCalls:mergeRecentRows(current.clericHealCalls,value.clericHealCalls),guildSlowCalls:mergeRecentRows(current.guildSlowCalls,value.guildSlowCalls),currentWeaponLoadout:value.currentWeaponLoadout||current.currentWeaponLoadout};
+    }
+    if(next!==current){dataRef.current=next;setData(next)}
+   }}catch{}finally{running=false;if(queued&&!stopped)void poll()}
+  };
+  void poll();
+  const timer=window.setInterval(poll,1000);
+  if("__TAURI_INTERNALS__" in window)listen("system-task-changed",poll).then(value=>unlisten=value);
+  return()=>{stopped=true;window.clearInterval(timer);unlisten?.()}
+ },[]);
  useEffect(()=>{if(!("__TAURI_INTERNALS__" in window))return;let moved:(()=>void)|undefined,resized:(()=>void)|undefined;const interacting=()=>{windowBusy.current=true;window.clearTimeout(windowSettle.current);windowSettle.current=window.setTimeout(()=>{windowBusy.current=false;if(refreshPending.current&&!document.querySelector(".modal")){refreshPending.current=false;refresh(true)}},250)};getCurrentWindow().onMoved(interacting).then(value=>moved=value);getCurrentWindow().onResized(interacting).then(value=>resized=value);return()=>{window.clearTimeout(windowSettle.current);moved?.();resized?.()}},[refresh]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings.theme||"midnight"},[data.settings.theme]);
  useEffect(()=>{window.scrollTo({top:0,left:0,behavior:"auto"})},[page]);
@@ -113,7 +179,7 @@ function GlobalFightRow({row,character,now}:{row:DamageEncounter;character:strin
  const weapons=row.weapons.length?row.weapons.join(" / "):"Weapons pending";
  return <article><div className="fight-target"><strong>{character} <span>vs</span> {row.mobName}</strong><small>{weapons}</small></div><dl><div><dt>Combat</dt><dd>{formatCombatClock(durationSeconds)}</dd></div><div><dt>My DPS</dt><dd>{Math.round((player?.totalDamage||0)/durationSeconds)}</dd></div><div><dt>My damage</dt><dd>{(player?.totalDamage||0).toLocaleString()}</dd></div><div><dt>Group DPS</dt><dd>{Math.round(group/durationSeconds)}</dd></div><div><dt>Group damage</dt><dd>{group.toLocaleString()}</dd></div>{(row.incomingDamage||0)>0&&<div><dt>Incoming</dt><dd>{row.incomingDamage!.toLocaleString()}</dd></div>}</dl></article>;
 }
-function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"activity-history":return <ActivityHistoryPage data={data} run={run}/>;case"death-reports":return <DeathReportsPage data={data} run={run}/>;case"damage":return <DamageTrackerPage data={data} run={run}/>;case"spawn-timers":return <SpawnTimersPage/>;case"dps-calculator":return <DpsCalculatorPage data={data}/>;case"experience":return <ExperienceTrackerPage/>;case"dot-lab":return <DotTrainingPage activeCharacter={data.settings.active_character}/>;case"ch-lab":return <ChTrainingPage activeCharacter={data.settings.active_character}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data} run={run}/>;case"friends-sync":return <FriendsSyncPage data={data}/>;case"wardrobe":return <WardrobePage data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"spell-research":return <SpellResearchPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"quest-items":return <QuestItemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"database":return <DatabaseManagementPage run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion} schemaVersion={status?.schemaVersion}/><CharacterModelPackPanel run={run}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
+function Page({page,data,run,status}:{page:FeatureKey;data:AppSnapshot;run:(a:string,p?:Record<string,unknown>)=>Promise<unknown>;status:BootstrapStatus|null}){switch(page){case"live":return <LiveV4 data={data} run={run}/>;case"linked":return <LinkedLootPage data={data} run={run}/>;case"tracked":return <TrackedLootPage data={data} run={run}/>;case"activity-history":return <ActivityHistoryPage data={data} run={run}/>;case"death-reports":return <DeathReportsPage data={data} run={run}/>;case"damage":return <DamageTrackerPage data={data} run={run}/>;case"map":return <MapPage/>;case"spawn-timers":return <SpawnTimersPage/>;case"dps-calculator":return <DpsCalculatorPage data={data}/>;case"experience":return <ExperienceTrackerPage/>;case"dot-lab":return <DotTrainingPage activeCharacter={data.settings.active_character}/>;case"ch-lab":return <ChTrainingPage activeCharacter={data.settings.active_character}/>;case"merchant":return <MerchantV2 data={data} run={run}/>;case"splits":return <SplitsV3 data={data} run={run}/>;case"compounds":return <CompoundWorkspacePage data={data} run={run}/>;case"characters":return <CharactersV5 data={data} run={run}/>;case"friends-sync":return <FriendsSyncPage data={data}/>;case"wardrobe":return <WardrobePage data={data}/>;case"spells":return <RosterSpellsPage data={data}/>;case"spell-research":return <SpellResearchPage data={data}/>;case"gems":return <VeliousGemsPage data={data}/>;case"quest-items":return <QuestItemsPage data={data}/>;case"imports":return <ImportsV4 data={data} run={run}/>;case"wts":return <WtsV3 data={data} run={run}/>;case"items":return <ItemsV3 data={data} run={run}/>;case"database":return <DatabaseManagementPage run={run}/>;case"system":return <><SystemV5 data={data} run={run} appVersion={status?.appVersion} schemaVersion={status?.schemaVersion}/><CharacterModelPackPanel run={run}/><SpellCatalogPanel/></>;case"logs":return <LogsV3 data={data}/>;case"changes":return <><Release35/><ChangeLog/></>;default:return <Help/>}}
 const Loading=()=> <section className="loading"><div className="spinner"/><h2>Opening your workspace</h2><p>Loading the local database—no sample data is shown.</p></section>;
 const Card=({title,sub,actions,children,className=""}:{title:string;sub?:string;actions?:ReactNode;children:ReactNode;className?:string})=><section className={`card ${className}`}><header><div><h2>{title}</h2>{sub&&<p>{sub}</p>}</div>{actions&&<div className="card-actions">{actions}</div>}</header>{children}</section>;
 const Stats=({items,className=""}:{items:[string,string,string?][];className?:string})=><section className={`stats ${className}`.trim()}>{items.map(([l,v,s])=><article key={l}><span>{l}</span><strong>{v}</strong>{s&&<small>{s}</small>}</article>)}</section>;
@@ -418,7 +484,7 @@ function LiveV4({data,run}:{data:AppSnapshot;run:Runner}){
  const trackedSources=new Set(data.tracked.map(item=>item.sourceLootId).filter((id):id is number=>id!=null));
  const path=data.settings.active_log_path||"",file=path.split(/[\\/]/).pop();
  const lootColumns:Column<Loot>[]=[
-  {key:"item",label:"Item",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>,item:itemHoverIdentity},
+  {key:"item",label:"Item",value:row=>row.itemName,render:questItemName,item:itemHoverIdentity},
   {key:"value",label:"Price",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
   {key:"window",label:"Market Window",value:row=>marketWindow(row.valuePp,row.valueBasis)},
   {key:"mob",label:"Dropped By",value:row=>row.mobName||""},
@@ -445,7 +511,7 @@ function LinkedLootPage({data,run}:{data:AppSnapshot;run:Runner}){
  const columns:Column<LinkedLoot>[]=[
   {key:"speaker",label:"Said By",value:row=>row.speakerName},
   {key:"channel",label:"Channel",value:row=>row.channel,render:row=><span className={"pill "+(row.channel==="group"?"success":"info")}>{row.channel}</span>},
-  {key:"item",label:"Linked Item",value:row=>row.itemName,render:row=><SpellHover value={row.itemName}/>,item:itemHoverIdentity},
+  {key:"item",label:"Linked Item",value:row=>row.itemName,render:questItemName,item:itemHoverIdentity},
   {key:"value",label:"Price",value:row=>row.valuePp||0,render:row=>money(row.valuePp)},
   {key:"basis",label:"Market Window",value:row=>marketWindow(row.valuePp,row.valueBasis)},
   {key:"samples",label:"Samples",value:row=>row.count30d},
@@ -472,7 +538,7 @@ function ActivityHistoryPage({data,run}:{data:AppSnapshot;run:Runner}){
  const[archiveError,setArchiveError]=useState("");
  const[scanMessage,setScanMessage]=useState("");
  const load=useCallback(async()=>{try{setArchive(await getActivityHistorySnapshot());setArchiveError("")}catch(error){setArchiveError(String(error))}finally{setLoadingArchive(false)}},[]);
- useEffect(()=>{void load();let stop:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window)listen<string>("data-changed",event=>{if(event.payload==="watcher"||event.payload==="activityHistory.scan")void load()}).then(value=>stop=value);return()=>stop?.()},[load]);
+ useEffect(()=>{void load();let stopData:(()=>void)|undefined,stopLive:(()=>void)|undefined;if("__TAURI_INTERNALS__" in window){listen<string>("data-changed",event=>{if(event.payload==="activityHistory.scan"||event.payload==="log-backlog")void load()}).then(value=>stopData=value);listen<string[]>("live-log-changed",event=>{if(event.payload.includes("activity"))void load()}).then(value=>stopLive=value)}return()=>{stopData?.();stopLive?.()}},[load]);
  const scan=async()=>{setScanMessage("Scanning every character log…");const result=await run("activityHistory.scan") as {files?:number;inserted?:number}|null;if(result){setScanMessage("Scanned "+(result.files||0)+" log file"+(result.files===1?"":"s")+" · "+(result.inserted||0)+" new event"+(result.inserted===1?"":"s"));await load()}else setScanMessage("History scan failed. Review the error banner or Application Logs.")};
  const analyticsRows=tab==="loot"?archive.loot.map(row=>({label:row.itemName,happenedAt:row.happenedAt,valuePp:row.valuePp,actor:row.looterName,character:row.character})):tab==="mobs"?archive.mobs.map(row=>({label:row.mobName,happenedAt:row.happenedAt,actor:row.killerName||"Unknown",character:row.character})):tab==="offers"?archive.offers.map(row=>({label:row.itemName,happenedAt:row.happenedAt,actor:row.offererName,character:row.character})):archive.levels.map(row=>({label:`Level ${row.level}`,happenedAt:row.happenedAt,actor:row.character,character:row.character,level:row.level,direction:row.direction}));
  const analyticsTitle=tab==="loot"?"Most looted items":tab==="mobs"?"Most slain mobs":tab==="offers"?"Most offered items":"Levels reached";

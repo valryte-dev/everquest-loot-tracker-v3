@@ -9,6 +9,7 @@ mod dot_training;
 mod eq_time;
 mod experience_tracking;
 mod friends_sync;
+mod map_tracking;
 mod model_pack;
 mod proc_coach;
 mod proc_evidence;
@@ -34,8 +35,9 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
+    time::{Duration, Instant},
 };
 use tauri::Emitter;
 
@@ -57,6 +59,7 @@ pub struct AppState {
     spell_catalog: SpellCatalog,
     revision: Arc<AtomicU64>,
     tasks: system_tasks::TaskRegistry,
+    global_combat_cache: Mutex<Option<(u64, Instant, Value)>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,6 +91,7 @@ impl AppState {
             spell_catalog,
             revision: Arc::new(AtomicU64::new(1)),
             tasks: system_tasks::TaskRegistry::default(),
+            global_combat_cache: Mutex::new(None),
         })
     }
 
@@ -156,6 +160,13 @@ pub fn spawn_timer_snapshot(
     state: tauri::State<'_, AppState>,
 ) -> Result<spawn_timers::SpawnTimerSnapshot, String> {
     spawn_timers::snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn map_snapshot(
+    state: tauri::State<'_, AppState>,
+) -> Result<map_tracking::MapSnapshot, String> {
+    map_tracking::snapshot(&state.database)
 }
 
 #[tauri::command]
@@ -573,7 +584,25 @@ pub fn app_revision(state: tauri::State<'_, AppState>) -> u64 {
 
 #[tauri::command]
 pub fn global_status_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
-    let mut status = data::global_combat_snapshot(&state.database)?;
+    let revision = state.revision.load(Ordering::Acquire);
+    let mut cache = state
+        .global_combat_cache
+        .lock()
+        .map_err(|_| "Global combat status cache is unavailable".to_owned())?;
+    let mut status = match cache.as_ref() {
+        Some((cached_revision, captured_at, cached))
+            if *cached_revision == revision
+                || captured_at.elapsed() < Duration::from_millis(750) =>
+        {
+            cached.clone()
+        }
+        _ => {
+            let fresh = data::global_combat_snapshot(&state.database)?;
+            *cache = Some((revision, Instant::now(), fresh.clone()));
+            fresh
+        }
+    };
+    drop(cache);
     status["tasks"] =
         serde_json::to_value(state.tasks.snapshot()).map_err(|error| error.to_string())?;
     Ok(status)

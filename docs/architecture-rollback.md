@@ -21,6 +21,7 @@ The architecture work was delivered as additive, independently tagged checkpoint
 | database-management-preview | Read-only database statistics and cleanup previews |
 | pre-folder-reconcile-lock-fix-2026-09-06 | Rollback point before startup writer sequencing and runtime transaction coordination |
 | `pre-normalized-proc-catalog-2026-09-11` | Verified baseline immediately before the canonical 340-row item-to-proc catalog and broader direct-damage classification |
+| `pre-spam-ingestion-2026-11-01` | Baseline before metadata-gated backlog reconciliation, slower safety sweeps, detached-meter refresh coalescing, and pausing observed-player proc inference |
 
 ## Combat schema compatibility
 
@@ -78,3 +79,6 @@ Keep the recovery backup until the restored app has been verified. Application l
 3. Create a recovery branch from the desired tag.
 4. Build the branch and launch it against a copied database.
 5. Verify live loot, character switching, imports, splits, compounds, and live damage before using it with the primary database.
+# Schema 54: map tracking
+
+Migration 54 only adds `character_map_state`. Rolling the feature back is safe after removing the Map route, `map_snapshot` command, and location persistence hook. The table may remain unused without affecting older behavior; if a full data rollback is required, back up the database and drop only `character_map_state`, then remove migration version 54.

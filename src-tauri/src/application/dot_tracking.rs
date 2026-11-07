@@ -16,7 +16,6 @@ use std::time::{Duration as StdDuration, Instant};
 const GLOW_WINDOW_SECONDS: i64 = 3;
 const CAST_FALLBACK_WINDOW_SECONDS: i64 = 15;
 const CAST_RESOLUTION_TOLERANCE_MILLISECONDS: i64 = 2_000;
-const UNIDENTIFIED_PLAYER: &str = "Unidentified player";
 
 struct CompiledProfile {
     profile: CombatSpellProfile,
@@ -35,7 +34,6 @@ struct RecentCast {
     happened_at: NaiveDateTime,
     expected_at: Option<NaiveDateTime>,
     spell_name: String,
-    explicit_proc_caster: Option<String>,
 }
 #[derive(Clone)]
 struct RecentNonMelee {
@@ -58,7 +56,6 @@ struct PendingProc {
     damage_per_tick: Option<u64>,
     tick_interval_seconds: u32,
     tick_count: Option<u32>,
-    candidate_caster: Option<String>,
     allow_observed_caster: bool,
 }
 
@@ -114,17 +111,6 @@ impl DotTracker {
         };
         self.refresh_profiles();
         let preceding_non_melee = self.recent_non_melee.take();
-        // Named proc-caster clues are intentionally single-use and adjacent-only. Carry the
-        // clue into this line, then clear it before processing anything else so an unrelated
-        // intervening log line cannot cause a later landing to be misattributed.
-        let explicit_proc_clue = self
-            .recent_cast
-            .as_ref()
-            .filter(|cast| cast.explicit_proc_caster.is_some())
-            .cloned();
-        if explicit_proc_clue.is_some() {
-            self.recent_cast = None;
-        }
         let mut changed = 0;
         if let Some(pending) = self.pending_proc.take() {
             if pending.source == source {
@@ -146,6 +132,8 @@ impl DotTracker {
                     {
                         Some(attacker_name.as_str())
                     }
+                    // An observed attack may close a local non-melee -> landing sequence, but
+                    // it is never used to attribute the proc to that observed attacker.
                     Some(LogEvent::ObservedMelee {
                         subject_name,
                         target_name,
@@ -161,26 +149,17 @@ impl DotTracker {
                             .preceding_non_melee
                             .as_ref()
                             .is_some_and(|damage| pending.direct_damage == Some(damage.amount));
-                    let caster = if logged_proc_damage_confirms_local
+                    if logged_proc_damage_confirms_local
                         || combat_actor.eq_ignore_ascii_case(character)
                     {
-                        character
-                    } else if pending
-                        .candidate_caster
-                        .as_ref()
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(combat_actor))
-                    {
-                        combat_actor
-                    } else {
-                        UNIDENTIFIED_PLAYER
-                    };
-                    changed += record_proc_occurrence(
-                        connection,
-                        &pending,
-                        source_offset,
-                        character,
-                        caster,
-                    )?;
+                        changed += record_proc_occurrence(
+                            connection,
+                            &pending,
+                            source_offset,
+                            character,
+                            character,
+                        )?;
+                    }
                 }
             }
         }
@@ -227,15 +206,6 @@ impl DotTracker {
                 happened_at,
                 expected_at,
                 spell_name: spell_name.clone(),
-                explicit_proc_caster: None,
-            });
-        }
-        if let Some((caster_name, spell_name)) = explicit_proc_caster_clue(body) {
-            self.recent_cast = Some(RecentCast {
-                happened_at,
-                expected_at: Some(happened_at),
-                spell_name,
-                explicit_proc_caster: Some(caster_name),
             });
         }
         if matches!(event, Some(LogEvent::SpellInterrupted { .. })) {
@@ -252,21 +222,26 @@ impl DotTracker {
             }
         }
 
-        let normalized_body = body.to_ascii_lowercase();
-        let matches = self
-            .profiles
-            .iter()
-            .filter_map(|compiled| {
-                if !normalized_body.contains(&compiled.hint) {
-                    return None;
-                }
-                let captures = compiled.landing.captures(body)?;
-                Some((
-                    compiled.profile.clone(),
-                    captures.name("target")?.as_str().trim().to_owned(),
-                ))
-            })
-            .collect::<Vec<_>>();
+        // Landing messages do not parse as ordinary combat events. Avoid lowercasing and
+        // testing every known spell pattern for the high-volume melee/incoming event path.
+        let matches = if event.is_none() {
+            let normalized_body = body.to_ascii_lowercase();
+            self.profiles
+                .iter()
+                .filter_map(|compiled| {
+                    if !normalized_body.contains(&compiled.hint) {
+                        return None;
+                    }
+                    let captures = compiled.landing.captures(body)?;
+                    Some((
+                        compiled.profile.clone(),
+                        captures.name("target")?.as_str().trim().to_owned(),
+                    ))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         if !matches.is_empty() {
             let glow_caster = self.recent_glow.as_ref().filter(|glow| {
                 glow.owner_name.eq_ignore_ascii_case(character)
@@ -281,9 +256,6 @@ impl DotTracker {
                 .map(|(profile, _)| profile.spell_name.clone())
                 .collect::<Vec<_>>();
             let direct_cast_name = self.recent_cast.as_ref().and_then(|cast| {
-                if cast.explicit_proc_caster.is_some() {
-                    return None;
-                }
                 matches
                     .iter()
                     .find(|(profile, _)| {
@@ -322,14 +294,6 @@ impl DotTracker {
                     .as_deref()
                     .is_some_and(|name| name.eq_ignore_ascii_case(&profile.spell_name));
                 let has_glow = glow_caster.is_some();
-                let explicit_proc_caster = explicit_proc_clue.as_ref().and_then(|clue| {
-                    let age = happened_at
-                        .signed_duration_since(clue.happened_at)
-                        .num_seconds();
-                    (clue.spell_name.eq_ignore_ascii_case(&profile.spell_name) && age == 0)
-                        .then(|| clue.explicit_proc_caster.clone())
-                        .flatten()
-                });
                 if has_glow || direct_cast {
                     let (attribution_method, source_kind, source_name) =
                         if let Some(glow) = glow_caster {
@@ -353,32 +317,6 @@ impl DotTracker {
                         profile.tick_interval_seconds,
                         profile.tick_count,
                     )?;
-                } else if let Some(caster) = explicit_proc_caster {
-                    let source_name = proc_catalog::resolve_source(
-                        connection,
-                        character,
-                        std::slice::from_ref(&profile.spell_name),
-                    )
-                    .ok()
-                    .flatten()
-                    .map(|value| value.item_name)
-                    .or(profile.observed_source_name.clone());
-                    self.pending_proc = Some(PendingProc {
-                        source: source.to_owned(),
-                        source_offset,
-                        happened_at,
-                        target_name: target,
-                        spell_name: profile.spell_name,
-                        source_name,
-                        direct_damage: profile.direct_damage,
-                        preceding_non_melee: None,
-                        damage_per_tick: profile.damage_per_tick,
-                        tick_interval_seconds: profile.tick_interval_seconds,
-                        tick_count: profile.tick_count,
-                        candidate_caster: Some(caster),
-                        allow_observed_caster: false,
-                    });
-                    self.recent_cast = None;
                 } else {
                     let matched_damage = preceding_non_melee.clone().filter(|damage| {
                         damage.source == source
@@ -424,7 +362,6 @@ impl DotTracker {
                             damage_per_tick: profile.damage_per_tick,
                             tick_interval_seconds: profile.tick_interval_seconds,
                             tick_count: profile.tick_count,
-                            candidate_caster: None,
                             allow_observed_caster: profile.observed_source_kind.as_deref()
                                 == Some("proc_only")
                                 || is_root_entwinement_landing(body),
@@ -471,7 +408,6 @@ impl DotTracker {
                         damage_per_tick: None,
                         tick_interval_seconds: 6,
                         tick_count: None,
-                        candidate_caster: None,
                         allow_observed_caster: false,
                     });
                 }
@@ -617,22 +553,6 @@ fn cast_resolution_matches(
                 .num_seconds(),
         ),
     }
-}
-
-fn explicit_proc_caster_clue(body: &str) -> Option<(String, String)> {
-    static ESSENCE_TAP_CLUE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let captures = ESSENCE_TAP_CLUE
-        .get_or_init(|| {
-            Regex::new(
-                r#"(?i)^(?P<caster>[A-Za-z][A-Za-z'\x60-]*) says ['"]\s*Ahhh,\s*I feel much better now\\?\.{3}\s*['"]$"#,
-            )
-            .expect("Essence Tap caster clue must compile")
-        })
-        .captures(body.trim())?;
-    Some((
-        captures.name("caster")?.as_str().to_owned(),
-        "Essence Tap".to_owned(),
-    ))
 }
 
 fn is_root_entwinement_landing(body: &str) -> bool {
@@ -1542,7 +1462,7 @@ mod tests {
     }
 
     #[test]
-    fn hundred_blows_attributes_local_but_keeps_observed_attacker_unidentified() {
+    fn hundred_blows_attributes_local_and_ignores_observed_attacker() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1595,22 +1515,19 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(
-            occurrences,
-            vec![("Valmezz".into(), 120), ("Unidentified player".into(), 120)]
-        );
+        assert_eq!(occurrences, vec![("Valmezz".into(), 120)]);
         let unidentified_damage: i64 = connection
             .query_row(
-                "SELECT total_damage FROM damage_participant_summaries WHERE attacker_name='Unidentified player'",
+                "SELECT COUNT(*) FROM damage_participant_summaries WHERE attacker_name='Unidentified player'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(unidentified_damage, 120);
+        assert_eq!(unidentified_damage, 0);
     }
 
     #[test]
-    fn divine_might_landing_keeps_the_next_attacker_unidentified() {
+    fn divine_might_landing_does_not_infer_an_observed_player_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1658,31 +1575,21 @@ mod tests {
                 )
                 .unwrap();
         }
-        let occurrence: (String, String, i64) = connection
-            .query_row(
-                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            occurrence,
-            (
-                "Unidentified player".into(),
-                "Divine Might Effect".into(),
-                65
-            )
-        );
-        let source_name: String = connection
-            .query_row("SELECT source_name FROM combat_spell_activity", [], |row| {
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(source_name, "Divine Might");
+        let activity_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM combat_spell_activity", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((proc_count, activity_count), (0, 0));
     }
 
     #[test]
-    fn next_same_target_attack_confirms_observed_proc_without_guessing_the_caster() {
+    fn next_same_target_attack_does_not_infer_an_observed_player_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1788,14 +1695,7 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(
-            attributions,
-            vec![(
-                "A frost giant".into(),
-                "Unidentified player".into(),
-                "proc".into()
-            )]
-        );
+        assert!(attributions.is_empty());
         let activity_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM combat_spell_activity", [], |row| {
                 row.get(0)
@@ -1806,10 +1706,10 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!((activity_count, proc_count), (1, 1));
+        assert_eq!((activity_count, proc_count), (0, 0));
     }
     #[test]
-    fn root_landing_keeps_the_next_attacker_unidentified() {
+    fn root_landing_does_not_infer_an_observed_player_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1846,21 +1746,12 @@ mod tests {
                 )
                 .unwrap();
         }
-        let proc: (String, String, i64) = connection
-            .query_row(
-                "SELECT caster_name,spell_name,direct_damage FROM proc_occurrences",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
+                row.get(0)
+            })
             .unwrap();
-        assert_eq!(
-            proc,
-            (
-                "Unidentified player".into(),
-                "Unidentified root proc".into(),
-                0
-            )
-        );
+        assert_eq!(proc_count, 0);
     }
 
     #[test]
@@ -1917,7 +1808,7 @@ mod tests {
     }
 
     #[test]
-    fn essence_tap_self_effect_and_following_attack_identify_the_named_proc_caster() {
+    fn essence_tap_self_effect_does_not_infer_the_observed_player_proc() {
         use crate::infrastructure::database::Database;
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(directory.path().join("loot.db")).unwrap();
@@ -1952,12 +1843,12 @@ mod tests {
                 )
                 .unwrap();
         }
-        let caster: String = connection
-            .query_row("SELECT caster_name FROM proc_occurrences", [], |row| {
+        let proc_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM proc_occurrences", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(caster, "Tokuo");
+        assert_eq!(proc_count, 0);
     }
 
     #[test]

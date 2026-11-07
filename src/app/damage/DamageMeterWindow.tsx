@@ -3,7 +3,7 @@ import {emit,listen} from "@tauri-apps/api/event";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import type {DamageEncounter,DamageEncounterDetail,GlobalStatusSnapshot} from "../../shared/contracts";
-import {getDamageEncounterDetails,getGlobalStatus,getRevision} from "../../shared/backend";
+import {getDamageEncounterDetails,getGlobalStatus} from "../../shared/backend";
 import {formatCombatClock,participantCombatSeconds,playerSpellMetrics,rankIncomingTargets,rankMeterPlayers,summarizeEncounterPlayerEffects,summarizePlayerEffects} from "./meterModel";
 import {focusedDamageEncounter,sortLiveEncountersByPlayerTarget} from "./model";
 import {calculateProcDps,DamageFighterBars,spellEffectTitle,type DamageFighterBarRow} from "./DamageFighterBars";
@@ -15,6 +15,7 @@ import {DamageUltraCompactMeter} from "./DamageUltraCompactMeter";
 const isDesktop=()=>"__TAURI_INTERNALS__" in window;
 const stamp=(value:string)=>Date.parse(value.includes("T")?value:value.replace(" ","T"));
 const formatNumber=(value:number)=>Math.round(value).toLocaleString();
+const LIVE_REFRESH_DEBOUNCE_MS=750;
 type DamagePopoutView="ultra"|"full";
 const currentFightView=():DamagePopoutView=>localStorage.getItem("current-fight-window-view")==="full"?"full":"ultra";
 const currentFightWindowSize=(view:DamagePopoutView)=>{
@@ -68,7 +69,7 @@ export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
  const[onTop,setOnTop]=useState(true),[retainedFightId,setRetainedFightId]=useState<number>();
  const[popoutView,setPopoutView]=useState<DamagePopoutView>(()=>focusCurrent?currentFightView():"full");
  const[activity,setActivity]=useState<Map<number,Activity>>(()=>new Map());
- const revision=useRef(-1),refreshing=useRef(false),refreshQueued=useRef(false),refreshTimer=useRef<number|undefined>(undefined);
+ const refreshing=useRef(false),refreshQueued=useRef(false),refreshTimer=useRef<number|undefined>(undefined);
  const refresh=useCallback(async()=>{
   refreshQueued.current=true;
   if(refreshing.current)return;
@@ -100,15 +101,14 @@ export function DamageMeterWindow({focusCurrent=false}:{focusCurrent?:boolean}){
  useEffect(()=>{
   void refresh();
   const clock=window.setInterval(()=>setNow(Date.now()),1000);
-  const guard=window.setInterval(async()=>{
-   try{
-    const value=await getRevision();
-    if(value!==revision.current){revision.current=value;void refresh()}
-   }catch{}
-  },2000);
-  let stop:(()=>void)|undefined;
-  if(isDesktop())void listen("data-changed",()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>void refresh(),100)}).then(unlisten=>stop=unlisten);
-  return()=>{window.clearTimeout(refreshTimer.current);window.clearInterval(clock);window.clearInterval(guard);stop?.()}
+  const fallback=window.setInterval(()=>void refresh(),10000);
+  let stopLive:(()=>void)|undefined,stopData:(()=>void)|undefined;
+  const schedule=()=>{window.clearTimeout(refreshTimer.current);refreshTimer.current=window.setTimeout(()=>void refresh(),LIVE_REFRESH_DEBOUNCE_MS)};
+  if(isDesktop()){
+   void listen<string[]>("live-log-changed",event=>{if(event.payload.includes("damage")||event.payload.includes("shell"))schedule()}).then(unlisten=>stopLive=unlisten);
+   void listen<string>("data-changed",event=>{if(event.payload==="damage.summary"||event.payload==="damage.dot-tick"||event.payload.startsWith("damageTracker."))schedule()}).then(unlisten=>stopData=unlisten);
+  }
+  return()=>{window.clearTimeout(refreshTimer.current);window.clearInterval(clock);window.clearInterval(fallback);stopLive?.();stopData?.()}
  },[refresh]);
  const liveFights=useMemo(()=>{
   if(!data)return[];

@@ -516,6 +516,28 @@ The live log path was compared with EqTool's high-volume parser and tightened wi
 
 Bounded transaction chunking is deliberately deferred. It would change atomic ingestion boundaries and should only be introduced behind a named checkpoint after profiling a real high-volume capture proves that parsing and active-encounter lookup are no longer the limiting stages.
 
+### Spam-load reconciliation hardening — 2026-11-01
+
+- Recurring backlog safety reconciliation now runs every five minutes instead of every 30 seconds; startup, configured-folder changes, and manual rebuilds remain immediate.
+- The backlog worker compares file sizes with the four independent feature cursors before opening a parser or taking the shared database writer guard. Fully current files therefore incur metadata and bounded cursor checks only.
+- Cursor-specific gaps remain independently recoverable: history, XP, death reports, and damage scan only when their own cursor differs from the file size.
+- The detached live damage window coalesces burst notifications for 750 ms and retains its existing single-flight refresh loop.
+- Probabilistic other-player proc attribution is paused. Explicit active-character casts, item clicks, and locally confirmed procs continue to contribute spell/proc/DoT damage.
+- The resumable damage-summary optimizer uses 25-encounter batches, waits between batches, and only begins a batch when the shared writer gate is immediately available. This prevents a large first-run history rebuild from monopolizing one CPU core or delaying live combat writes.
+- Routine Live-page watcher refreshes request only changing loot and tracked-item rows. The already-loaded item and mob reference catalogs remain cached until navigation, a mutation, or a manual full refresh requires them.
+- Backlog reconciliation and damage-summary maintenance yield while the live watcher has written log data within the last 10 seconds. Both resume automatically after the ingestion stream becomes quiet.
+
+### Scoped live-ingestion refreshes — 2026-11-05
+
+- The watcher emits feature scopes for live changes. Pages and detached windows refresh only when their own scope changes; the legacy generic watcher notification remains for compatibility but no longer triggers full page reloads.
+- The Live page uses a bounded 100-row loot delta and merges it into the already-loaded 1,000-row view. Static item and mob catalogs, plus tracked rows, are not reloaded for each appended loot line.
+- Global combat status is single-flight on the frontend and briefly cached on the backend, so the main window and detached meters share one recent snapshot during a burst.
+- Newly tailed bytes use the transactional live cursor as their idempotency boundary and skip redundant event-table existence queries. Historical scans retain explicit source-offset duplicate checks.
+- The watcher caches the configured log directory for two seconds, reuses the active log path, and skips export-directory scans for combat-log-only notifications. Folder changes and 30-second safety reconciliation remain intact.
+- Source path and active-character values are derived once per appended batch instead of once per parsed line.
+
+These are required patterns for future live features: classify the affected scope, use bounded delta reads, coalesce concurrent refreshes, and keep history/rebuild idempotency separate from the live append fast path.
+
 Deliberately deferred destructive work:
 
 - Raw combat/log retention is unchanged because deleting diagnostic history requires an explicit opt-in policy.
@@ -535,3 +557,6 @@ The first implementation slice should include:
 6. Background Planner upload jobs.
 
 This addresses the most visible performance risks without changing the user-facing data model and creates the foundation for safe item, compound, and split normalization.
+# Map feature boundary (schema 54)
+
+The map implementation is owned by `application/map_tracking.rs` and `app/map/`. Shared log parsing emits typed zone and integer-millipoint location events; the feature persists one latest position per character and exposes a dedicated typed `map_snapshot` command. EqTool geometry remains static, local, lazy-loaded page data and is canvas-rendered rather than added to the global snapshot or application database.

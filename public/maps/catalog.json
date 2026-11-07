@@ -1,0 +1,1554 @@
+﻿[
+    {
+        "shortName":  "airplane",
+        "label":  "Plane Of Air",
+        "aliases":  [
+                        "plane of air"
+                    ],
+        "files":  [
+                      "airplane.txt",
+                      "AirPlane_1.txt",
+                      "airplane_2.txt",
+                      "airplane_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "akanon",
+        "label":  "Ak\u0027anon",
+        "aliases":  [
+                        "ak\u0027anon"
+                    ],
+        "files":  [
+                      "akanon.txt",
+                      "Akanon_1.txt",
+                      "akanon_2.txt",
+                      "akanon_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "arena",
+        "label":  "Arena",
+        "aliases":  [
+                        "arena"
+                    ],
+        "files":  [
+                      "arena.txt",
+                      "Arena_1.txt",
+                      "arena_2.txt",
+                      "arena_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "befallen",
+        "label":  "Befallen",
+        "aliases":  [
+                        "befallen"
+                    ],
+        "files":  [
+                      "befallen.txt",
+                      "Befallen_1.txt",
+                      "befallen_2.txt",
+                      "befallen_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "beholder",
+        "label":  "Gorge Of King Xorbb",
+        "aliases":  [
+                        "gorge of king xorbb"
+                    ],
+        "files":  [
+                      "beholder.txt",
+                      "Beholder_1.txt",
+                      "beholder_2.txt",
+                      "beholder_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "blackburrow",
+        "label":  "Blackburrow",
+        "aliases":  [
+                        "blackburrow"
+                    ],
+        "files":  [
+                      "blackburrow.txt",
+                      "Blackburrow_1.txt",
+                      "blackburrow_2.txt",
+                      "blackburrow_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "burningwood",
+        "label":  "The Burning Wood",
+        "aliases":  [
+                        "the burning wood"
+                    ],
+        "files":  [
+                      "burningwood.txt",
+                      "BurningWood_1.txt",
+                      "burningwood_2.txt",
+                      "burningwood_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "butcher",
+        "label":  "Butcherblock Mountains",
+        "aliases":  [
+                        "butcherblock mountains"
+                    ],
+        "files":  [
+                      "butcher.txt",
+                      "butcher_1.txt",
+                      "butcher_2.txt",
+                      "butcher_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "cabeast",
+        "label":  "Cabilis East",
+        "aliases":  [
+                        "cabilis east"
+                    ],
+        "files":  [
+                      "cabeast.txt",
+                      "Cabeast_1.txt",
+                      "cabeast_2.txt",
+                      "cabeast_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "cabwest",
+        "label":  "Cabilis West",
+        "aliases":  [
+                        "cabilis west"
+                    ],
+        "files":  [
+                      "cabwest.txt",
+                      "Cabwest_1.txt",
+                      "cabwest_2.txt",
+                      "cabwest_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "cauldron",
+        "label":  "Dagnor\u0027s Cauldron",
+        "aliases":  [
+                        "dagnor\u0027s cauldron"
+                    ],
+        "files":  [
+                      "cauldron.txt",
+                      "Cauldron_1.txt",
+                      "cauldron_2.txt",
+                      "cauldron_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "cazicthule",
+        "label":  "Lost Temple Of Cazic-Thule",
+        "aliases":  [
+                        "lost temple of cazicthule",
+                        "lost temple of cazic-thule"
+                    ],
+        "files":  [
+                      "cazicthule.txt",
+                      "CazicThule_1.txt",
+                      "cazicthule_2.txt",
+                      "cazicthule_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "charasis",
+        "label":  "Howling Stones",
+        "aliases":  [
+                        "howling stones"
+                    ],
+        "files":  [
+                      "charasis.txt",
+                      "Charasis_1.txt",
+                      "charasis_2.txt",
+                      "charasis_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "chardok",
+        "label":  "Chardok",
+        "aliases":  [
+                        "chardok"
+                    ],
+        "files":  [
+                      "chardok.txt",
+                      "Chardok_1.txt",
+                      "chardok_2.txt",
+                      "chardok_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "citymist",
+        "label":  "The City Of Mist",
+        "aliases":  [
+                        "the city of mist"
+                    ],
+        "files":  [
+                      "citymist.txt",
+                      "CityMist_1.txt",
+                      "citymist_2.txt",
+                      "citymist_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "cobaltscar",
+        "label":  "Cobalt Scar",
+        "aliases":  [
+                        "cobalt scar"
+                    ],
+        "files":  [
+                      "cobaltscar.txt",
+                      "CobaltScar_1.txt",
+                      "cobaltscar_2.txt",
+                      "cobaltscar_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "commons",
+        "label":  "West Commonlands",
+        "aliases":  [
+                        "west commonlands"
+                    ],
+        "files":  [
+                      "commons.txt"
+                  ]
+    },
+    {
+        "shortName":  "crushbone",
+        "label":  "Crushbone",
+        "aliases":  [
+                        "crushbone"
+                    ],
+        "files":  [
+                      "crushbone.txt",
+                      "Crushbone_1.txt",
+                      "crushbone_2.txt",
+                      "crushbone_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "crystal",
+        "label":  "Crystal Caverns",
+        "aliases":  [
+                        "crystal caverns"
+                    ],
+        "files":  [
+                      "crystal.txt",
+                      "Crystal_1.txt",
+                      "crystal_2.txt",
+                      "crystal_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "dalnir",
+        "label":  "Dalnir",
+        "aliases":  [
+                        "dalnir"
+                    ],
+        "files":  [
+                      "dalnir.txt",
+                      "Dalnir_1.txt",
+                      "dalnir_2.txt",
+                      "dalnir_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "dreadlands",
+        "label":  "Dreadlands",
+        "aliases":  [
+                        "dreadlands"
+                    ],
+        "files":  [
+                      "dreadlands.txt",
+                      "dreadlands_1.txt",
+                      "dreadlands_2.txt",
+                      "dreadlands_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "droga",
+        "label":  "Temple Of Droga",
+        "aliases":  [
+                        "temple of droga"
+                    ],
+        "files":  [
+                      "droga.txt",
+                      "Droga_1.txt",
+                      "droga_2.txt",
+                      "droga_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "eastkarana",
+        "label":  "Eastern Plains Of Karana",
+        "aliases":  [
+                        "eastern plains of karana"
+                    ],
+        "files":  [
+                      "eastkarana.txt",
+                      "EastKarana_1.txt",
+                      "eastkarana_2.txt",
+                      "eastkarana_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "eastwastes",
+        "label":  "Eastern Wastelands",
+        "aliases":  [
+                        "eastern wastelands"
+                    ],
+        "files":  [
+                      "eastwastes.txt",
+                      "EastWastes_1.txt",
+                      "eastwastes_2.txt",
+                      "eastwastes_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "ecommons",
+        "label":  "East Commonlands",
+        "aliases":  [
+                        "east commonlands"
+                    ],
+        "files":  [
+                      "ecommons.txt",
+                      "Ecommons_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "emeraldjungle",
+        "label":  "The Emerald Jungle",
+        "aliases":  [
+                        "the emerald jungle"
+                    ],
+        "files":  [
+                      "emeraldjungle.txt",
+                      "EmeraldJungle_1.txt",
+                      "emeraldjungle_2.txt",
+                      "emeraldjungle_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "erudnext",
+        "label":  "Erudin",
+        "aliases":  [
+                        "erudin"
+                    ],
+        "files":  [
+                      "erudnext.txt",
+                      "ErudnExt_1.txt",
+                      "erudnext_2.txt",
+                      "erudnext_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "erudnint",
+        "label":  "Erudin Palace",
+        "aliases":  [
+                        "erudin palace"
+                    ],
+        "files":  [
+                      "erudnint.txt",
+                      "ErudnInt_1.txt",
+                      "erudnint_2.txt",
+                      "erudnint_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "erudsxing",
+        "label":  "Erud\u0027s Crossing",
+        "aliases":  [
+                        "erud\u0027s crossing"
+                    ],
+        "files":  [
+                      "erudsxing.txt",
+                      "ErudsXing_1.txt",
+                      "erudsxing_2.txt",
+                      "erudsxing_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "everfrost",
+        "label":  "Everfrost",
+        "aliases":  [
+                        "everfrost"
+                    ],
+        "files":  [
+                      "everfrost.txt",
+                      "Everfrost_1.txt",
+                      "everfrost_2.txt",
+                      "everfrost_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "fearplane",
+        "label":  "Plane Of Fear",
+        "aliases":  [
+                        "plane of fear"
+                    ],
+        "files":  [
+                      "fearplane.txt",
+                      "FearPlane_1.txt",
+                      "fearplane_2.txt",
+                      "fearplane_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "feerrott",
+        "label":  "The Feerrott",
+        "aliases":  [
+                        "the feerrott"
+                    ],
+        "files":  [
+                      "feerrott.txt",
+                      "Feerrott_1.txt",
+                      "feerrott_2.txt",
+                      "feerrott_3.txt",
+                      "feerrott_4.txt"
+                  ]
+    },
+    {
+        "shortName":  "felwithea",
+        "label":  "Northern Felwithe",
+        "aliases":  [
+                        "northern felwithe"
+                    ],
+        "files":  [
+                      "felwithea.txt",
+                      "FelwitheA_1.txt",
+                      "felwithea_2.txt",
+                      "felwithea_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "felwitheb",
+        "label":  "Southern Felwithe",
+        "aliases":  [
+                        "southern felwithe"
+                    ],
+        "files":  [
+                      "felwitheb.txt",
+                      "FelwitheB_1.txt",
+                      "felwitheb_2.txt",
+                      "felwitheb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "fieldofbone",
+        "label":  "Field Of Bone",
+        "aliases":  [
+                        "field of bone"
+                    ],
+        "files":  [
+                      "fieldofbone.txt",
+                      "FieldOfBone_1.txt",
+                      "fieldofbone_2.txt",
+                      "fieldofbone_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "firiona",
+        "label":  "Firiona Vie",
+        "aliases":  [
+                        "firiona vie"
+                    ],
+        "files":  [
+                      "firiona.txt",
+                      "Firiona_1.txt",
+                      "firiona_2.txt",
+                      "firiona_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "freporte",
+        "label":  "East Freeport",
+        "aliases":  [
+                        "east freeport"
+                    ],
+        "files":  [
+                      "freporte.txt",
+                      "FreportE_1.txt",
+                      "freporte_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "freportn",
+        "label":  "North Freeport",
+        "aliases":  [
+                        "north freeport"
+                    ],
+        "files":  [
+                      "freportn.txt",
+                      "FreportN_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "freportw",
+        "label":  "West Freeport",
+        "aliases":  [
+                        "west freeport"
+                    ],
+        "files":  [
+                      "freportw.txt",
+                      "FreportW_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "frontiermtns",
+        "label":  "Frontier Mountains",
+        "aliases":  [
+                        "frontier mountains"
+                    ],
+        "files":  [
+                      "frontiermtns.txt",
+                      "FrontierMtns_1.txt",
+                      "frontiermtns_2.txt",
+                      "frontiermtns_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "frozenshadow",
+        "label":  "Tower Of Frozen Shadow",
+        "aliases":  [
+                        "tower of frozen shadow"
+                    ],
+        "files":  [
+                      "frozenshadow.txt",
+                      "FrozenShadow_1.txt",
+                      "frozenshadow_2.txt",
+                      "frozenshadow_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "gfaydark",
+        "label":  "Greater Faydark",
+        "aliases":  [
+                        "greater faydark"
+                    ],
+        "files":  [
+                      "gfaydark.txt",
+                      "Gfaydark_1.txt",
+                      "gfaydark_2.txt",
+                      "gfaydark_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "greatdivide",
+        "label":  "Great Divide",
+        "aliases":  [
+                        "great divide"
+                    ],
+        "files":  [
+                      "greatdivide.txt",
+                      "Greatdivide_1.txt",
+                      "greatdivide_2.txt",
+                      "greatdivide_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "grobb",
+        "label":  "Grobb",
+        "aliases":  [
+                        "grobb"
+                    ],
+        "files":  [
+                      "grobb.txt",
+                      "Grobb_1.txt",
+                      "grobb_2.txt",
+                      "grobb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "growthplane",
+        "label":  "Plane Of Growth",
+        "aliases":  [
+                        "plane of growth"
+                    ],
+        "files":  [
+                      "growthplane.txt",
+                      "Growthplane_1.txt",
+                      "growthplane_2.txt",
+                      "growthplane_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "gukbottom",
+        "label":  "Ruins Of Old Guk",
+        "aliases":  [
+                        "ruins of old guk"
+                    ],
+        "files":  [
+                      "gukbottom.txt",
+                      "GukBottom_1.txt",
+                      "gukbottom_2.txt",
+                      "gukbottom_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "guktop",
+        "label":  "Guk",
+        "aliases":  [
+                        "guk"
+                    ],
+        "files":  [
+                      "guktop.txt",
+                      "GukTop_1.txt",
+                      "guktop_2.txt",
+                      "guktop_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "halas",
+        "label":  "Halas",
+        "aliases":  [
+                        "halas"
+                    ],
+        "files":  [
+                      "halas.txt",
+                      "Halas_1.txt",
+                      "halas_2.txt",
+                      "halas_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "hateplane",
+        "label":  "Plane Of Hate",
+        "aliases":  [
+                        "plane of hate"
+                    ],
+        "files":  [
+                      "hateplane.txt",
+                      "HatePlane_1.txt",
+                      "hateplane_2.txt",
+                      "hateplane_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "highkeep",
+        "label":  "High Keep",
+        "aliases":  [
+                        "high keep"
+                    ],
+        "files":  [
+                      "highkeep.txt",
+                      "Highkeep_1.txt",
+                      "highkeep_2.txt",
+                      "highkeep_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "highpass",
+        "label":  "Highpass Hold",
+        "aliases":  [
+                        "highpass hold"
+                    ],
+        "files":  [
+                      "highpass.txt"
+                  ]
+    },
+    {
+        "shortName":  "hole",
+        "label":  "The Hole",
+        "aliases":  [
+                        "the hole"
+                    ],
+        "files":  [
+                      "hole.txt",
+                      "Hole_1.txt",
+                      "hole_2.txt",
+                      "hole_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "iceclad",
+        "label":  "Iceclad Ocean",
+        "aliases":  [
+                        "iceclad ocean"
+                    ],
+        "files":  [
+                      "iceclad.txt",
+                      "Iceclad_1.txt",
+                      "iceclad_2.txt",
+                      "iceclad_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "innothule",
+        "label":  "Innothule Swamp",
+        "aliases":  [
+                        "innothule swamp"
+                    ],
+        "files":  [
+                      "innothule.txt",
+                      "innothule_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "kael",
+        "label":  "Kael Drakkel",
+        "aliases":  [
+                        "kael drakkel"
+                    ],
+        "files":  [
+                      "kael.txt",
+                      "Kael_1.txt",
+                      "kael_2.txt",
+                      "kael_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kaesora",
+        "label":  "Kaesora",
+        "aliases":  [
+                        "kaesora"
+                    ],
+        "files":  [
+                      "kaesora.txt",
+                      "Kaesora_1.txt",
+                      "kaesora_2.txt",
+                      "kaesora_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kaladima",
+        "label":  "South Kaladim",
+        "aliases":  [
+                        "south kaladim"
+                    ],
+        "files":  [
+                      "kaladima.txt",
+                      "KaladimA_1.txt",
+                      "kaladima_2.txt",
+                      "kaladima_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kaladimb",
+        "label":  "North Kaladim",
+        "aliases":  [
+                        "north kaladim"
+                    ],
+        "files":  [
+                      "kaladimb.txt",
+                      "KaladimB_1.txt",
+                      "kaladimb_2.txt",
+                      "kaladimb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "karnor",
+        "label":  "Karnor\u0027s Castle",
+        "aliases":  [
+                        "karnor\u0027s castle"
+                    ],
+        "files":  [
+                      "karnor.txt",
+                      "Karnor_1.txt",
+                      "karnor_2.txt",
+                      "karnor_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kedge",
+        "label":  "Kedge Keep",
+        "aliases":  [
+                        "kedge keep"
+                    ],
+        "files":  [
+                      "kedge.txt",
+                      "Kedge_1.txt",
+                      "kedge_2.txt",
+                      "kedge_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kerraridge",
+        "label":  "Kerra Isle",
+        "aliases":  [
+                        "kerra isle"
+                    ],
+        "files":  [
+                      "kerraridge.txt",
+                      "kerraridge_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "kithicor",
+        "label":  "Kithicor Woods",
+        "aliases":  [
+                        "kithicor woods"
+                    ],
+        "files":  [
+                      "kithicor.txt",
+                      "Kithicor_1.txt",
+                      "kithicor_2.txt",
+                      "kithicor_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "kurn",
+        "label":  "Kurn\u0027s Tower",
+        "aliases":  [
+                        "kurn\u0027s tower"
+                    ],
+        "files":  [
+                      "kurn.txt",
+                      "Kurn_1.txt",
+                      "kurn_2.txt",
+                      "kurn_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "lakeofillomen",
+        "label":  "Lake Of Ill Omen",
+        "aliases":  [
+                        "lake of ill omen"
+                    ],
+        "files":  [
+                      "lakeofillomen.txt",
+                      "LakeofIllOmen_1.txt",
+                      "lakeofillomen_2.txt",
+                      "lakeofillomen_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "lakerathe",
+        "label":  "Lake Rathetear",
+        "aliases":  [
+                        "lake rathetear"
+                    ],
+        "files":  [
+                      "lakerathe.txt",
+                      "LakeRathe_1.txt",
+                      "lakerathe_2.txt",
+                      "lakerathe_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "lavastorm",
+        "label":  "Lavastorm Mountains",
+        "aliases":  [
+                        "lavastorm mountains"
+                    ],
+        "files":  [
+                      "Lavastorm_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "lfaydark",
+        "label":  "Lesser Faydark",
+        "aliases":  [
+                        "lesser faydark"
+                    ],
+        "files":  [
+                      "lfaydark.txt",
+                      "Lfaydark_1.txt",
+                      "lfaydark_2.txt",
+                      "lfaydark_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "mischiefplane",
+        "label":  "Plane Of Mischief",
+        "aliases":  [
+                        "plane of mischief"
+                    ],
+        "files":  [
+                      "mischiefplane.txt",
+                      "Mischiefplane_1.txt",
+                      "mischiefplane_2.txt",
+                      "mischiefplane_3.txt",
+                      "mischiefplane_4.txt"
+                  ]
+    },
+    {
+        "shortName":  "mistmoore",
+        "label":  "Castle Mistmoore",
+        "aliases":  [
+                        "castle mistmoore",
+                        "castle of mistmoore"
+                    ],
+        "files":  [
+                      "mistmoore.txt",
+                      "Mistmoore_1.txt",
+                      "mistmoore_2.txt",
+                      "mistmoore_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "misty",
+        "label":  "Misty Thicket",
+        "aliases":  [
+                        "misty thicket"
+                    ],
+        "files":  [
+                      "misty.txt",
+                      "Misty_1.txt",
+                      "misty_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "najena",
+        "label":  "Najena",
+        "aliases":  [
+                        "najena"
+                    ],
+        "files":  [
+                      "najena.txt",
+                      "Najena_1.txt",
+                      "najena_2.txt",
+                      "najena_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "necropolis",
+        "label":  "Dragon Necropolis",
+        "aliases":  [
+                        "dragon necropolis"
+                    ],
+        "files":  [
+                      "necropolis.txt",
+                      "Necropolis_1.txt",
+                      "necropolis_2.txt",
+                      "necropolis_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "nektulos",
+        "label":  "The Nektulos Forest",
+        "aliases":  [
+                        "the nektulos forest"
+                    ],
+        "files":  [
+                      "nektulos.txt",
+                      "Nektulos_1.txt",
+                      "nektulos_2.txt",
+                      "nektulos_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "neriaka",
+        "label":  "Neriak Foreign Quarter",
+        "aliases":  [
+                        "neriak - foreign quarter",
+                        "neriak foreign quarter"
+                    ],
+        "files":  [
+                      "neriaka.txt",
+                      "NeriakA_1.txt",
+                      "neriaka_2.txt",
+                      "neriaka_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "neriakb",
+        "label":  "Neriak - Commons",
+        "aliases":  [
+                        "neriak - commons",
+                        "neriak commons"
+                    ],
+        "files":  [
+                      "neriakb.txt",
+                      "NeriakB_1.txt",
+                      "neriakb_2.txt",
+                      "neriakb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "neriakc",
+        "label":  "Neriak Third Gate",
+        "aliases":  [
+                        "neriak - 3rd gate",
+                        "neriak third gate"
+                    ],
+        "files":  [
+                      "neriakc.txt",
+                      "NeriakC_1.txt",
+                      "neriakc_2.txt",
+                      "neriakc_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "northkarana",
+        "label":  "Northern Plains Of Karana",
+        "aliases":  [
+                        "northern plains of karana"
+                    ],
+        "files":  [
+                      "northkarana.txt",
+                      "NorthKarana_1.txt",
+                      "northkarana_2.txt",
+                      "northkarana_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "nro",
+        "label":  "Northern Desert Of Ro",
+        "aliases":  [
+                        "northern desert of ro"
+                    ],
+        "files":  [
+                      "nro.txt",
+                      "Nro_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "nurga",
+        "label":  "Mines Of Nurga",
+        "aliases":  [
+                        "mines of nurga"
+                    ],
+        "files":  [
+                      "nurga.txt",
+                      "Nurga_1.txt",
+                      "nurga_2.txt",
+                      "nurga_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "oasis",
+        "label":  "Oasis Of Marr",
+        "aliases":  [
+                        "oasis of marr"
+                    ],
+        "files":  [
+                      "oasis.txt",
+                      "Oasis_1.txt"
+                  ]
+    },
+    {
+        "shortName":  "oggok",
+        "label":  "Oggok",
+        "aliases":  [
+                        "oggok"
+                    ],
+        "files":  [
+                      "oggok.txt",
+                      "Oggok_1.txt",
+                      "oggok_2.txt",
+                      "oggok_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "oot",
+        "label":  "Ocean Of Tears",
+        "aliases":  [
+                        "ocean of tears"
+                    ],
+        "files":  [
+                      "oot.txt",
+                      "oot_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "overthere",
+        "label":  "The Overthere",
+        "aliases":  [
+                        "the overthere"
+                    ],
+        "files":  [
+                      "overthere.txt",
+                      "overthere_1.txt",
+                      "overthere_2.txt",
+                      "overthere_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "paineel",
+        "label":  "Paineel",
+        "aliases":  [
+                        "paineel"
+                    ],
+        "files":  [
+                      "paineel.txt",
+                      "Paineel_1.txt",
+                      "paineel_2.txt",
+                      "paineel_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "paw",
+        "label":  "Infected Paw",
+        "aliases":  [
+                        "infected paw",
+                        "lair of the splitpaw"
+                    ],
+        "files":  [
+                      "paw.txt",
+                      "Paw_1.txt",
+                      "paw_2.txt",
+                      "paw_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "permafrost",
+        "label":  "Permafrost Caverns",
+        "aliases":  [
+                        "permafrost caverns"
+                    ],
+        "files":  [
+                      "permafrost.txt",
+                      "Permafrost_1.txt",
+                      "permafrost_2.txt",
+                      "permafrost_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qcat",
+        "label":  "Qeynos Aqueduct System",
+        "aliases":  [
+                        "qeynos aqueduct system"
+                    ],
+        "files":  [
+                      "qcat.txt",
+                      "Qcat_1.txt",
+                      "qcat_2.txt",
+                      "qcat_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qey2hh1",
+        "label":  "Western Plains Of Karana",
+        "aliases":  [
+                        "western plains of karana"
+                    ],
+        "files":  [
+                      "qey2hh1.txt",
+                      "Qey2HH1_1.txt",
+                      "qey2hh1_2.txt",
+                      "qey2hh1_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qeynos",
+        "label":  "South Qeynos",
+        "aliases":  [
+                        "south qeynos"
+                    ],
+        "files":  [
+                      "qeynos.txt",
+                      "Qeynos_1.txt",
+                      "qeynos_2.txt",
+                      "qeynos_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qeynos2",
+        "label":  "North Qeynos",
+        "aliases":  [
+                        "north qeynos"
+                    ],
+        "files":  [
+                      "qeynos2.txt",
+                      "Qeynos2_1.txt",
+                      "qeynos2_2.txt",
+                      "qeynos2_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qeytoqrg",
+        "label":  "Qeynos Hills",
+        "aliases":  [
+                        "qeynos hills"
+                    ],
+        "files":  [
+                      "qeytoqrg.txt",
+                      "Qeytoqrg_1.txt",
+                      "qeytoqrg_2.txt",
+                      "qeytoqrg_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "qrg",
+        "label":  "Surefall Glade",
+        "aliases":  [
+                        "surefall glade"
+                    ],
+        "files":  [
+                      "qrg.txt",
+                      "QRG_1.txt",
+                      "qrg_2.txt",
+                      "qrg_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "rathemtn",
+        "label":  "Rathe Mountains",
+        "aliases":  [
+                        "rathe mountains"
+                    ],
+        "files":  [
+                      "rathemtn.txt",
+                      "Rathemtn_1.txt",
+                      "rathemtn_2.txt",
+                      "rathemtn_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "rivervale",
+        "label":  "Rivervale",
+        "aliases":  [
+                        "rivervale"
+                    ],
+        "files":  [
+                      "rivervale.txt",
+                      "Rivervale_1.txt",
+                      "rivervale_2.txt",
+                      "rivervale_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "runnyeye",
+        "label":  "Runnyeye Citadel",
+        "aliases":  [
+                        "runnyeye citadel"
+                    ],
+        "files":  [
+                      "runnyeye.txt",
+                      "Runnyeye_1.txt",
+                      "runnyeye_2.txt",
+                      "runnyeye_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "sebilis",
+        "label":  "Ruins Of Sebilis",
+        "aliases":  [
+                        "old sebilis",
+                        "ruins of sebilis"
+                    ],
+        "files":  [
+                      "sebilis.txt",
+                      "Sebilis_1.txt",
+                      "sebilis_2.txt",
+                      "sebilis_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "sirens",
+        "label":  "Sirens Grotto",
+        "aliases":  [
+                        "sirens grotto"
+                    ],
+        "files":  [
+                      "sirens.txt",
+                      "Sirens_1.txt",
+                      "sirens_2.txt",
+                      "sirens_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "skyfire",
+        "label":  "Skyfire Mountains",
+        "aliases":  [
+                        "skyfire mountains"
+                    ],
+        "files":  [
+                      "skyfire.txt",
+                      "Skyfire_1.txt",
+                      "skyfire_2.txt",
+                      "skyfire_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "skyshrine",
+        "label":  "Skyshrine",
+        "aliases":  [
+                        "skyshrine"
+                    ],
+        "files":  [
+                      "skyshrine.txt",
+                      "Skyshrine_1.txt",
+                      "skyshrine_2.txt",
+                      "skyshrine_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "sleeper",
+        "label":  "Sleepers Tomb",
+        "aliases":  [
+                        "sleepers tomb"
+                    ],
+        "files":  [
+                      "sleeper.txt",
+                      "Sleeper_1.txt",
+                      "sleeper_2.txt",
+                      "sleeper_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "soldunga",
+        "label":  "Solusek\u0027s Eye",
+        "aliases":  [
+                        "solusek\u0027s eye"
+                    ],
+        "files":  [
+                      "soldunga.txt",
+                      "SoldungA_1.txt",
+                      "soldunga_2.txt",
+                      "soldunga_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "soldungb",
+        "label":  "Nagafen\u0027s Lair",
+        "aliases":  [
+                        "nagafen\u0027s lair"
+                    ],
+        "files":  [
+                      "soldungb.txt",
+                      "SoldungB_1.txt",
+                      "soldungb_2.txt",
+                      "soldungb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "soltemple",
+        "label":  "Temple Of Solusek Ro",
+        "aliases":  [
+                        "temple of solusek ro"
+                    ],
+        "files":  [
+                      "soltemple.txt",
+                      "SolTemple_1.txt",
+                      "soltemple_2.txt",
+                      "soltemple_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "southkarana",
+        "label":  "Southern Plains Of Karana",
+        "aliases":  [
+                        "southern plains of karana"
+                    ],
+        "files":  [
+                      "southkarana.txt",
+                      "SouthKarana_1.txt",
+                      "southkarana_2.txt",
+                      "southkarana_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "sro",
+        "label":  "Southern Desert Of Ro",
+        "aliases":  [
+                        "southern desert of ro"
+                    ],
+        "files":  [
+                      "sro.txt",
+                      "Sro_1.txt",
+                      "sro_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "steamfont",
+        "label":  "Steamfont Mountains",
+        "aliases":  [
+                        "steamfont mountains"
+                    ],
+        "files":  [
+                      "steamfont.txt",
+                      "Steamfont_1.txt",
+                      "steamfont_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "stonebrunt",
+        "label":  "Stonebrunt Mountains",
+        "aliases":  [
+                        "stonebrunt mountains"
+                    ],
+        "files":  [
+                      "stonebrunt.txt",
+                      "Stonebrunt_1.txt",
+                      "stonebrunt_2.txt",
+                      "stonebrunt_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "swampofnohope",
+        "label":  "Swamp Of No Hope",
+        "aliases":  [
+                        "swamp of no hope"
+                    ],
+        "files":  [
+                      "swampofnohope.txt",
+                      "Swampofnohope_1.txt",
+                      "swampofnohope_2.txt",
+                      "swampofnohope_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "templeveeshan",
+        "label":  "Temple Of Veeshan",
+        "aliases":  [
+                        "temple of veeshan"
+                    ],
+        "files":  [
+                      "templeveeshan.txt",
+                      "Templeveeshan_1.txt",
+                      "templeveeshan_2.txt",
+                      "templeveeshan_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "thurgadina",
+        "label":  "City Of Thurgadin",
+        "aliases":  [
+                        "city of thurgadin"
+                    ],
+        "files":  [
+                      "thurgadina.txt",
+                      "Thurgadina_1.txt",
+                      "thurgadina_2.txt",
+                      "thurgadina_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "thurgadinb",
+        "label":  "Icewell Keep",
+        "aliases":  [
+                        "icewell keep"
+                    ],
+        "files":  [
+                      "thurgadinb.txt",
+                      "Thurgadinb_1.txt",
+                      "thurgadinb_2.txt",
+                      "thurgadinb_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "timorous",
+        "label":  "Timorous Deep",
+        "aliases":  [
+                        "timorous deep"
+                    ],
+        "files":  [
+                      "timorous.txt",
+                      "Timorous_1.txt",
+                      "timorous_2.txt",
+                      "timorous_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "tox",
+        "label":  "Toxxulia Forest",
+        "aliases":  [
+                        "toxxulia forest"
+                    ],
+        "files":  [
+                      "tox.txt",
+                      "Tox_1.txt",
+                      "tox_2.txt"
+                  ]
+    },
+    {
+        "shortName":  "trakanon",
+        "label":  "Trakanon\u0027s Teeth",
+        "aliases":  [
+                        "trakanon\u0027s teeth"
+                    ],
+        "files":  [
+                      "trakanon.txt",
+                      "Trakanon_1.txt",
+                      "trakanon_2.txt",
+                      "trakanon_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "unrest",
+        "label":  "Estate Of Unrest",
+        "aliases":  [
+                        "estate of unrest"
+                    ],
+        "files":  [
+                      "unrest.txt",
+                      "Unrest_1.txt",
+                      "unrest_2.txt",
+                      "unrest_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "veeshan",
+        "label":  "Veeshan\u0027s Peak",
+        "aliases":  [
+                        "veeshan\u0027s peak"
+                    ],
+        "files":  [
+                      "veeshan.txt",
+                      "Veeshan_1.txt",
+                      "veeshan_2.txt",
+                      "veeshan_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "velketor",
+        "label":  "Velketor\u0027s Labyrinth",
+        "aliases":  [
+                        "velketor\u0027s labyrinth"
+                    ],
+        "files":  [
+                      "velketor.txt",
+                      "Velketor_1.txt",
+                      "velketor_2.txt",
+                      "velketor_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "wakening",
+        "label":  "The Wakening Lands",
+        "aliases":  [
+                        "the wakening lands"
+                    ],
+        "files":  [
+                      "wakening.txt",
+                      "Wakening_1.txt",
+                      "wakening_2.txt",
+                      "wakening_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "warrens",
+        "label":  "Warrens",
+        "aliases":  [
+                        "warrens"
+                    ],
+        "files":  [
+                      "warrens.txt",
+                      "Warrens_1.txt",
+                      "warrens_2.txt",
+                      "warrens_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "warslikswood",
+        "label":  "Warsliks Woods",
+        "aliases":  [
+                        "warsliks woods"
+                    ],
+        "files":  [
+                      "warslikswood.txt",
+                      "WarsliksWood_1.txt",
+                      "warslikswood_2.txt",
+                      "warslikswood_3.txt"
+                  ]
+    },
+    {
+        "shortName":  "westwastes",
+        "label":  "Western Wastes",
+        "aliases":  [
+                        "western wastes"
+                    ],
+        "files":  [
+                      "westwastes.txt",
+                      "Westwastes_1.txt",
+                      "westwastes_2.txt",
+                      "westwastes_3.txt"
+                  ]
+    }
+]
