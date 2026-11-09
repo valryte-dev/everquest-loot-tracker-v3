@@ -40,3 +40,15 @@ pub fn model_packs_directory() -> io::Result<PathBuf> {
     std::fs::create_dir_all(&path)?;
     Ok(path)
 }
+
+pub fn diagnostics_directory() -> io::Result<PathBuf> {
+    let path = data_directory()?.join("logs");
+    std::fs::create_dir_all(&path)?;
+    Ok(path)
+}
+
+pub fn portrait_projects_directory() -> io::Result<PathBuf> {
+    let path = data_directory()?.join("portrait-projects");
+    std::fs::create_dir_all(&path)?;
+    Ok(path)
+}

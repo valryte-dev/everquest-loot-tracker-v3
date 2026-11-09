@@ -1,4 +1,5 @@
 export interface BootstrapStatus { appVersion:string; platform:string; databasePath:string; databaseReady:boolean; schemaVersion:number; legacyDatabase:boolean }
+export interface DiagnosticsReport { generatedAt:string; compactText:string; fullText:string; logDirectory:string }
 export interface FriendsSyncCharacter { character:string; server:string; fileName:string; friends:string[]; hasFriendsSection:boolean }
 export interface FriendsSyncSnapshot { directory:string; characters:FriendsSyncCharacter[] }
 export interface FriendsEditResult { sourceCharacter:string; friendCount:number; backupPath:string }
@@ -78,6 +79,12 @@ export type ResearchComponentKind="word"|"page"|"rune"|"spell"|"other";
 export interface ResearchCatalogItem { recipeId:number; className:"Enchanter"|"Magician"|"Necromancer"|"Wizard"; level:number; spellName:string; spellItemId?:number; trivial:string; researchOnly:boolean; availability:string; sourceUrl:string; componentId:number; itemId?:number; itemName:string; iconId?:number; quantity:number; componentKind:ResearchComponentKind; valuePp?:number; valueBasis?:string; valueSamples:number; spellValuePp?:number }
 export interface Spell { character:string; importedAt:string; slot?:number; spellName:string }
 export interface CharacterProfile { character:string; race:string; gender:"m"|"f"; classCode:string; level?:number; parsedLevel?:number; levelOverride?:number; levelSource:"logs"|"manual"|"unknown"; updatedAt?:string; levelObservedAt?:string }
+export interface PortraitProviderStatus { id:string; label:string; configured:boolean; canGenerate:boolean; canRefine:boolean; defaultModel:string; note:string }
+export interface PortraitCharacterPlacement { name:string; x:number; y:number; scale:number; layer:number }
+export interface PortraitProject { version:1; id:string; name:string; updatedAt:string; background:string; aspectRatio:string; characters:PortraitCharacterPlacement[] }
+export interface PortraitGenerateRequest { provider:string; model:string; prompt:string; referenceImageDataUrl?:string; customBaseUrl?:string }
+export interface PortraitGenerateResult { provider:string; model:string; imageDataUrl:string; revisedPrompt?:string }
+export interface PortraitRefineResult { provider:string; model:string; prompt:string }
 export interface SpellClassInfo { name:string; level:number }
 export interface SpellEffectInfo { slot:number; description:string }
 export interface SpellInfo { spellName:string; wikiUrl:string; description:string; iconLetter:string; classes:SpellClassInfo[]; effects:SpellEffectInfo[]; mana:string; skill:string; castingTime:string; recastTime:string; fizzleTime:string; resist:string; range:string; targetType:string; spellType:string; duration:string; reagent:string; focus:string; whereToObtain:string; castOnYou:string; castOnOther:string; wearsOff:string; damageKind:"dot"|"direct"|"hybrid"|"non_damage"|"unknown"; directDamage?:number; damagePerTick?:number; tickCount?:number; tickIntervalSeconds:number; totalDotDamage?:number; fetchedAt:string; stale:boolean }

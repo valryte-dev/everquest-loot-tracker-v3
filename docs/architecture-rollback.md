@@ -42,6 +42,8 @@ Schema 45 adds the nullable `last_known_spawn_at` column to the spawn-timer cata
 Schema 46 only fills missing `zone_name` values on the original bundled/wiki spawn-timer rows. It does not touch manually saved or JSON-imported overrides, kill history, or active timer state. Rolling back the application leaves the improved reference metadata intact and readable by older builds.
 
 Schema 52 adds only a partial index over active damage encounters for the live parser's highest-frequency lookup. It does not alter combat rows or parser output. Older builds safely ignore the index, and it may be dropped without losing data if rollback profiling requires it.
+
+Schema 55 adds only supporting indexes for live spell attribution, recent encounter reads, and active DoT reads on large databases. It does not rewrite combat history or change parser output. Older builds safely ignore these indexes; rolling back the code leaves them as harmless query accelerators.
 ## CH replay compatibility
 
 CH encounter replay is additive and does not change the SQLite schema. Portable `.eqch.json` files live in the `ch-chain-replays` application-data directory. Rolling back the application leaves those files untouched; older builds ignore them. Copy that directory before removing or editing replay files manually.
@@ -82,3 +84,7 @@ Keep the recovery backup until the restored app has been verified. Application l
 # Schema 54: map tracking
 
 Migration 54 only adds `character_map_state`. Rolling the feature back is safe after removing the Map route, `map_snapshot` command, and location persistence hook. The table may remain unused without affecting older behavior; if a full data rollback is required, back up the database and drop only `character_map_state`, then remove migration version 54.
+
+## Portrait Studio compatibility
+
+Checkpoint `pre-portrait-studio-2026-11-09` captures the complete pre-feature worktree. Portrait Studio is additive and does not change the SQLite schema. Versioned project JSON files live in the `portrait-projects` application-data directory; provider credentials live separately in the operating-system credential vault. Older builds ignore both. Rolling back does not change character profiles, inventory snapshots, model packs, combat data, or downloaded portrait images.

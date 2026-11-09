@@ -4,6 +4,7 @@ mod combat_metrics;
 mod damage_analytics;
 mod data;
 mod database_management;
+mod diagnostics;
 mod dot_tracking;
 mod dot_training;
 mod eq_time;
@@ -11,6 +12,7 @@ mod experience_tracking;
 mod friends_sync;
 mod map_tracking;
 mod model_pack;
+mod portrait_studio;
 mod proc_coach;
 mod proc_evidence;
 mod quest_catalog;
@@ -23,6 +25,10 @@ mod split_reconciliation;
 mod system_tasks;
 mod wardrobe_catalog;
 
+pub use portrait_studio::{
+    portrait_ai_clear_key, portrait_ai_generate, portrait_ai_refine_prompt, portrait_ai_save_key,
+    portrait_ai_status, portrait_project_delete, portrait_project_list, portrait_project_save,
+};
 pub use wardrobe_catalog::{
     wardrobe_catalog_item, wardrobe_catalog_items, wardrobe_catalog_set_items,
     wardrobe_catalog_sets,
@@ -143,6 +149,18 @@ pub struct MutationRequest {
 #[tauri::command]
 pub fn app_snapshot(state: tauri::State<'_, AppState>) -> Result<Value, String> {
     data::snapshot(&state.database)
+}
+
+#[tauri::command]
+pub fn diagnostics_report(
+    state: tauri::State<'_, AppState>,
+) -> Result<diagnostics::DiagnosticsReport, String> {
+    diagnostics::report(&state.database)
+}
+
+#[tauri::command]
+pub fn record_client_diagnostic(kind: String, message: String, stack: Option<String>) {
+    diagnostics::record_client(&kind, &message, stack.as_deref());
 }
 
 #[tauri::command]

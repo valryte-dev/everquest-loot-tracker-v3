@@ -1,4 +1,4 @@
-export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "map" | "spawn-timers" | "dps-calculator" | "experience" | "dot-lab" | "ch-lab" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "friends-sync" | "wardrobe" | "spells" | "spell-research" | "gems" | "quest-items" | "imports" | "items" | "database" | "system" | "logs" | "help" | "changes";
+export type FeatureKey = "live" | "linked" | "tracked" | "activity-history" | "death-reports" | "damage" | "map" | "spawn-timers" | "dps-calculator" | "experience" | "dot-lab" | "ch-lab" | "splits" | "compounds" | "merchant" | "wts" | "characters" | "friends-sync" | "wardrobe" | "portrait-studio" | "spells" | "spell-research" | "gems" | "quest-items" | "imports" | "items" | "database" | "system" | "logs" | "help" | "changes";
 export type FeatureGroup = "Loot" | "Combat" | "Trading" | "Roster" | "Data" | "Application";
 export interface FeatureDefinition { key:FeatureKey; label:string; shortLabel:string; description:string; icon:string; phase:1|2|3|4; group:FeatureGroup }
 export const FEATURE_GROUPS:FeatureGroup[] = ["Loot", "Combat", "Trading", "Roster", "Data", "Application"];
@@ -33,4 +33,5 @@ export const FEATURES:FeatureDefinition[] = [
  {key:"changes",label:"Change Log",shortLabel:"Change Log",icon:"↻",phase:4,group:"Application",description:"Release history and noteworthy behavior changes."},
  {key:"quest-items",label:"Quest Item Readiness",shortLabel:"Quest Items",icon:"Q",phase:3,group:"Roster",description:"Roster-wide Plane of Sky, Velious armor, and epic quest component readiness from the P99 wiki catalog."},
  {key:"wardrobe",label:"Wardrobe",shortLabel:"Wardrobe",icon:"W",phase:3,group:"Roster",description:"Build a race-, class-, and gender-aware outfit using the 3D model and a stat-filterable item catalog."},
+ {key:"portrait-studio",label:"Portrait Studio",shortLabel:"Portraits",icon:"P",phase:3,group:"Roster",description:"Arrange exact saved character models, export a lineup, and optionally turn it into a faithful illustrated portrait with your AI provider."},
 ];

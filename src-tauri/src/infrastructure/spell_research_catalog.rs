@@ -90,7 +90,7 @@ mod tests {
     fn bundled_catalog_covers_all_research_classes_and_component_families() {
         let folder = tempdir().unwrap();
         let database = Database::open(folder.path().join("loot.db")).unwrap();
-        assert_eq!(database.migrate().unwrap(), 54);
+        assert_eq!(database.migrate().unwrap(), 55);
         let connection = database.connect().unwrap();
         let recipe_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM spell_research_recipes", [], |row| {

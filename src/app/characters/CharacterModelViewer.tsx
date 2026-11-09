@@ -256,7 +256,7 @@ export function itemSkeleton<T>(instantiated:T[],container:T[]){
  return instantiated[0]||container[0];
 }
 
-export function CharacterModelViewer({character,profile,items,controlsTarget}:{character:string;profile:CharacterModelProfile;items:InventoryItem[];controlsTarget?:Element|null}){
+export function CharacterModelViewer({character,profile,items,controlsTarget,captureMode=false}:{character:string;profile:CharacterModelProfile;items:InventoryItem[];controlsTarget?:Element|null;captureMode?:boolean}){
  const canvasRef=useRef<HTMLCanvasElement>(null);
  const engineRef=useRef<import("@babylonjs/core/Engines/engine").Engine|null>(null);
  const[status,setStatus]=useState<"loading"|"ready"|"error">("loading");
@@ -322,7 +322,7 @@ export function CharacterModelViewer({character,profile,items,controlsTarget}:{c
     await import("@babylonjs/core/Animations/animatable");
     await import("@babylonjs/loaders/glTF");
     if(disposed)return;
-    engine=engineRef.current||new Engine(canvas,true,MODEL_ENGINE_OPTIONS,true);
+    engine=engineRef.current||new Engine(canvas,true,captureMode?{...MODEL_ENGINE_OPTIONS,preserveDrawingBuffer:true}:MODEL_ENGINE_OPTIONS,true);
     if(!engineRef.current){
      engine.setHardwareScalingLevel(Math.max(1,Math.min(2,window.devicePixelRatio||1)));
      engineRef.current=engine;
@@ -830,7 +830,7 @@ export function CharacterModelViewer({character,profile,items,controlsTarget}:{c
    canvas.removeEventListener("wheel",containWheel);
    scene?.dispose();
   };
- },[modelCode,appearanceKey,reload,localReady,localComplete,localRoot]);
+ },[modelCode,appearanceKey,reload,localReady,localComplete,localRoot,captureMode]);
 
  return <div className="character-model-viewer">
  <canvas ref={canvasRef} aria-label={`Interactive 3D model for ${character}`}/>

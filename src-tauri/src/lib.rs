@@ -7,14 +7,16 @@ use application::{
     ch_replay_library_list, ch_replay_library_load, ch_training_preview, damage_encounter_details,
     damage_encounter_telemetry, damage_proc_evidence, database_cleanup_preview,
     database_fight_purge_preview, database_protected_fights, database_stats, death_report_details,
-    dot_training_preview, experience_calibrate, experience_capture_preview,
+    diagnostics_report, dot_training_preview, experience_calibrate, experience_capture_preview,
     experience_capture_window_set, experience_read_now, experience_rebuild_history,
     experience_tracking_set_enabled, experience_tracking_set_zone, experience_tracking_snapshot,
     friends_sync_apply, friends_sync_snapshot, friends_sync_update, global_status_snapshot,
     map_snapshot, model_pack_status, mutate_app, parse_inventory_preview, parse_log_preview,
+    portrait_ai_clear_key, portrait_ai_generate, portrait_ai_refine_prompt, portrait_ai_save_key,
+    portrait_ai_status, portrait_project_delete, portrait_project_list, portrait_project_save,
     proc_coach_analyze, proc_coach_delete_key, proc_coach_save_key, proc_coach_status,
-    reload_spell_catalog, replay_library_import, replay_library_list, replay_library_load,
-    replay_library_save_coach_review, save_ch_replay, save_damage_replay,
+    record_client_diagnostic, reload_spell_catalog, replay_library_import, replay_library_list,
+    replay_library_load, replay_library_save_coach_review, save_ch_replay, save_damage_replay,
     spawn_timer_anchor_from_last_kill, spawn_timer_catalog_delete, spawn_timer_catalog_import,
     spawn_timer_catalog_save, spawn_timer_catalog_snapshot, spawn_timer_correct_mob,
     spawn_timer_kill_scan_options, spawn_timer_linger_set, spawn_timer_lookup,
@@ -26,8 +28,18 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let state = AppState::initialize().expect("V3 application state must initialize");
-    tauri::Builder::default()
+    let _diagnostics_guard = match infrastructure::diagnostics::initialize() {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            eprintln!("Could not initialize diagnostics: {error}");
+            None
+        }
+    };
+    let state = AppState::initialize().unwrap_or_else(|error| {
+        tracing::error!(%error, "application state failed to initialize");
+        panic!("V3 application state must initialize: {error}");
+    });
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(state)
@@ -37,6 +49,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap_status,
+            diagnostics_report,
+            record_client_diagnostic,
             app_revision,
             global_status_snapshot,
             friends_sync_snapshot,
@@ -86,6 +100,14 @@ pub fn run() {
             proc_coach_save_key,
             proc_coach_delete_key,
             proc_coach_analyze,
+            portrait_ai_status,
+            portrait_ai_save_key,
+            portrait_ai_clear_key,
+            portrait_ai_generate,
+            portrait_ai_refine_prompt,
+            portrait_project_list,
+            portrait_project_save,
+            portrait_project_delete,
             save_damage_replay,
             mutate_app,
             parse_log_preview,
@@ -99,6 +121,12 @@ pub fn run() {
             wardrobe_catalog_sets,
             wardrobe_catalog_set_items
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running EverQuest Loot Tracker V3");
+        .run(tauri::generate_context!());
+    match result {
+        Ok(()) => tracing::info!("application process stopped normally"),
+        Err(error) => {
+            tracing::error!(%error, "desktop runtime stopped with an error");
+            panic!("error while running EverQuest Loot Tracker V3: {error}");
+        }
+    }
 }

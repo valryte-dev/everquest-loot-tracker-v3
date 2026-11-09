@@ -39,6 +39,7 @@ describe("feature catalog", () => {
       "changes",
       "quest-items",
       "wardrobe",
+      "portrait-studio",
     ]);
   });
 

@@ -25,7 +25,7 @@ use std::{
         mpsc, Arc,
     },
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 use tauri::Emitter;
 
@@ -34,6 +34,11 @@ const DAMAGE_SUMMARY_BACKFILL_BATCH_SIZE: i64 = 25;
 const DAMAGE_SUMMARY_BACKFILL_PAUSE: Duration = Duration::from_millis(100);
 const LIVE_INGESTION_QUIET_SECONDS: i64 = 10;
 const LIVE_INGESTION_DEFER_PAUSE: Duration = Duration::from_secs(1);
+const WATCH_EVENT_QUEUE_CAPACITY: usize = 1;
+
+fn coalescing_watch_channel<T>() -> (mpsc::SyncSender<T>, mpsc::Receiver<T>) {
+    mpsc::sync_channel(WATCH_EVENT_QUEUE_CAPACITY)
+}
 
 fn live_ingestion_is_recent(
     connection: &rusqlite::Connection,
@@ -428,9 +433,12 @@ fn watch(
     spell_catalog: SpellCatalog,
     mut startup_complete: Option<mpsc::SyncSender<()>>,
 ) {
-    let (event_tx, event_rx) = mpsc::channel();
+    // A file append is only a wake-up signal: processing always reads the log from its
+    // durable cursor through the latest complete line. Keeping every filesystem event adds
+    // no information and can grow memory without bound when raid spam outpaces SQLite.
+    let (event_tx, event_rx) = coalescing_watch_channel();
     let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |event| {
-        let _ = event_tx.send(event);
+        let _ = event_tx.try_send(event);
     }) {
         Ok(watcher) => watcher,
         Err(error) => {
@@ -2859,6 +2867,7 @@ fn process_log_internal(
     last_mob: &mut HashMap<PathBuf, String>,
     mut dot_tracker: Option<&mut DotTracker>,
 ) -> Result<LiveChangeSet, String> {
+    let batch_started = Instant::now();
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
     let offset = offsets.entry(path.to_owned()).or_insert(size);
@@ -2894,10 +2903,12 @@ fn process_log_internal(
         .optional()
         .map_err(|error| error.to_string())?;
     let mut changes = LiveChangeSet::default();
+    let mut complete_lines = 0_u64;
     for line_bytes in bytes.split_inclusive(|byte| *byte == b'\n') {
         if !line_bytes.ends_with(b"\n") {
             break;
         }
+        complete_lines += 1;
         let text = String::from_utf8_lossy(line_bytes);
         let line = text.trim_end_matches(['\r', '\n']);
         let event = parse_log_event(line, &character);
@@ -2965,6 +2976,16 @@ fn process_log_internal(
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     *offset = line_offset;
+    let elapsed = batch_started.elapsed();
+    if elapsed >= Duration::from_secs(1) {
+        tracing::warn!(
+            source_file = %source_file,
+            bytes = bytes.len(),
+            lines = complete_lines,
+            elapsed_ms = elapsed.as_millis(),
+            "live log batch processed slowly"
+        );
+    }
     Ok(changes)
 }
 
@@ -3904,17 +3925,26 @@ fn log_with(c: &rusqlite::Connection, level: &str, area: &str, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        character_from_log, is_active_log, is_log, live_ingestion_is_recent, poll, process_log,
-        rebuild_experience_history, reconcile_exports, record_damage_event,
-        record_experience_gain_event, record_incoming_damage_event, record_observed_melee_event,
-        record_pet_evidence, resolve_linked_items, scan_damage_file, scan_death_report_file,
-        scan_history_directory, LiveChangeSet,
+        character_from_log, coalescing_watch_channel, is_active_log, is_log,
+        live_ingestion_is_recent, poll, process_log, rebuild_experience_history, reconcile_exports,
+        record_damage_event, record_experience_gain_event, record_incoming_damage_event,
+        record_observed_melee_event, record_pet_evidence, resolve_linked_items, scan_damage_file,
+        scan_death_report_file, scan_history_directory, LiveChangeSet,
     };
     use crate::application::database_management::{delete_protected_fights, set_fight_protection};
     use crate::domain::log_events::{DamageType, LogEvent};
     use crate::infrastructure::database::Database;
     use chrono::NaiveDateTime;
     use std::{collections::HashMap, fs, io::Write};
+
+    #[test]
+    fn watcher_notifications_are_bounded_and_coalesced() {
+        let (sender, receiver) = coalescing_watch_channel();
+        assert!(sender.try_send("first append").is_ok());
+        assert!(sender.try_send("redundant append").is_err());
+        assert_eq!(receiver.recv().unwrap(), "first append");
+        assert!(sender.try_send("next append").is_ok());
+    }
 
     #[test]
     fn live_change_scopes_only_refresh_affected_features() {

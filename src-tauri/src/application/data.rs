@@ -69,6 +69,7 @@ fn page_fields(page: &str) -> &'static [&'static str] {
             "characterProfiles",
         ],
         "wardrobe" => &["items"],
+        "portrait-studio" => &["inventory", "characterProfiles"],
         "spells" => &["spells", "items"],
         "gems" => &["inventory"],
         "quest-items" => &["inventory", "questCatalog"],
@@ -980,7 +981,7 @@ pub fn global_combat_snapshot(database: &Database) -> Result<Value, String> {
                     ORDER BY total_damage DESC,target_name COLLATE NOCASE
                 ))
          FROM damage_encounters e
-         WHERE e.outcome='active' OR datetime(e.last_damage_at)>=datetime('now','localtime','-45 seconds')
+         WHERE e.outcome='active' OR e.last_damage_at>=datetime('now','localtime','-45 seconds')
          ORDER BY e.last_damage_at DESC,e.id DESC LIMIT 8",
         |row|Ok(json!({"id":row.get::<_,i64>(0)?,"character":row.get::<_,String>(1)?,"mobName":row.get::<_,String>(2)?,
             "startedAt":row.get::<_,String>(3)?,"endedAt":row.get::<_,Option<String>>(4)?,"lastDamageAt":row.get::<_,String>(5)?,

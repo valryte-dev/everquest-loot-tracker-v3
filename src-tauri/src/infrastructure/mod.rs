@@ -1,4 +1,5 @@
 pub mod database;
+pub mod diagnostics;
 pub mod item_appearance_catalog;
 pub mod item_icon_catalog;
 pub mod paths;

@@ -10,4 +10,5 @@ export function parseMapText(text:string,layer=0):ParsedMap{const lines:MapLine[
 export const normalizeZone=(value:string)=>value.toLowerCase().replace(/^the\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
 export function resolveZone(catalog:MapCatalogZone[],value:string){const wanted=normalizeZone(value);if(!wanted)return undefined;return catalog.find(zone=>[zone.shortName,zone.label,...zone.aliases].some(alias=>normalizeZone(alias)===wanted))}
 export function mapPlayerPosition(northSouth:number,eastWest:number){return{x:-eastWest,y:-northSouth}}
+export function mapHeadingRadians(headingDegrees:number){return(-headingDegrees*Math.PI)/180}
 export function readableMapColor(value:string,minimum=120){const match=value.match(/rgb\((\d+),(\d+),(\d+)\)/);if(!match)return value;const channels=match.slice(1).map(Number),peak=Math.max(...channels);if(peak>=minimum)return value;if(peak===0)return`rgb(${minimum},${minimum+12},${minimum+6})`;const factor=minimum/peak;return`rgb(${channels.map(channel=>Math.min(255,Math.round(channel*factor))).join(",")})`}
